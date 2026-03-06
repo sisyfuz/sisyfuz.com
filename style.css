@@ -3,9 +3,9 @@
 
 /* 2. Algemene stijlen voor de hele pagina */
 body {
-    font-family: 'Inter', sans-serif; /* Je nieuwe font */
+    font-family: 'Bitcount Prop Double Ink', sans-serif; /* Je nieuwe font */
     line-height: 1.6;                /* Betere leesbaarheid */
-    color: #333;                     /* Donkergrijze tekst (minder fel dan zwart) */
+    color: #000000;                     /* Donkergrijze tekst (minder fel dan zwart) */
     background-color: #f4f4f4;       /* Lichtgrijze achtergrond */
     margin: 0;
     padding: 20px;
@@ -13,7 +13,7 @@ body {
 
 /* 3. Stijl voor koppen */
 h1 {
-    color: #2c3e50;
+    color: #000000;
     font-weight: 700;
 }
 

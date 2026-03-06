@@ -1,0 +1,40 @@
+/* 1. Importeer een font (optioneel, als je Google Fonts gebruikt) */
+@import url('https://fonts.googleapis.com');
+
+/* 2. Algemene stijlen voor de hele pagina */
+body {
+    font-family: 'Inter', sans-serif; /* Je nieuwe font */
+    line-height: 1.6;                /* Betere leesbaarheid */
+    color: #333;                     /* Donkergrijze tekst (minder fel dan zwart) */
+    background-color: #f4f4f4;       /* Lichtgrijze achtergrond */
+    margin: 0;
+    padding: 20px;
+}
+
+/* 3. Stijl voor koppen */
+h1 {
+    color: #2c3e50;
+    font-weight: 700;
+    border-bottom: 2px solid #3498db; /* Blauw streepje onder de kop */
+    padding-bottom: 10px;
+}
+
+/* 4. Stijl voor paragrafen */
+p {
+    font-size: 18px;
+    max-width: 800px;
+}
+
+/* 5. Een simpele knop-stijl */
+.button {
+    background-color: #3498db;
+    color: white;
+    padding: 10px 20px;
+    text-decoration: none;
+    border-radius: 5px;
+    display: inline-block;
+}
+
+.button:hover {
+    background-color: #2980b9; /* Donkerder blauw bij hover */
+}

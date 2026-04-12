@@ -30,7 +30,24 @@ function App() {
       </section>
 
       <div className="ticks"></div>
-
+      
+      return (
+      <div className="flex flex-col items-center justify-center min-h-screen bg-slate-100">
+      <div className="p-8 bg-white shadow-2xl rounded-2xl border border-slate-200">
+      <h1 className="text-4xl font-black text-indigo-600 mb-4">
+      Sisyfuz is live! 🚀
+      </h1>
+      <p className="text-slate-600">
+      Geen CSS-bestanden meer nodig, alleen Tailwind classes.
+      </p>
+      <button className="mt-6 px-6 py-2 bg-indigo-600 text-white rounded-full hover:bg-indigo-700 transition-all">
+      Ontdek meer
+      </button>
+      </div>
+      </div>
+      )
+    }
+    
       <section id="next-steps">
         <div id="docs">
           <svg className="icon" role="presentation" aria-hidden="true">
@@ -117,5 +134,8 @@ function App() {
     </>
   )
 }
+
+
+export default App
 
 export default App

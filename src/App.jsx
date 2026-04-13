@@ -64,17 +64,18 @@ const MarqueeMenu = ({ isVisible }) => {
             className={`fixed bottom-0 left-0 w-full z-50 bg-black py-4 border-t border-white/10 overflow-hidden whitespace-nowrap transition-transform duration-700 ease-in-out 
             ${isVisible ? 'translate-y-0' : 'translate-y-full'}`}
         >
-            {/* Let op: class is nu 'marquee-active' ipv 'animate-marquee' */}
             <div className="flex marquee-active hover:[animation-play-state:paused] cursor-crosshair w-max">
                 {[...Array(6)].map((_, i) => (
                     <div key={i} className="flex shrink-0">
                         {menuItems.map((item, index) => (
-                            <span
+                            <button
                                 key={index}
-                                className="text-white text-[10px] font-mono uppercase tracking-[0.3em] px-12 hover:text-pink-500 transition-colors duration-300"
+                                // We gebruiken 'active:text-pink-500' voor de vinger-tap
+                                className="text-white text-[10px] font-mono uppercase tracking-[0.3em] px-12 transition-colors duration-150 outline-none focus:text-pink-400 hover:text-pink-500 active:text-pink-500"
+                                onClick={() => console.log(`Navigeer naar ${item}`)}
                             >
                                 {item}
-                            </span>
+                            </button>
                         ))}
                     </div>
                 ))}

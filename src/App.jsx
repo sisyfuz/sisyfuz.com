@@ -8,134 +8,68 @@ function App() {
   const [count, setCount] = useState(0)
 
   return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
-        </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.jsx</code> and save to test <code>HMR</code>
+      <div className="min-h-screen bg-slate-50 font-sans text-slate-900">
+        {/* Hero Sectie */}
+        <section className="flex flex-col items-center justify-center py-20 px-4 text-center">
+          <div className="relative mb-12">
+            {/* De hoofd-image met zwevende logo's */}
+            <img src={heroImg} className="w-44 h-auto drop-shadow-2xl" alt="Hero" />
+            <img src={reactLogo} className="absolute -bottom-4 -right-4 w-12 h-12 animate-spin-slow" alt="React logo" />
+            <img src={viteLogo} className="absolute -top-4 -left-4 w-12 h-12" alt="Vite logo" />
+          </div>
+
+          <h1 className="text-6xl font-black tracking-tighter mb-4 bg-gradient-to-r from-indigo-600 to-sky-500 bg-clip-text text-transparent">
+            GET STARTED
+          </h1>
+
+          <p className="text-lg text-slate-600 max-w-md mx-auto mb-8">
+            Pas <code className="bg-slate-200 px-2 py-1 rounded text-sm font-mono">src/App.jsx</code> aan en sla op om de wijzigingen direct te zien.
           </p>
-        </div>
-        <button
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
-        </button>
-      </section>
 
-      <div className="ticks"></div>
-      
-      return (
-      <div className="flex flex-col items-center justify-center min-h-screen bg-slate-100">
-      <div className="p-8 bg-white shadow-2xl rounded-2xl border border-slate-200">
-      <h1 className="text-4xl font-black text-indigo-600 mb-4">
-      Sisyfuz is live! 🚀
-      </h1>
-      <p className="text-slate-600">
-      Geen CSS-bestanden meer nodig, alleen Tailwind classes.
-      </p>
-      <button className="mt-6 px-6 py-2 bg-indigo-600 text-white rounded-full hover:bg-indigo-700 transition-all">
-      Ontdek meer
-      </button>
-      </div>
-      </div>
-      )
-    }
-    
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
-        </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
+          <button
+              className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 px-10 rounded-full transition-all transform hover:scale-105 shadow-xl active:scale-95"
+              onClick={() => setCount((count) => count + 1)}
+          >
+            Teller staat op: {count}
+          </button>
+        </section>
 
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
-  )
+        {/* Informatie Sectie */}
+        <section className="max-w-4xl mx-auto grid md:grid-cols-2 gap-8 px-6 pb-20">
+          {/* Documentatie Kaart */}
+          <div className="bg-white p-8 rounded-3xl shadow-sm border border-slate-200 hover:shadow-md transition-shadow">
+            <div className="text-3xl mb-4">📚</div>
+            <h2 className="text-2xl font-bold mb-2">Documentatie</h2>
+            <p className="text-slate-500 mb-6">Alles wat je moet weten over Vite en React.</p>
+            <ul className="space-y-3">
+              <li>
+                <a href="https://vite.dev" target="_blank" className="flex items-center text-indigo-600 hover:underline">
+                  <img className="w-5 h-5 mr-2" src={viteLogo} alt="" /> Explore Vite
+                </a>
+              </li>
+              <li>
+                <a href="https://react.dev" target="_blank" className="flex items-center text-indigo-600 hover:underline">
+                  <img className="w-5 h-5 mr-2" src={reactLogo} alt="" /> Learn React
+                </a>
+              </li>
+            </ul>
+          </div>
+
+          {/* Social Kaart */}
+          <div className="bg-white p-8 rounded-3xl shadow-sm border border-slate-200 hover:shadow-md transition-shadow">
+            <div className="text-3xl mb-4">💬</div>
+            <h2 className="text-2xl font-bold mb-2">Community</h2>
+            <p className="text-slate-500 mb-6">Maak verbinding met andere ontwikkelaars.</p>
+            <div className="grid grid-cols-2 gap-4">
+              <a href="https://github.com" target="_blank" className="bg-slate-100 p-3 rounded-xl text-center hover:bg-slate-200 transition-colors">GitHub</a>
+              <a href="https://vite.dev" target="_blank" className="bg-slate-100 p-3 rounded-xl text-center hover:bg-slate-200 transition-colors">Discord</a>
+              <a href="https://x.com" target="_blank" className="bg-slate-100 p-3 rounded-xl text-center hover:bg-slate-200 transition-colors">X.com</a>
+              <a href="https://bsky.app" target="_blank" className="bg-slate-100 p-3 rounded-xl text-center hover:bg-slate-200 transition-colors">Bluesky</a>
+            </div>
+          </div>
+        </section>
+      </div>
+  );
 }
 
-
-export default App
-
-export default App
+export default App;

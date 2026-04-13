@@ -8,5 +8,5 @@ export default defineConfig({
     react(),
     tailwindcss(),
   ],
-  base: '/sisyfuz.com/', // Zorgt dat paden relatief zijn voor GitHub Pages
+  base: '/', // Zorgt dat paden relatief zijn voor GitHub Pages
 })

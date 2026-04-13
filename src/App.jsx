@@ -7,7 +7,6 @@ import About from "./pages/About";
 import Contact from "./pages/Contact";
 import NotFound from "./pages/NotFound";
 
-// --- GLOBAL STYLES ---
 const GlobalStyles = () => (
     <style dangerouslySetInnerHTML={{ __html: `
     @keyframes marqueeScroll {
@@ -19,11 +18,17 @@ const GlobalStyles = () => (
       width: max-content !important;
       animation: marqueeScroll 25s linear infinite !important;
     }
+    /* Zorgt dat animaties stoppen als de gebruiker 'Reduced Motion' heeft aanstaan */
+    @media (prefers-reduced-motion: reduce) {
+      .marquee-active {
+        animation: none !important;
+        overflow-x: auto !important;
+      }
+    }
   `}} />
 );
 
 // --- MARQUEE MENU ---
-// Nu weer met de 'isVisible' prop
 const MarqueeMenu = ({ isVisible }) => {
     const menuItems = [
         { label: "_work", path: "/work" },
@@ -34,15 +39,24 @@ const MarqueeMenu = ({ isVisible }) => {
     ];
 
     return (
-        <div className={`fixed bottom-0 left-0 w-full z-50 bg-black py-4 border-t border-white/10 overflow-hidden whitespace-nowrap transition-transform duration-700 ease-in-out ${isVisible ? 'translate-y-0' : 'translate-y-full'}`}>
-            <div className="flex marquee-active hover:[animation-play-state:paused] cursor-crosshair w-max">
+        <nav
+            aria-label="Hoofdnavigatie"
+            /* Uitleg classes:
+               - translate-y: voor het visuele effect
+               - invisible/visible: voor toegankelijkheid (haalt het uit de tab-volgorde)
+               - opacity: voor een mooie fade
+            */
+            className={`fixed bottom-0 left-0 w-full z-[9999] bg-black py-4 border-t border-white/10 overflow-hidden whitespace-nowrap transition-all duration-700 ease-in-out 
+            ${isVisible ? 'translate-y-0 opacity-100 visible' : 'translate-y-full opacity-0 invisible'}`}
+        >
+            <div className="flex marquee-active hover:[animation-play-state:paused] focus-within:[animation-play-state:paused] cursor-crosshair w-max">
                 {[...Array(6)].map((_, i) => (
-                    <div key={i} className="flex shrink-0">
+                    <div key={i} className="flex shrink-0" aria-hidden={i > 0}>
                         {menuItems.map((item, index) => (
                             <Link
                                 key={index}
                                 to={item.path}
-                                className="text-white text-[10px] font-mono uppercase tracking-[0.3em] px-12 hover:text-pink-500 active:text-pink-500 transition-colors duration-150 no-underline"
+                                className="text-white text-[10px] font-mono uppercase tracking-[0.3em] px-12 hover:text-pink-500 focus:text-pink-500 focus:outline-none focus:underline active:text-pink-500 transition-colors duration-150 no-underline"
                             >
                                 {item.label}
                             </Link>
@@ -50,31 +64,31 @@ const MarqueeMenu = ({ isVisible }) => {
                     </div>
                 ))}
             </div>
-        </div>
+        </nav>
     );
 };
 
-// --- WRAPPER VOOR DE LOGICA ---
+// --- APP WRAPPER (voor route & scroll logica) ---
 function AppContent() {
     const location = useLocation();
-    const [progress, setProgress] = useState(0);
+    const [scrollProgress, setScrollProgress] = useState(0);
 
-    // We houden de scroll-progress bij in de hoofd-app
     useEffect(() => {
         const handleScroll = () => {
-            const p = Math.min(window.scrollY / 700, 1);
-            setProgress(p);
+            // We meten de scroll-positie (700px is onze range)
+            const currentScroll = window.scrollY;
+            setScrollProgress(Math.min(currentScroll / 700, 1));
         };
-        window.addEventListener("scroll", handleScroll, { passive: true });
-        handleScroll();
-        return () => window.removeEventListener("scroll", handleScroll);
-    }, []);
 
-    // LOGICA VOOR ZICHTBAARHEID:
-    // Als pad "/" is (Home) -> toon pas na 10% scrollen.
-    // Voor alle andere paden -> altijd tonen.
+        window.addEventListener("scroll", handleScroll, { passive: true });
+        handleScroll(); // Directe check bij laden
+
+        return () => window.removeEventListener("scroll", handleScroll);
+    }, [location]); // Re-check als de gebruiker van pagina wisselt
+
+    // Logica: Op home pas na scrollen, op andere pagina's altijd
     const isHome = location.pathname === "/";
-    const menuIsVisible = isHome ? progress > 0.1 : true;
+    const menuIsVisible = isHome ? scrollProgress > 0.1 : true;
 
     return (
         <>
@@ -85,6 +99,7 @@ function AppContent() {
                 <Route path="/archive" element={<Archive />} />
                 <Route path="/about" element={<About />} />
                 <Route path="/contact" element={<Contact />} />
+                {/* De 404 vangnet-route */}
                 <Route path="*" element={<NotFound />} />
             </Routes>
             <MarqueeMenu isVisible={menuIsVisible} />

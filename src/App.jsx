@@ -1,5 +1,21 @@
 import { useEffect, useState } from "react";
 
+// --- GLOBAL STYLES INJECTIE ---
+// Dit zorgt ervoor dat de animatie ALTIJD werkt, ook op je live domein.
+const GlobalStyles = () => (
+    <style dangerouslySetInnerHTML={{ __html: `
+    @keyframes marqueeScroll {
+      0% { transform: translateX(0%); }
+      100% { transform: translateX(-50%); }
+    }
+    .marquee-active {
+      display: flex !important;
+      width: max-content !important;
+      animation: marqueeScroll 25s linear infinite !important;
+    }
+  `}} />
+);
+
 // --- CONFIGURATIE ---
 const CONFIG = {
     scrollRange: 700,
@@ -48,7 +64,8 @@ const MarqueeMenu = ({ isVisible }) => {
             className={`fixed bottom-0 left-0 w-full z-50 bg-black py-4 border-t border-white/10 overflow-hidden whitespace-nowrap transition-transform duration-700 ease-in-out 
             ${isVisible ? 'translate-y-0' : 'translate-y-full'}`}
         >
-            <div className="flex animate-marquee hover:[animation-play-state:paused] cursor-crosshair w-max">
+            {/* Let op: class is nu 'marquee-active' ipv 'animate-marquee' */}
+            <div className="flex marquee-active hover:[animation-play-state:paused] cursor-crosshair w-max">
                 {[...Array(6)].map((_, i) => (
                     <div key={i} className="flex shrink-0">
                         {menuItems.map((item, index) => (
@@ -72,13 +89,12 @@ function App() {
 
     const titleColor = getInterpolatedColor(progress, CONFIG.colors);
     const titleTranslateY = progress * -360;
-
-    // HIER BEPAAL JE HET MOMENT: 
-    // 0.1 betekent: na 10% scrollen komt het menu omhoog.
     const showMenu = progress > 0.1;
 
     return (
         <div className="relative min-h-[250vh] bg-white text-slate-900 font-sans">
+            {/* Injecteer de stijlen hier */}
+            <GlobalStyles />
 
             {/* Background Layer */}
             <div className="fixed inset-0 z-0">
@@ -140,9 +156,7 @@ function App() {
                 </section>
             </main>
 
-            {/* Het Menu met de animatie-prop */}
             <MarqueeMenu isVisible={showMenu} />
-
         </div>
     );
 }

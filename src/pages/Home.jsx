@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import DynamicFocusBg from "../components/DynamicFocusBg";
+import DynamicFocusBg from "../components/DynamicFocusBG";
 import GlitchTitle from "../components/GlitchTitle";
 
 const CONFIG = {

@@ -51,7 +51,7 @@ export default function Home() {
                 <section className="mt-12 text-black">
                     <h2 className="text-3xl font-semibold tracking-tight uppercase">artist_statement</h2>
                     <div className="mt-8 space-y-8 text-lg leading-relaxed text-justify indent-2">
-                        <p className="italic text-gray-600 font-light">"Ik noem mezelf sisyfuz, omdat ik blijf proberen als Sisyphos."</p>
+                        <p className="italic text-gray-600 font-light">"yuhyuh."</p>
                         <p>Dorus Kleijne (2006) maakt onverstaanbaar, intellectueel, eclectisch en interdisciplinair werk. Doormiddel van sci-fi ontstaan ruizige ervaringen, die inherent queer zijn.</p>
                     </div>
                 </section>

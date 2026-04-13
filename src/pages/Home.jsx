@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 
 const CONFIG = {
     scrollRange: 700,
-    bgImage: "https://file.garden/ackh8bl_82C_S778/test.jpeg",
+    bgImage: "https://file.garden/ackh8bl_82C_S778/backdrop_home.jpg",
     colors: {
         white: { r: 255, g: 255, b: 255 },
         pink: { r: 255, g: 105, b: 180 },

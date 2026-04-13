@@ -4,7 +4,7 @@ import GlitchTitle from "../components/GlitchTitle";
 
 const CONFIG = {
     scrollRange: 700,
-    bgImage: "https://file.garden/ackh8bl_82C_S778/test.jpeg",
+    bgImage: "https://file.garden/ackh8bl_82C_S778/backdrop_home.jpg",
     colors: {
         white: { r: 255, g: 255, b: 255 },
         pink: { r: 255, g: 105, b: 180 },
@@ -37,8 +37,7 @@ export default function Home() {
 
     const titleColor = getInterpolatedColor(progress, CONFIG.colors);
     const titleTranslateY = progress * -42;
-    const dynamicGap = 36 + (progress * -24);
-
+    const dynamicGap = 36 + (progress * -18);
     return (
         <DynamicFocusBg imageUrl={CONFIG.bgImage}>
             {/* Als je hier ergens een losse {inputBuffer} ziet staan, 
@@ -70,13 +69,6 @@ export default function Home() {
                     </div>
                 </header>
                 
-                <div className="relative z-30 w-full overflow-hidden bg-white/10 backdrop-blur-sm border-y border-white/20 py-2">
-                    <div className="whitespace-nowrap animate-marquee font-mono text-sm uppercase tracking-widest text-white">
-                        SCREENS_CONNECTED_STABLE // SYSTEM_OVERLOAD_DISCO_MODE_READY // SISYFUZZZ_PROTOCOL //
-                        SCREENS_CONNECTED_STABLE // SYSTEM_OVERLOAD_DISCO_MODE_READY // SISYFUZZZ_PROTOCOL //
-                    </div>
-                </div>
-                
                 <main className="relative z-10 mx-auto max-w-2xl px-6 pb-60">
                     <section className="mt-12 text-black">
                         <h2 className="text-3xl font-semibold tracking-tight uppercase">
@@ -91,13 +83,12 @@ export default function Home() {
                                 Doormiddel van sci-fi ontstaan ruizige ervaringen, die inherent queer zijn.
                             </p>
                             <p className="text-sm font-mono text-gray-400">
-                                [SCREENS_CONNECTED_STABLE]
+                                [WELCOME ABOARD MAITEY!]
                             </p>
                         </div>
                     </section>
                 </main>
             </div>
-            
         </DynamicFocusBg>
     );
 }

@@ -39,3 +39,18 @@
 .animate-grain {
     animation: grain 0.5s steps(10) infinite;
 }
+
+@keyframes marqueeScroll {
+    0% { transform: translateX(0%); }
+    100% { transform: translateX(-50%); }
+}
+
+.animate-marquee {
+    display: flex;
+    width: max-content;
+    animation: marqueeScroll 25s linear infinite;
+}
+
+.animate-marquee:hover {
+    animation-play-state: paused;
+}

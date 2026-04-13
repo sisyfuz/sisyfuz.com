@@ -1,7 +1,7 @@
 export default function Archive() {
     const archiveItems = [
-        { year: "2026", title: "Ruis_Onderzoek_01", type: "Audio/Visual" },
-        { year: "2025", title: "Sisyphus_Fragmenten", type: "Text" }
+        { year: "2026", title: "We are a people's company!", type: "Interactive performance/experience" },
+        { year: "2025", title: "Midnight New Years Eve Show", type: "Onrails experience" }
     ];
 
     return (

@@ -6,8 +6,7 @@ export default function About() {
             <div className="max-w-2xl mx-auto">
                 <h1 className="text-5xl font-black mb-12">_about</h1>
                 <p className="text-lg leading-relaxed mb-8">
-                    Dorus Kleijne (2006) onderzoekt de grenzen tussen geluid en beeld.
-                    In zijn werk staat de ruis centraal — niet als fout, maar als essentie.
+                    Dorus Kleijne (2006) maakt onverstaanbaar, intellectueel, eclectisch en interdisciplinair werk. Doormiddel van sci-fi ontstaan ruizige ervaringen, die inherent queer zijn.
                 </p>
                 <Link to="/" className="text-pink-500 font-mono text-xs">/terug_naar_huis</Link>
             </div>

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { BrowserRouter as Router, Routes, Route, Link, useLocation } from "react-router-dom";
-import { DiscoProvider } from "./context/DiscoContext";
+import { BrowserRouter as Router, Routes, Route, Link, useLocation, useNavigate } from "react-router-dom";
+import { DiscoProvider, useDisco } from "./context/DiscoContext"; // Let op: useDisco import toegevoegd
 import Home from "./pages/Home";
 import Work from "./pages/Work";
 import Archive from "./pages/Archive";
@@ -41,9 +41,51 @@ const MarqueeMenu = ({ isVisible }) => (
 
 function Layout() {
     const location = useLocation();
+    const navigate = useNavigate();
+    const { setDiscoMode } = useDisco(); // Pak de setter uit je context
+
     const isHome = location.pathname === "/";
     const [scrollVisible, setScrollVisible] = useState(false);
+    const [buffer, setBuffer] = useState(""); // Buffer voor je typwerk
 
+    // --- COMMAND LISTENER LOGICA ---
+    useEffect(() => {
+        const handleKeyDown = (e) => {
+            const key = e.key.toLowerCase();
+
+            // We luisteren alleen naar letters a-z
+            if (key.length === 1 && /[a-z]/.test(key)) {
+                const newBuffer = (buffer + key).slice(-10);
+                setBuffer(newBuffer);
+
+                // Check commando's
+                if (newBuffer.endsWith("disco")) {
+                    setDiscoMode(prev => !prev);
+                    setBuffer("");
+                } else if (newBuffer.endsWith("work")) {
+                    navigate("/work");
+                    setBuffer("");
+                } else if (newBuffer.endsWith("archive")) {
+                    navigate("/archive");
+                    setBuffer("");
+                } else if (newBuffer.endsWith("about")) {
+                    navigate("/about");
+                    setBuffer("");
+                } else if (newBuffer.endsWith("contact")) {
+                    navigate("/contact");
+                    setBuffer("");
+                } else if (newBuffer.endsWith("home")) {
+                    navigate("/");
+                    setBuffer("");
+                }
+            }
+        };
+
+        window.addEventListener("keydown", handleKeyDown);
+        return () => window.removeEventListener("keydown", handleKeyDown);
+    }, [buffer, navigate, setDiscoMode]);
+
+    // --- BESTAANDE SCROLL LOGICA ---
     useEffect(() => {
         if (!isHome) return;
         const handleScroll = () => setScrollVisible(window.scrollY / 700 > 0.1);
@@ -64,6 +106,13 @@ function Layout() {
                 <Route path="/contact" element={<Contact />} />
                 <Route path="*" element={<NotFound />} />
             </Routes>
+            {buffer && (
+                <div className="fixed top-2 left-1/2 -translate-x-1/2 z-50 pointer-events-none">
+                    <span className="font-mono text-xs text-gray-400/40 tracking-widest">
+                        &gt; {buffer}_
+                    </span>
+                </div>
+            )}
             <MarqueeMenu isVisible={menuVisible} />
         </>
     );

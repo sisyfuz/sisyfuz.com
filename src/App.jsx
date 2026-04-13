@@ -24,23 +24,47 @@ const getInterpolatedColor = (progress, colors) => {
     return `rgb(${mix(from.r, to.r, factor)}, ${mix(from.g, to.g, factor)}, ${mix(from.b, to.b, factor)})`;
 };
 
-// --- CUSTOM HOOK ---
+// --- CUSTOM HOOK VOOR SCROLL ---
 function useScrollProgress(range) {
     const [progress, setProgress] = useState(0);
-
     useEffect(() => {
         const handleScroll = () => {
             const p = Math.min(window.scrollY / range, 1);
             setProgress(p);
         };
-
         window.addEventListener("scroll", handleScroll, { passive: true });
         handleScroll();
         return () => window.removeEventListener("scroll", handleScroll);
     }, [range]);
-
     return progress;
 }
+
+// --- MARQUEE COMPONENT ---
+const MarqueeMenu = ({ isVisible }) => {
+    const menuItems = ["_work", "_archive", "_contact", "_about", "_home"];
+
+    return (
+        <div
+            className={`fixed bottom-0 left-0 w-full z-50 bg-black py-4 border-t border-white/10 overflow-hidden whitespace-nowrap transition-transform duration-700 ease-in-out 
+            ${isVisible ? 'translate-y-0' : 'translate-y-full'}`}
+        >
+            <div className="flex animate-marquee hover:[animation-play-state:paused] cursor-crosshair w-max">
+                {[...Array(6)].map((_, i) => (
+                    <div key={i} className="flex shrink-0">
+                        {menuItems.map((item, index) => (
+                            <span
+                                key={index}
+                                className="text-white text-[10px] font-mono uppercase tracking-[0.3em] px-12 hover:text-pink-500 transition-colors duration-300"
+                            >
+                                {item}
+                            </span>
+                        ))}
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+};
 
 // --- MAIN COMPONENT ---
 function App() {
@@ -48,6 +72,10 @@ function App() {
 
     const titleColor = getInterpolatedColor(progress, CONFIG.colors);
     const titleTranslateY = progress * -360;
+
+    // HIER BEPAAL JE HET MOMENT: 
+    // 0.1 betekent: na 10% scrollen komt het menu omhoog.
+    const showMenu = progress > 0.1;
 
     return (
         <div className="relative min-h-[250vh] bg-white text-slate-900 font-sans">
@@ -76,33 +104,32 @@ function App() {
                         color: titleColor,
                     }}
                 >
-                    <h1 className="text-7xl font-black tracking-tighter selection:bg-indigo-500 selection:text-white">
+                    <h1
+                        className="text-7xl font-black tracking-tighter"
+                        style={{ textShadow: "0 8px 24px rgba(0, 0, 0, 0.35)" }}
+                    >
                         sisyfuzZz
                     </h1>
-                    <p className="mt-3 text-lg font-medium opacity-80">
+                    <p
+                        className="mt-3 text-lg font-medium opacity-80"
+                        style={{ textShadow: "0 4px 14px rgba(0, 0, 0, 0.28)" }}
+                    >
                         a.k.a. Dorus Kleijne
                     </p>
                 </div>
             </header>
 
             {/* Content Layer */}
-            <main className="relative z-10 mx-auto max-w-2xl px-6 pb-40">
+            <main className="relative z-10 mx-auto max-w-2xl px-6 pb-60">
                 <section className="mt-12">
                     <h2 className="text-3xl font-semibold tracking-tight text-black">
                         artist_statement
                     </h2>
 
-                    {/* De 'space-y-6' regelt de afstand tussen de alinea's. 
-          De rest van de styling (uitvullen, indent) staat hieronder op de 'div'.
-        */}
                     <div className="mt-8 space-y-8 text-lg leading-relaxed text-black text-justify indent-2 hyphens-auto">
-
-                        {/* HIER GEBEURT HET: We voegen 'italic' toe aan de quote. */}
                         <p className="italic text-gray-600 font-light">
                             "Ik noem mezelf sisyfuz, omdat ik blijf proberen als Sisyphos."
                         </p>
-
-                        {/* Deze tekst blijft gewoon rechtstreeks staan. */}
                         <p>
                             Dorus Kleijne (2006) maakt onverstaanbaar, intellectueel, eclectisch en interdisciplinair werk.
                             Doormiddel van sci-fi onstaan ruizige ervaringen, die inherent queer zijn. De ervaringen
@@ -112,6 +139,9 @@ function App() {
                     </div>
                 </section>
             </main>
+
+            {/* Het Menu met de animatie-prop */}
+            <MarqueeMenu isVisible={showMenu} />
 
         </div>
     );

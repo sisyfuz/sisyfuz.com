@@ -2,6 +2,7 @@ export default function Archive() {
     const archiveItems = [
         { year: "2026", title: "We are a people's company!", type: "Interactive performance/experience" },
         { year: "2025", title: "Midnight New Years Eve Show", type: "Onrails experience" }
+        { year: "2025", title: "Lieve Buren", type: "Performance" }
     ];
 
     return (

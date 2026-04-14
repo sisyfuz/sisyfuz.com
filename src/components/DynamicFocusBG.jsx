@@ -15,7 +15,7 @@ export default function DynamicFocusBg({
         let animationFrameId;
         const renderLoop = () => {
             setCurrentLensPos((prevPos) => {
-                const easing = 0.12; // Iets snellere easing voor een 'snappy' gevoel
+                const easing = 0.12;
                 const dx = targetMousePos.current.x - prevPos.x;
                 const dy = targetMousePos.current.y - prevPos.y;
                 if (Math.abs(dx) < 0.1 && Math.abs(dy) < 0.1) return targetMousePos.current;
@@ -27,10 +27,16 @@ export default function DynamicFocusBg({
         return () => cancelAnimationFrame(animationFrameId);
     }, []);
 
+    const gpuStyles = {
+        transform: 'translateZ(0)',
+        backfaceVisibility: 'hidden',
+        willChange: 'transform, filter'
+    };
+
     return (
         <div onMouseMove={handleMouseMove} className="relative w-full min-h-screen bg-black">
 
-            {/* CHROMATIC ABERRATION SVG IS VERWIJDERD */}
+            {/* NOISE FILTER */}
             <svg className="fixed w-0 h-0 pointer-events-none" aria-hidden="true">
                 <filter id="noise">
                     <feTurbulence type="fractalNoise" baseFrequency="0.8" numOctaves="2" stitchTiles="stitch" />
@@ -38,14 +44,14 @@ export default function DynamicFocusBg({
             </svg>
 
             {/* LAAG 1: Achtergrond Blur + Noise */}
-            <div className="fixed inset-0 z-0 pointer-events-none overflow-hidden">
+            {/* FIX: De container zelf is nu 120% breed/hoog en gecentreerd buiten beeld */}
+            <div className="fixed top-[-10vh] left-[-10vw] w-[120vw] h-[120vh] z-0 pointer-events-none overflow-hidden">
                 <div
-                    className="absolute -inset-10 bg-cover bg-center scale-110"
+                    className="absolute inset-0 bg-cover bg-center"
                     style={{
                         backgroundImage: `url(${imageUrl})`,
-                        // OPTIMALISATIE: Blur verlaagd van 20px naar 8px (veel lichter voor GPU)
-                        filter: 'blur(8px) brightness(0.5)',
-                        willChange: 'filter' // Hint aan browser voor optimalisatie
+                        filter: 'blur(12px) brightness(0.5)', // Blur iets verhoogd, marge vangt dit nu op
+                        ...gpuStyles
                     }}
                 />
 
@@ -55,16 +61,17 @@ export default function DynamicFocusBg({
             </div>
 
             {/* LAAG 2: De Lens */}
-            <div className="fixed inset-0 z-10 pointer-events-none overflow-hidden">
+            {/* Ook deze container trekken we over de randen van het scherm heen */}
+            <div className="fixed top-[-10vh] left-[-10vw] w-[120vw] h-[120vh] z-10 pointer-events-none overflow-hidden">
                 <div
-                    className="absolute -inset-10 bg-cover bg-center scale-110"
+                    className="absolute inset-0 bg-cover bg-center"
                     style={{
                         backgroundImage: `url(${imageUrl})`,
-                        // OPTIMALISATIE: url(#aberration) verwijderd. Blur op 0 of heel laag.
                         filter: 'brightness(0.7)',
-                        WebkitMaskImage: `radial-gradient(circle 200px at ${currentLensPos.x}px ${currentLensPos.y}px, black 20%, rgba(0,0,0,0.4) 60%, transparent 100%)`,
-                        maskImage: `radial-gradient(circle 200px at ${currentLensPos.x}px ${currentLensPos.y}px, black 20%, rgba(0,0,0,0.4) 60%, transparent 100%)`,
-                        willChange: 'mask-image, -webkit-mask-image'
+                        /* De lens-positie moet gecorrigeerd worden voor de 10vw/10vh offset */
+                        WebkitMaskImage: `radial-gradient(circle 220px at calc(${currentLensPos.x}px + 10vw) calc(${currentLensPos.y}px + 10vh), black 15%, rgba(0,0,0,0.5) 55%, transparent 100%)`,
+                        maskImage: `radial-gradient(circle 220px at calc(${currentLensPos.x}px + 10vw) calc(${currentLensPos.y}px + 10vh), black 15%, rgba(0,0,0,0.5) 55%, transparent 100%)`,
+                        ...gpuStyles
                     }}
                 />
             </div>

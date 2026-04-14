@@ -1,19 +1,9 @@
 @import "tailwindcss";
 
-/* src/index.css (voeg dit onderaan toe) */
-/* src/index.css */
-
-@keyframes filmGrain {
-    0%, 100% { transform: translate(0, 0); }
-    10% { transform: translate(-2%, -4%); }
-    20% { transform: translate(-6%, 2%); }
-    30% { transform: translate(4%, -6%); }
-    40% { transform: translate(-2%, 8%); }
-    50% { transform: translate(-6%, 4%); }
-    60% { transform: translate(6%, 0%); }
-    70% { transform: translate(0%, 6%); }
-    80% { transform: translate(2%, 10%); } /* De maximale uitslag is nu veilig (10%) */
-    90% { transform: translate(-4%, 4%); }
+@layer base {
+    body {
+        background: black;
+    }
 }
 
 @keyframes discoCycle {
@@ -24,16 +14,15 @@
 .animate-disco {
     color: #ff0080 !important;
     animation: discoCycle 2s linear infinite;
-    /* Outline is hier verwijderd */
 }
 
 @keyframes grain {
-    0%, 100% { transform: translate(0, 0); }
-    10% { transform: translate(-1%, -1%); }
-    30% { transform: translate(1%, -1%); }
-    50% { transform: translate(-1%, 1%); }
-    70% { transform: translate(1%, 1%); }
-    90% { transform: translate(-1%, -1%); }
+    0%, 100% { transform: translate3d(0, 0, 0); }
+    10% { transform: translate3d(-1%, -1%, 0); }
+    30% { transform: translate3d(1%, -1%, 0); }
+    50% { transform: translate3d(-1%, 1%, 0); }
+    70% { transform: translate3d(1%, 1%, 0); }
+    90% { transform: translate3d(-1%, -1%, 0); }
 }
 
 .animate-grain {
@@ -41,8 +30,8 @@
 }
 
 @keyframes marqueeScroll {
-    0% { transform: translateX(0%); }
-    100% { transform: translateX(-50%); }
+    0% { transform: translate3d(0, 0, 0); }
+    100% { transform: translate3d(-50%, 0, 0); }
 }
 
 .animate-marquee {

@@ -113,6 +113,7 @@ export default function GlitchTitle({ progress }) {
         <h1
             ref={titleRef}
             className="text-6xl md:text-7xl font-black tracking-tighter leading-none flex justify-center space-x-1 md:space-x-2"
+            style={{ filter: 'drop-shadow(0 4px 12px rgba(0,0,0,0.45))' }}
         >
             {charData.map((data, i) => (
                 <span

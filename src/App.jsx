@@ -52,6 +52,12 @@ function Layout() {
     const isHome = location.pathname === "/";
     const [scrollVisible, setScrollVisible] = useState(false);
     const [buffer, setBuffer] = useState("");
+    const [hintVisible, setHintVisible] = useState(false);
+
+    useEffect(() => {
+        const t = setTimeout(() => setHintVisible(true), 20000);
+        return () => clearTimeout(t);
+    }, []);
 
     useEffect(() => {
         const handleKeyDown = (e) => {
@@ -89,13 +95,14 @@ function Layout() {
 
     return (
         <>
-            {buffer && (
-                <div className="fixed top-6 left-1/2 -translate-x-1/2 z-50 pointer-events-none select-none whitespace-nowrap" style={{ mixBlendMode: 'difference' }}>
-                    <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-white opacity-60">
-                        &gt; {buffer}<span className="animate-pulse ml-0.5">█</span>
-                    </span>
-                </div>
-            )}
+            <div className="fixed bottom-16 left-1/2 -translate-x-1/2 z-50 pointer-events-none select-none whitespace-nowrap" style={{ mixBlendMode: 'difference' }}>
+                <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-white transition-opacity duration-500" style={{ opacity: buffer ? 0.6 : hintVisible ? 0.3 : 0 }}>
+                    {buffer
+                        ? <>&gt; {buffer}<span className="animate-pulse ml-0.5">█</span></>
+                        : <>start typing to navigate<span className="animate-pulse ml-0.5">_</span></>
+                    }
+                </span>
+            </div>
 
             <Routes>
                 <Route path="/" element={<Home />} />

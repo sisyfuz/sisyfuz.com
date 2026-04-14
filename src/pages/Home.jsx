@@ -62,7 +62,7 @@ export default function Home() {
 
                         <p
                             className="text-lg font-medium opacity-80 transition-all duration-75 ease-out"
-                            style={{ marginTop: `${dynamicGap}px` }}
+                            style={{ marginTop: `${dynamicGap}px`, textShadow: '0 4px 12px rgba(0,0,0,0.45)' }}
                         >
                             a.k.a. Dorus Kleijne
                         </p>

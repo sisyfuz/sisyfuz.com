@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { BrowserRouter as Router, Routes, Route, Link, useLocation, useNavigate } from "react-router-dom";
+import { HashRouter as Router, Routes, Route, Link, useLocation, useNavigate } from "react-router-dom";
 import { DiscoProvider, useDisco } from "./context/DiscoContext";
 import Home from "./pages/Home";
 import Work from "./pages/Work";

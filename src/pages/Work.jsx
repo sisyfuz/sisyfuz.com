@@ -18,7 +18,7 @@ export default function Work() {
 
     // 2. DATA OPHALEN UIT SANITY
     useEffect(() => {
-        const query = `*[_type == "project" && category == "work"] | order(year desc) {
+        const query = `*[_type == "project" && category == "work"] | order(ranking asc, year desc) {
             "id": coalesce(slug.current, _id),
             title,
             year,

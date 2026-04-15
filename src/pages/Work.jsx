@@ -1,72 +1,16 @@
 import { useState, useEffect, useLayoutEffect, useRef, useCallback } from "react";
 import { useLocation } from "react-router-dom";
 import { useDisco } from "../context/DiscoContext";
-
-const projects = [
-    {
-        id: "peoples-company",
-        title: "We are a people's company!",
-        year: "2026",
-        shortDesc: "Interactive performance about corporate identity and resistance.",
-        fullDesc: `"We are a people's company."\n\nEen interactieve ervaring over een goederenbedrijf, waarin de toeschouwer de kans krijgt om in verzet te komen tegen het systeem dat het bedrijf zo dierbaar is.\n\nDoor middel van een sollicitatieprocedure zoom je steeds verder uit van het systeem waar je je in bevindt en stelt dan de vraag: 'Hoe lang blijf ik gehoorzaam?'. De ervaring is geschikt voor zes tot vijftien personen en vereist fysieke inspanning en mobiliteit. De ervaring vindt plaats op HKU Theater in verschillende lokalen.`,
-        tags: ["Theatre", "Interactive", "Physical"],
-        // NIEUW: Credits & Specs
-        credits: [
-            { role: "Concept & Direction", name: "Dorus K." },
-            { role: "Technical Design", name: "Sisyfuz Labs" },
-            { role: "Production", name: "HKU Theater" }
-        ],
-        technicalSpecs: [
-            "6-15 Participants",
-            "Variable Duration (approx. 45m)",
-            "Multi-room Installation",
-            "Live Audio Feedback Loop"
-        ],
-        mainImage: "https://file.garden/ackh8bl_82C_S778/waapc_poster.png",
-        media: [
-            { type: 'image', src: 'https://file.garden/ackh8bl_82C_S778/waapc_poster.png' },
-            { type: 'video', src: 'https://www.w3schools.com/html/mov_bbb.mp4' },
-            { type: 'image', src: 'https://via.placeholder.com/1200x800/007bff/fff?text=ACTION_SHOT_1' },
-        ]
-    },
-    {
-        id: "midnight-show",
-        title: "Midnight New Years Eve",
-        year: "2025",
-        shortDesc: "Onrails experience through a glitchy new year.",
-        fullDesc: "Een audiovisuele trip die de overgang van tijd viert door middel van ruis en glitch-esthetiek. Gebouwd als een lineaire ervaring die de kijker dwingt stil te staan bij vergankelijkheid.",
-        tags: ["Onrails", "Audio-Visual", "Experience"],
-        credits: [
-            { role: "Visuals & Coding", name: "Sisyfuz" },
-            { role: "Soundscape", name: "Generator_01" }
-        ],
-        technicalSpecs: [
-            "4K Ultra-wide Projection",
-            "Binaural Audio",
-            "Custom Glitch-engine (React/Three.js)"
-        ],
-        mainImage: "https://via.placeholder.com/600x400/000000/FFFFFF?text=MIDNIGHT+SHOW",
-        media: [
-            { type: 'image', src: 'https://via.placeholder.com/1200x800/6610f2/fff?text=STILL_1' },
-        ]
-    }
-];
+import { client } from "../sanityClient"; // IMPORT DE SANITY CLIENT
 
 const ROW_UNIT = 10;
 const GAP = 32;
 
-function matchesQuery(project, query) {
-    if (!query) return true;
-    const q = query.toLowerCase();
-    return (
-        project.title.toLowerCase().includes(q) ||
-        project.shortDesc.toLowerCase().includes(q) ||
-        project.tags.some(tag => tag.toLowerCase().includes(q)) ||
-        project.year.includes(q)
-    );
-}
-
 export default function Work() {
+    // 1. STATE VOOR DYNAMISCHE PROJECTEN
+    const [projects, setProjects] = useState([]);
+    const [isLoading, setIsLoading] = useState(true);
+
     const [selectedProject, setSelectedProject] = useState(null);
     const [zoomedImage, setZoomedImage] = useState(null);
     const [rowSpans, setRowSpans] = useState({});
@@ -74,8 +18,54 @@ export default function Work() {
     const { hash } = useLocation();
     const { searchQuery } = useDisco();
 
-    const filteredProjects = projects.filter(p => matchesQuery(p, searchQuery));
+    // 2. DATA OPHALEN UIT SANITY
+    useEffect(() => {
+        const query = `*[_type == "project"] | order(year desc) {
+            "id": slug.current,
+            title,
+            year,
+            shortDesc,
+            fullDesc,
+            tags,
+            credits,
+            technicalSpecs,
+            "mainImage": mainImage.asset->url,
+            media[] {
+                _type == 'image' => {
+                    "type": "image",
+                    "src": asset->url
+                },
+                _type == 'videoUrl' => {
+                    "type": "video",
+                    "src": url
+                }
+            }
+        }`;
 
+        client.fetch(query)
+            .then((data) => {
+                setProjects(data);
+                setIsLoading(false);
+            })
+            .catch((err) => {
+                console.error("Error fetching projects:", err);
+                setIsLoading(false);
+            });
+    }, []);
+
+    // 3. FILTER LOGICA (Dynamisch obv opgehaalde projecten)
+    const filteredProjects = projects.filter(p => {
+        if (!searchQuery) return true;
+        const q = searchQuery.toLowerCase();
+        return (
+            p.title?.toLowerCase().includes(q) ||
+            p.shortDesc?.toLowerCase().includes(q) ||
+            p.tags?.some(tag => tag.toLowerCase().includes(q)) ||
+            p.year?.includes(q)
+        );
+    });
+
+    // 4. MASONRY GRID LOGICA
     const recalcSpans = useCallback(() => {
         const next = {};
         Object.entries(cardRefs.current).forEach(([id, el]) => {
@@ -89,7 +79,9 @@ export default function Work() {
         });
     }, []);
 
-    useLayoutEffect(() => { recalcSpans(); });
+    useLayoutEffect(() => {
+        recalcSpans();
+    }, [filteredProjects, recalcSpans]); // Trigger als gefilterde lijst verandert
 
     useEffect(() => {
         const ro = new ResizeObserver(recalcSpans);
@@ -100,15 +92,20 @@ export default function Work() {
             ro.disconnect();
             images.forEach(img => img.removeEventListener('load', recalcSpans));
         };
-    }, [recalcSpans]);
+    }, [recalcSpans, filteredProjects]); // Trigger als gefilterde lijst verandert
 
+    // 5. HASH ROUTING LOGICA (Uitgevoerd nadat projecten zijn geladen)
     useEffect(() => {
-        if (hash) {
+        if (!isLoading && hash && projects.length > 0) {
             const id = hash.replace("#", "");
-            const project = projects.find(p => p.id === id);
-            if (project) setSelectedProject(project);
+            const element = document.getElementById(id);
+            if (element) {
+                element.scrollIntoView({ behavior: "smooth" });
+                const project = projects.find(p => p.id === id);
+                if (project) setSelectedProject(project);
+            }
         }
-    }, [hash]);
+    }, [hash, isLoading, projects]);
 
     useEffect(() => {
         const handleEsc = (e) => {
@@ -125,7 +122,11 @@ export default function Work() {
         <div className="min-h-screen bg-white text-black p-6 md:p-10 font-sans pb-32">
             <h1 className="text-5xl font-black mb-16 tracking-tighter uppercase">_selected_works</h1>
 
-            {filteredProjects.length === 0 ? (
+            {isLoading ? (
+                <div className="font-mono text-sm text-slate-400 mt-8 uppercase tracking-widest animate-pulse">
+                    fetching_system_data...
+                </div>
+            ) : filteredProjects.length === 0 ? (
                 <div className="font-mono text-sm text-slate-400 mt-8 uppercase tracking-widest">
                     system_error: no_matches_found_for_"{searchQuery}"
                 </div>
@@ -140,13 +141,15 @@ export default function Work() {
                             style={{ gridRowEnd: `span ${rowSpans[project.id] || 100}` }}
                         >
                             <div className="w-full aspect-[3/2] mb-6 overflow-hidden border border-black/5 bg-slate-50 flex items-center justify-center p-4 cursor-pointer" onClick={() => setSelectedProject(project)}>
-                                <img src={project.mainImage} alt={project.title} className="max-w-full max-h-full object-contain transition-transform duration-700 ease-in-out group-hover:scale-105" />
+                                {project.mainImage && (
+                                    <img src={project.mainImage} alt={project.title} className="max-w-full max-h-full object-contain transition-transform duration-700 ease-in-out group-hover:scale-105" />
+                                )}
                             </div>
 
                             <div className="flex justify-between items-start mb-4 font-mono text-[10px] uppercase tracking-widest">
                                 <span className="opacity-50">{project.year}</span>
-                                <div className="flex gap-2">
-                                    {project.tags.map(tag => (
+                                <div className="flex gap-2 flex-wrap">
+                                    {project.tags?.map(tag => (
                                         <span key={tag} className="border border-black/20 px-2 py-0.5 rounded-full">{tag}</span>
                                     ))}
                                 </div>
@@ -163,7 +166,7 @@ export default function Work() {
                 </div>
             )}
 
-            {/* MODAL MET NIEUWE BLOKKEN */}
+            {/* MODAL */}
             {selectedProject && (
                 <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 md:p-10">
                     <div className="absolute inset-0 bg-black/95 backdrop-blur-md" onClick={() => setSelectedProject(null)} />
@@ -182,50 +185,58 @@ export default function Work() {
                                     {selectedProject.fullDesc}
                                 </p>
 
-                                {/* NIEUW: CREDITS & SPECS GRID */}
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8 pt-8 border-t border-black/10">
                                     {/* Credits */}
-                                    <div>
-                                        <p className="text-[10px] font-mono uppercase tracking-[0.3em] text-slate-400 mb-4">_credits</p>
-                                        <ul className="space-y-2">
-                                            {selectedProject.credits?.map((credit, i) => (
-                                                <li key={i} className="text-xs uppercase">
-                                                    <span className="opacity-40">{credit.role}:</span> <span className="font-bold">{credit.name}</span>
-                                                </li>
-                                            ))}
-                                        </ul>
-                                    </div>
+                                    {selectedProject.credits && selectedProject.credits.length > 0 && (
+                                        <div>
+                                            <p className="text-[10px] font-mono uppercase tracking-[0.3em] text-slate-400 mb-4">_credits</p>
+                                            <ul className="space-y-2">
+                                                {selectedProject.credits.map((credit, i) => (
+                                                    <li key={i} className="text-xs uppercase">
+                                                        <span className="opacity-40">{credit.role}:</span> <span className="font-bold">{credit.name}</span>
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                        </div>
+                                    )}
 
                                     {/* Technical Specs */}
-                                    <div>
-                                        <p className="text-[10px] font-mono uppercase tracking-[0.3em] text-slate-400 mb-4">_technical_specs</p>
-                                        <ul className="space-y-2">
-                                            {selectedProject.technicalSpecs?.map((spec, i) => (
-                                                <li key={i} className="text-xs uppercase font-mono text-slate-600 flex items-start">
-                                                    <span className="mr-2 text-pink-500">→</span> {spec}
-                                                </li>
-                                            ))}
-                                        </ul>
-                                    </div>
+                                    {selectedProject.technicalSpecs && selectedProject.technicalSpecs.length > 0 && (
+                                        <div>
+                                            <p className="text-[10px] font-mono uppercase tracking-[0.3em] text-slate-400 mb-4">_technical_specs</p>
+                                            <ul className="space-y-2">
+                                                {selectedProject.technicalSpecs.map((spec, i) => (
+                                                    <li key={i} className="text-xs uppercase font-mono text-slate-600 flex items-start">
+                                                        <span className="mr-2 text-pink-500">→</span> {spec}
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                        </div>
+                                    )}
                                 </div>
 
-                                <div className="pt-8 border-t border-black/10">
-                                    <p className="text-[10px] font-mono uppercase tracking-[0.3em] text-slate-400 mb-4">_system_tags</p>
-                                    <div className="flex flex-wrap gap-2">
-                                        {selectedProject.tags.map(tag => (
-                                            <span key={tag} className="px-3 py-1 bg-black text-white text-[10px] font-bold uppercase">{tag}</span>
-                                        ))}
+                                {selectedProject.tags && selectedProject.tags.length > 0 && (
+                                    <div className="pt-8 border-t border-black/10">
+                                        <p className="text-[10px] font-mono uppercase tracking-[0.3em] text-slate-400 mb-4">_system_tags</p>
+                                        <div className="flex flex-wrap gap-2">
+                                            {selectedProject.tags.map(tag => (
+                                                <span key={tag} className="px-3 py-1 bg-black text-white text-[10px] font-bold uppercase">{tag}</span>
+                                            ))}
+                                        </div>
                                     </div>
-                                </div>
+                                )}
+
                             </div>
 
                             <div>
-                                <img src={selectedProject.mainImage} alt="" className="w-full border border-black/5 cursor-zoom-in shadow-lg" onClick={() => setZoomedImage(selectedProject.mainImage)} />
+                                {selectedProject.mainImage && (
+                                    <img src={selectedProject.mainImage} alt="" className="w-full border border-black/5 cursor-zoom-in shadow-lg" onClick={() => setZoomedImage(selectedProject.mainImage)} />
+                                )}
                             </div>
                         </div>
 
                         {/* CARROUSEL */}
-                        {selectedProject.media && (
+                        {selectedProject.media && selectedProject.media.length > 0 && (
                             <div className="border-t border-black/10 pt-12">
                                 <p className="text-[10px] font-mono uppercase tracking-[0.3em] text-slate-400 mb-6">_media_attachments</p>
                                 <div className="flex gap-6 overflow-x-auto snap-x snap-mandatory no-scrollbar pb-8">

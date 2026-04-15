@@ -113,7 +113,6 @@ function Layout() {
 
     return (
         <>
-            {/* TERMINAL LOG */}
             <div
                 className="fixed z-50 text-center pointer-events-auto md:pointer-events-none mix-blend-difference"
                 style={{
@@ -147,6 +146,8 @@ function Layout() {
                 />
 
                 <div className="font-mono text-[11px] uppercase tracking-[0.4em] text-white flex items-center justify-center">
+
+                    {/* MOBIELE VERSIE: Met de tap-to-search "knop" */}
                     <div className="md:hidden flex items-center opacity-40">
                         <span className="mr-2">&gt;</span>
                         <span className="bg-white/10 px-3 py-1.5 rounded-sm flex items-center min-w-[140px] justify-center">
@@ -155,13 +156,13 @@ function Layout() {
                         <span className="animate-pulse ml-2 w-1.5 h-3.5 bg-white"></span>
                     </div>
 
+                    {/* DESKTOP VERSIE: Extreem minimalistisch (Geen grijze blokjes meer) */}
                     <div className="hidden md:flex items-center opacity-40 transition-all">
                         <span className="mr-2">&gt;</span>
-                        <span className="bg-white/5 px-2 py-1 rounded-sm">
-                            {buffer || "..."}
-                        </span>
-                        <span className="animate-pulse ml-1 inline-block w-1 h-3 bg-white align-middle"></span>
+                        <span>{buffer || "..."}</span>
+                        <span className="animate-pulse ml-2">_</span>
                     </div>
+
                 </div>
             </div>
 

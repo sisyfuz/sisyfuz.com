@@ -7,10 +7,6 @@ export default function Archive() {
     const [isLoading, setIsLoading] = useState(true);
 
     useEffect(() => {
-        // Haal alleen projecten op die de categorie "archive" of "work" hebben,
-        // maar in dit overzicht laten we alles als een archieflijst zien.
-        // Als je ECHT alleen 'archive' wil, verander je de query naar: category == "archive"
-        // Voor nu heb ik ingesteld dat hij ALLES in de lijst laat zien wat niet 'draft' is.
         const query = `*[_type == "project" && category != "draft"] | order(year desc) {
             "id": slug.current,
             title,

@@ -7,7 +7,6 @@ const ROW_UNIT = 10;
 const GAP = 32;
 
 export default function Work() {
-    // 1. STATE VOOR DYNAMISCHE PROJECTEN
     const [projects, setProjects] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
 
@@ -20,7 +19,6 @@ export default function Work() {
 
     // 2. DATA OPHALEN UIT SANITY
     useEffect(() => {
-        // LET OP: Filter toegevoegd -> category == "work"
         const query = `*[_type == "project" && category == "work"] | order(year desc) {
             "id": slug.current,
             title,

@@ -6,11 +6,13 @@ export default function Archive() {
             year: "2026",
             title: "We are a people's company!",
             type: "Interactive performance/experience",
+            link: "/work#peoples-company" // Link naar de Work pagina + ID
         },
         {
             year: "2025",
             title: "Midnight New Years Eve Show",
-            type: "Onrails experience"
+            type: "Onrails experience",
+            link: "/work#midnight-show" // Link naar de Work pagina + ID
         },
         {
             year: "2025",

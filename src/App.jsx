@@ -47,7 +47,7 @@ const MarqueeMenu = ({ isVisible }) => (
 function Layout() {
     const location = useLocation();
     const navigate = useNavigate();
-    const { setDiscoMode } = useDisco();
+    const { setDiscoMode, setSearchQuery } = useDisco();
 
     const isHome = location.pathname === "/";
     const [scrollVisible, setScrollVisible] = useState(false);
@@ -60,29 +60,51 @@ function Layout() {
     }, []);
 
     useEffect(() => {
-        const handleKeyDown = (e) => {
-            const key = e.key.toLowerCase();
-            if (key.length === 1 && /[a-z]/.test(key)) {
-                const newBuffer = (buffer + key).slice(-10);
-                setBuffer(newBuffer);
+        const clearAll = () => {
+            setBuffer("");
+            setSearchQuery("");
+        };
 
-                const routes = ["work", "archive", "about", "contact", "home"];
-                if (newBuffer.endsWith("disco")) {
-                    setDiscoMode(prev => !prev);
-                    setBuffer("");
-                } else {
-                    routes.forEach(route => {
-                        if (newBuffer.endsWith(route)) {
-                            navigate(route === "home" ? "/" : `/${route}`);
-                            setBuffer("");
-                        }
-                    });
-                }
+        const handleKeyDown = (e) => {
+            if (e.key === "Enter" || e.key === "Escape") {
+                clearAll();
+                return;
+            }
+
+            if (e.key === "Backspace") {
+                const next = buffer.slice(0, -1);
+                setBuffer(next);
+                setSearchQuery(next);
+                return;
+            }
+
+            const key = e.key.toLowerCase();
+            if (key.length !== 1 || !/[a-z]/.test(key)) return;
+
+            const newBuffer = (buffer + key).slice(-30);
+            setBuffer(newBuffer);
+
+            const routes = ["work", "archive", "about", "contact", "home"];
+
+            if (newBuffer.endsWith("disco")) {
+                setDiscoMode(prev => !prev);
+                clearAll();
+            } else if (newBuffer.endsWith("clear")) {
+                clearAll();
+            } else if (routes.some(route => newBuffer.endsWith(route))) {
+                routes.forEach(route => {
+                    if (newBuffer.endsWith(route)) {
+                        navigate(route === "home" ? "/" : `/${route}`);
+                        clearAll();
+                    }
+                });
+            } else {
+                setSearchQuery(newBuffer);
             }
         };
         window.addEventListener("keydown", handleKeyDown);
         return () => window.removeEventListener("keydown", handleKeyDown);
-    }, [buffer, navigate, setDiscoMode]);
+    }, [buffer, navigate, setDiscoMode, setSearchQuery]);
 
     useEffect(() => {
         if (!isHome) return;
@@ -99,7 +121,9 @@ function Layout() {
                 <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-white transition-opacity duration-500" style={{ opacity: buffer ? 0.6 : hintVisible ? 0.3 : 0 }}>
                     {buffer
                         ? <>&gt; {buffer}<span className="animate-pulse ml-0.5">█</span></>
-                        : <>start typing to navigate<span className="animate-pulse ml-0.5">_</span></>
+                        : location.pathname === "/work"
+                            ? <>type to search / navigate<span className="animate-pulse ml-0.5">_</span></>
+                            : <>start typing to navigate<span className="animate-pulse ml-0.5">_</span></>
                     }
                 </span>
             </div>

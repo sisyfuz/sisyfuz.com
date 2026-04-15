@@ -1,8 +1,7 @@
 import { useState, useEffect, useLayoutEffect, useRef, useCallback } from "react";
 import { useLocation } from "react-router-dom";
 import { useDisco } from "../context/DiscoContext";
-import { client } from "../sanityClient"; // IMPORT DE SANITY CLIENT
-
+import { client } from "../sanityClient";
 const ROW_UNIT = 10;
 const GAP = 32;
 
@@ -19,7 +18,6 @@ export default function Work() {
 
     // 2. DATA OPHALEN UIT SANITY
     useEffect(() => {
-        // BULLETPROOF QUERY: Gebruikt de interne database _id als je de slug vergeet!
         const query = `*[_type == "project" && category == "work"] | order(year desc) {
             "id": coalesce(slug.current, _id),
             title,

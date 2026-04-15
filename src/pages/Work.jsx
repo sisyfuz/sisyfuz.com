@@ -20,7 +20,8 @@ export default function Work() {
 
     // 2. DATA OPHALEN UIT SANITY
     useEffect(() => {
-        const query = `*[_type == "project"] | order(year desc) {
+        // LET OP: Filter toegevoegd -> category == "work"
+        const query = `*[_type == "project" && category == "work"] | order(year desc) {
             "id": slug.current,
             title,
             year,
@@ -81,7 +82,7 @@ export default function Work() {
 
     useLayoutEffect(() => {
         recalcSpans();
-    }, [filteredProjects, recalcSpans]); // Trigger als gefilterde lijst verandert
+    }, [filteredProjects, recalcSpans]);
 
     useEffect(() => {
         const ro = new ResizeObserver(recalcSpans);
@@ -92,9 +93,9 @@ export default function Work() {
             ro.disconnect();
             images.forEach(img => img.removeEventListener('load', recalcSpans));
         };
-    }, [recalcSpans, filteredProjects]); // Trigger als gefilterde lijst verandert
+    }, [recalcSpans, filteredProjects]);
 
-    // 5. HASH ROUTING LOGICA (Uitgevoerd nadat projecten zijn geladen)
+    // 5. HASH ROUTING LOGICA
     useEffect(() => {
         if (!isLoading && hash && projects.length > 0) {
             const id = hash.replace("#", "");

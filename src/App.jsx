@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef } from "react";
-import { BrowserRouter as Router, Routes, Route, Link, useLocation, useNavigate } from "react-router-dom";
+// DE FIX: HashRouter geïmporteerd in plaats van BrowserRouter
+import { HashRouter as Router, Routes, Route, Link, useLocation, useNavigate } from "react-router-dom";
 import { DiscoProvider, useDisco } from "./context/DiscoContext";
 import Home from "./pages/Home";
 import Work from "./pages/Work";
@@ -112,11 +113,10 @@ function Layout() {
 
     return (
         <>
-            {/* TERMINAL LOG: Verplaatst naar beneden + mix-blend-difference */}
+            {/* TERMINAL LOG */}
             <div
                 className="fixed z-50 text-center pointer-events-auto md:pointer-events-none mix-blend-difference"
                 style={{
-                    // Dynamisch geplaatst net boven de marquee, veilig voor iPhone balkjes
                     bottom: 'calc(3.5rem + env(safe-area-inset-bottom))',
                     left: '50%',
                     transform: 'translateX(-50%)'
@@ -181,6 +181,7 @@ function Layout() {
 export default function App() {
     return (
         <DiscoProvider>
+            {/* Omdat we HashRouter "as Router" hebben geïmporteerd, werkt deze tag nog precies hetzelfde! */}
             <Router>
                 <Layout />
             </Router>

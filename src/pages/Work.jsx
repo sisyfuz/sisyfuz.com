@@ -19,8 +19,9 @@ export default function Work() {
 
     // 2. DATA OPHALEN UIT SANITY
     useEffect(() => {
+        // BULLETPROOF QUERY: Gebruikt de interne database _id als je de slug vergeet!
         const query = `*[_type == "project" && category == "work"] | order(year desc) {
-            "id": slug.current,
+            "id": coalesce(slug.current, _id),
             title,
             year,
             shortDesc,

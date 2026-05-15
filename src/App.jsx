@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef } from "react";
+import { useTypography } from "./hooks/useTypography";
 // DE FIX: HashRouter geïmporteerd in plaats van BrowserRouter
 import { HashRouter as Router, Routes, Route, Link, useLocation, useNavigate } from "react-router-dom";
 import { DiscoProvider, useDisco } from "./context/DiscoContext";
@@ -180,6 +181,7 @@ function Layout() {
 }
 
 export default function App() {
+    useTypography();
     return (
         <DiscoProvider>
             {/* Omdat we HashRouter "as Router" hebben geïmporteerd, werkt deze tag nog precies hetzelfde! */}

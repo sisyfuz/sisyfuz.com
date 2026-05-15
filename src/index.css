@@ -1,5 +1,15 @@
 @import "tailwindcss";
 
+:root {
+    --font-title: sans-serif;
+    --font-body:  sans-serif;
+    --font-mono:  monospace;
+}
+
+.font-title { font-family: var(--font-title); }
+.font-body  { font-family: var(--font-body); }
+.font-mono  { font-family: var(--font-mono); }
+
 @layer base {
     body {
         background: black;

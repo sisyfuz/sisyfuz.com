@@ -1,6 +1,5 @@
 import { useEffect, useState, useRef } from "react";
 import { useTypography } from "./hooks/useTypography";
-// DE FIX: HashRouter geïmporteerd in plaats van BrowserRouter
 import { HashRouter as Router, Routes, Route, Link, useLocation, useNavigate } from "react-router-dom";
 import { DiscoProvider, useDisco } from "./context/DiscoContext";
 import Home from "./pages/Home";
@@ -101,7 +100,7 @@ function Layout() {
 
         window.addEventListener("keydown", handleKeyDown);
         return () => window.removeEventListener("keydown", handleKeyDown);
-    }, [buffer, location.pathname, navigate]);
+    }, [buffer, location.pathname, navigate, setDiscoMode, setSearchQuery]);
 
     useEffect(() => {
         if (!isHome) return;
@@ -140,15 +139,14 @@ function Layout() {
                             e.target.blur();
                         }
                     }}
-                    className="absolute inset-0 opacity-0 w-full h-full cursor-text md:hidden"
+                    className="absolute inset-0 opacity-0 w-full h-full cursor-text md:hidden font-body"
                     autoComplete="off"
                     autoCorrect="off"
                     spellCheck="false"
                 />
 
-                <div className="font-mono text-[11px] uppercase tracking-[0.4em] text-white flex items-center justify-center">
+                <div className="font-body text-[11px] uppercase tracking-[0.4em] text-white flex items-center justify-center">
 
-                    {/* MOBIELE VERSIE: Met de tap-to-search "knop" */}
                     <div className="md:hidden flex items-center opacity-40">
                         <span className="mr-2">&gt;</span>
                         <span className="bg-white/10 px-3 py-1.5 rounded-sm flex items-center min-w-[140px] justify-center">
@@ -157,7 +155,6 @@ function Layout() {
                         <span className="animate-pulse ml-2 w-1.5 h-3.5 bg-white"></span>
                     </div>
 
-                    {/* DESKTOP VERSIE: Extreem minimalistisch (Geen grijze blokjes meer) */}
                     <div className="hidden md:flex items-center opacity-40 transition-all">
                         <span className="mr-2">&gt;</span>
                         <span>{buffer || "..."}</span>
@@ -182,9 +179,9 @@ function Layout() {
 
 export default function App() {
     useTypography();
+
     return (
         <DiscoProvider>
-            {/* Omdat we HashRouter "as Router" hebben geïmporteerd, werkt deze tag nog precies hetzelfde! */}
             <Router>
                 <Layout />
             </Router>

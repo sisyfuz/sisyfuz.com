@@ -2,13 +2,16 @@ import { useState, useEffect, useLayoutEffect, useRef, useCallback } from "react
 import { useLocation } from "react-router-dom";
 import { useDisco } from "../context/DiscoContext";
 import { client } from "../sanityClient";
+import { useTypography } from "../hooks/useTypography";
+
 const ROW_UNIT = 10;
 const GAP = 32;
 
 export default function Work() {
+    useTypography();
+
     const [projects, setProjects] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
-
     const [selectedProject, setSelectedProject] = useState(null);
     const [zoomedImage, setZoomedImage] = useState(null);
     const [rowSpans, setRowSpans] = useState({});
@@ -16,7 +19,6 @@ export default function Work() {
     const { hash } = useLocation();
     const { searchQuery } = useDisco();
 
-    // 2. DATA OPHALEN UIT SANITY
     useEffect(() => {
         const query = `*[_type == "project" && category == "work"] | order(ranking asc, year desc) {
             "id": coalesce(slug.current, _id),
@@ -51,7 +53,6 @@ export default function Work() {
             });
     }, []);
 
-    // 3. FILTER LOGICA (Dynamisch obv opgehaalde projecten)
     const filteredProjects = projects.filter(p => {
         if (!searchQuery) return true;
         const q = searchQuery.toLowerCase();
@@ -63,7 +64,6 @@ export default function Work() {
         );
     });
 
-    // 4. MASONRY GRID LOGICA
     const recalcSpans = useCallback(() => {
         const next = {};
         Object.entries(cardRefs.current).forEach(([id, el]) => {
@@ -92,7 +92,6 @@ export default function Work() {
         };
     }, [recalcSpans, filteredProjects]);
 
-    // 5. HASH ROUTING LOGICA
     useEffect(() => {
         if (!isLoading && hash && projects.length > 0) {
             const id = hash.replace("#", "");
@@ -117,8 +116,8 @@ export default function Work() {
     }, [zoomedImage]);
 
     return (
-        <div className="min-h-screen bg-white text-black p-6 md:p-10 font-sans pb-32">
-            <h1 className="text-5xl font-black mb-16 tracking-tighter uppercase">_selected_works</h1>
+        <div className="min-h-screen bg-white text-black p-6 md:p-10 font-body pb-32">
+            <h1 className="font-title text-5xl font-black mb-16 tracking-tighter uppercase">_selected_works</h1>
 
             {isLoading ? (
                 <div className="font-mono text-sm text-slate-400 mt-8 uppercase tracking-widest animate-pulse">
@@ -153,10 +152,10 @@ export default function Work() {
                                 </div>
                             </div>
 
-                            <h2 className="text-2xl font-bold uppercase mb-2 group-hover:text-pink-600 transition-colors tracking-tight">{project.title}</h2>
-                            <p className="text-slate-600 mb-6 lowercase text-sm leading-relaxed">{project.shortDesc}</p>
+                            <h2 className="font-title text-2xl font-bold uppercase mb-2 group-hover:text-pink-600 transition-colors tracking-tight">{project.title}</h2>
+                            <p className="font-body text-slate-600 mb-6 lowercase text-sm leading-relaxed">{project.shortDesc}</p>
 
-                            <button onClick={() => setSelectedProject(project)} className="w-fit px-6 py-2 bg-black text-white text-xs font-bold uppercase tracking-widest hover:bg-pink-600 transition-all active:scale-95">
+                            <button onClick={() => setSelectedProject(project)} className="font-mono w-fit px-6 py-2 bg-black text-white text-xs font-bold uppercase tracking-widest hover:bg-pink-600 transition-all active:scale-95">
                                 view_info_
                             </button>
                         </div>
@@ -174,23 +173,22 @@ export default function Work() {
 
                         <div className="mb-12">
                             <span className="font-mono text-pink-500 text-sm tracking-widest uppercase">{selectedProject.year}</span>
-                            <h2 className="text-4xl md:text-7xl font-black uppercase tracking-tighter leading-none">{selectedProject.title}</h2>
+                            <h2 className="font-title text-4xl md:text-7xl font-black uppercase tracking-tighter leading-none">{selectedProject.title}</h2>
                         </div>
 
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 mb-16">
                             <div className="space-y-12">
-                                <p className="text-lg leading-relaxed whitespace-pre-line text-slate-800 italic">
+                                <p className="font-body text-lg leading-relaxed whitespace-pre-line text-slate-800 italic">
                                     {selectedProject.fullDesc}
                                 </p>
 
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8 pt-8 border-t border-black/10">
-                                    {/* Credits */}
                                     {selectedProject.credits && selectedProject.credits.length > 0 && (
                                         <div>
-                                            <p className="text-[10px] font-mono uppercase tracking-[0.3em] text-slate-400 mb-4">_credits</p>
+                                            <p className="font-mono text-[10px] uppercase tracking-[0.3em] text-slate-400 mb-4">_credits</p>
                                             <ul className="space-y-2">
                                                 {selectedProject.credits.map((credit, i) => (
-                                                    <li key={i} className="text-xs uppercase">
+                                                    <li key={i} className="font-body text-xs uppercase">
                                                         <span className="opacity-40">{credit.role}:</span> <span className="font-bold">{credit.name}</span>
                                                     </li>
                                                 ))}
@@ -198,13 +196,12 @@ export default function Work() {
                                         </div>
                                     )}
 
-                                    {/* Technical Specs */}
                                     {selectedProject.technicalSpecs && selectedProject.technicalSpecs.length > 0 && (
                                         <div>
-                                            <p className="text-[10px] font-mono uppercase tracking-[0.3em] text-slate-400 mb-4">_technical_specs</p>
+                                            <p className="font-mono text-[10px] uppercase tracking-[0.3em] text-slate-400 mb-4">_technical_specs</p>
                                             <ul className="space-y-2">
                                                 {selectedProject.technicalSpecs.map((spec, i) => (
-                                                    <li key={i} className="text-xs uppercase font-mono text-slate-600 flex items-start">
+                                                    <li key={i} className="font-mono text-xs uppercase text-slate-600 flex items-start">
                                                         <span className="mr-2 text-pink-500">→</span> {spec}
                                                     </li>
                                                 ))}
@@ -215,15 +212,14 @@ export default function Work() {
 
                                 {selectedProject.tags && selectedProject.tags.length > 0 && (
                                     <div className="pt-8 border-t border-black/10">
-                                        <p className="text-[10px] font-mono uppercase tracking-[0.3em] text-slate-400 mb-4">_system_tags</p>
+                                        <p className="font-mono text-[10px] uppercase tracking-[0.3em] text-slate-400 mb-4">_system_tags</p>
                                         <div className="flex flex-wrap gap-2">
                                             {selectedProject.tags.map(tag => (
-                                                <span key={tag} className="px-3 py-1 bg-black text-white text-[10px] font-bold uppercase">{tag}</span>
+                                                <span key={tag} className="font-mono px-3 py-1 bg-black text-white text-[10px] font-bold uppercase">{tag}</span>
                                             ))}
                                         </div>
                                     </div>
                                 )}
-
                             </div>
 
                             <div>
@@ -233,10 +229,9 @@ export default function Work() {
                             </div>
                         </div>
 
-                        {/* CARROUSEL */}
                         {selectedProject.media && selectedProject.media.length > 0 && (
                             <div className="border-t border-black/10 pt-12">
-                                <p className="text-[10px] font-mono uppercase tracking-[0.3em] text-slate-400 mb-6">_media_attachments</p>
+                                <p className="font-mono text-[10px] uppercase tracking-[0.3em] text-slate-400 mb-6">_media_attachments</p>
                                 <div className="flex gap-6 overflow-x-auto snap-x snap-mandatory no-scrollbar pb-8">
                                     {selectedProject.media.map((item, index) => (
                                         <div key={index} className={`flex-shrink-0 w-[85vw] md:w-[600px] aspect-video bg-black snap-center overflow-hidden border border-black/10 shadow-lg ${item.type === 'image' ? 'cursor-zoom-in' : ''}`} onClick={() => item.type === 'image' && setZoomedImage(item.src)}>
@@ -253,7 +248,7 @@ export default function Work() {
             {/* LIGHTBOX */}
             {zoomedImage && (
                 <div className="fixed inset-0 z-[200] bg-black/95 flex items-center justify-center p-4 md:p-12 cursor-zoom-out" onClick={() => setZoomedImage(null)}>
-                    <button className="absolute top-8 right-8 text-white font-mono text-xs uppercase tracking-[0.3em] border border-white/20 px-4 py-2 hover:bg-white hover:text-black transition-all">close_x</button>
+                    <button className="absolute top-8 right-8 font-mono text-white text-xs uppercase tracking-[0.3em] border border-white/20 px-4 py-2 hover:bg-white hover:text-black transition-all">close_x</button>
                     <img src={zoomedImage} alt="Zoomed view" className="max-w-full max-h-full object-contain shadow-2xl scale-95 transition-transform duration-300" />
                 </div>
             )}

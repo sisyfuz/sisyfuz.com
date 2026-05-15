@@ -19,13 +19,33 @@ const FONT_MAP = {
     'JetBrains Mono':     'JetBrains+Mono:wght@400;500;700',
 };
 
+// Maps file extension → CSS format() hint
+const FORMAT_MAP = {
+    woff2: 'woff2',
+    woff:  'woff',
+    ttf:   'truetype',
+    otf:   'opentype',
+};
+
+function getFormat(url) {
+    const ext = url.split('?')[0].split('.').pop().toLowerCase();
+    return FORMAT_MAP[ext] || 'opentype';
+}
+
 function injectCustomFontFace(familyName, url) {
+    // Don't remove/re-inject if already present — avoids re-download on re-renders
     const existing = document.getElementById(`sanity-custom-font-${familyName}`);
-    if (existing) existing.remove();
+    if (existing) return;
+
+    const format = getFormat(url);
 
     const style = document.createElement('style');
     style.id = `sanity-custom-font-${familyName}`;
-    style.textContent = `@font-face { font-family: "${familyName}"; src: url("${url}"); font-display: swap; }`;
+    style.textContent = `@font-face {
+        font-family: "${familyName}";
+        src: url("${url}") format("${format}");
+        font-display: swap;
+    }`;
     document.head.appendChild(style);
 }
 
@@ -44,17 +64,14 @@ export function useTypography() {
                 if (!data) return;
 
                 const { titleFont, bodyFont, monoFont,
-                        titleFontFile, bodyFontFile, monoFontFile } = data;
+                    titleFontFile, bodyFontFile, monoFontFile } = data;
 
                 const root = document.documentElement;
 
-                // Helper: resolve a font role to a CSS font-family value.
-                // If a custom file is uploaded, register a @font-face and return
-                // its family name. Otherwise fall through to the preset name.
                 const roles = [
-                    { file: titleFontFile, preset: titleFont, cssVar: '--font-title', name: 'SanityTitleFont',  fallback: 'sans-serif' },
-                    { file: bodyFontFile,  preset: bodyFont,  cssVar: '--font-body',  name: 'SanityBodyFont',   fallback: 'sans-serif' },
-                    { file: monoFontFile,  preset: monoFont,  cssVar: '--font-mono',  name: 'SanityMonoFont',   fallback: 'monospace'  },
+                    { file: titleFontFile, preset: titleFont, cssVar: '--font-title', name: 'SanityTitleFont', fallback: 'sans-serif' },
+                    { file: bodyFontFile,  preset: bodyFont,  cssVar: '--font-body',  name: 'SanityBodyFont',  fallback: 'sans-serif' },
+                    { file: monoFontFile,  preset: monoFont,  cssVar: '--font-mono',  name: 'SanityMonoFont',  fallback: 'monospace'  },
                 ];
 
                 const googleFamilies = [];
@@ -73,7 +90,7 @@ export function useTypography() {
                 // Load all Google Fonts presets in a single request
                 if (googleFamilies.length) {
                     const existing = document.getElementById('sanity-typography-fonts');
-                    if (existing) existing.remove();
+                    if (existing) return;
 
                     const link = document.createElement('link');
                     link.id = 'sanity-typography-fonts';

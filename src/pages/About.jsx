@@ -3,22 +3,23 @@ import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { client } from '../sanityClient';
 import { urlFor } from '../components/sanityImage';
+import { useTypography } from '../hooks/useTypography';
 
 const GLITCH_CHARS = '!@#░▒▓█▄▀■□▪▫';
 
 export default function About() {
+    useTypography();
+
     const [assets, setAssets] = useState(null);
     const [isLightboxOpen, setIsLightboxOpen] = useState(false);
     const [time, setTime] = useState('');
     const [loadPct, setLoadPct] = useState(0);
     const [glitchChar, setGlitchChar] = useState('_');
 
-    // Sanity CMS fetch
     useEffect(() => {
         client.fetch(`*[_type == "aboutAssets"][0]`).then(setAssets);
     }, []);
 
-    // Live clock
     useEffect(() => {
         const tick = () => {
             const now = new Date();
@@ -30,7 +31,6 @@ export default function About() {
         return () => clearInterval(id);
     }, []);
 
-    // Fake loading bar on mount
     useEffect(() => {
         let pct = 0;
         const id = setInterval(() => {
@@ -41,7 +41,6 @@ export default function About() {
         return () => clearInterval(id);
     }, []);
 
-    // Random glitch char in system log
     useEffect(() => {
         const id = setInterval(() => {
             if (Math.random() > 0.65) {
@@ -111,31 +110,27 @@ export default function About() {
                 }
             `}</style>
 
-            {/* Scanlines overlay */}
             <div className="fixed inset-0 z-[30] scanlines" />
 
-            <main className="min-h-screen bg-[#f0ede6] text-black font-mono relative overflow-x-hidden vhs-flicker">
+            <main className="min-h-screen bg-[#f0ede6] text-black font-body relative overflow-x-hidden vhs-flicker">
 
-                {/* ── Top nav strip (no REC, just clock + back) ── */}
                 <div className="px-5 md:px-10 lg:px-20 pt-6 flex items-center justify-between">
-                    <span className="text-[10px] text-black/30 tracking-widest tabular-nums">{time}</span>
-                    <Link to="/" className="text-[11px] text-black/40 hover:text-black transition-colors tracking-widest uppercase">
+                    <span className="font-mono text-[10px] text-black/30 tracking-widest tabular-nums">{time}</span>
+                    <Link to="/" className="font-mono text-[11px] text-black/40 hover:text-black transition-colors tracking-widest uppercase">
                         ← Back
                     </Link>
                 </div>
 
-                {/* ── Title ── */}
                 <div className="px-5 md:px-10 lg:px-20 pt-8 pb-8 border-b-2 border-black/10">
-                    <h1 className="text-[clamp(2rem,6vw,5rem)] font-black leading-none tracking-tight text-black title-glitch select-none whitespace-nowrap">
+                    <h1 className="font-title text-[clamp(2rem,6vw,5rem)] font-black leading-none tracking-tight text-black title-glitch select-none whitespace-nowrap">
                         Dorus Kleijne
                     </h1>
                     <div className="mt-4 flex items-center gap-4">
-                        <p className="text-[10px] tracking-[0.25em] text-black/30 uppercase">
+                        <p className="font-mono text-[10px] tracking-[0.25em] text-black/30 uppercase">
                             // MEMORY_CARD_01 — BIG_BLOOP — 2006 //
                         </p>
-                        {/* Loading bar */}
                         <div className="flex items-center gap-2 ml-auto">
-                            <span className="text-[9px] text-black/25 tracking-widest uppercase shrink-0">
+                            <span className="font-mono text-[9px] text-black/25 tracking-widest uppercase shrink-0">
                                 INIT {loadPct}%
                             </span>
                             <div className="w-24 h-1 bg-black/10 overflow-hidden">
@@ -148,53 +143,47 @@ export default function About() {
                     </div>
                 </div>
 
-                {/* ── Content grid ── */}
                 <div className="grid grid-cols-1 lg:grid-cols-2">
 
-                    {/* Left: mixed editorial + PSX */}
                     <div className="px-5 md:px-10 lg:px-20 py-12 flex flex-col gap-10 border-r border-black/15">
 
-                        {/* PSX stats — kept as the "game UI" anchor */}
                         <div className="border border-black/25 bg-white/60">
-                            <div className="bg-black text-[#f0ede6] px-4 py-2 text-[10px] tracking-widest uppercase">
+                            <div className="font-mono bg-black text-[#f0ede6] px-4 py-2 text-[10px] tracking-widest uppercase">
                                 ▸ OVER MIJ
                             </div>
                             <div className="px-4 py-5 flex flex-col gap-3 text-xs">
                                 <div className="flex gap-4">
-                                    <span className="text-black/35 w-20 shrink-0 uppercase tracking-wider">Plekje</span>
-                                    <span className="uppercase tracking-widest">Utrecht, NL</span>
+                                    <span className="font-mono text-black/35 w-20 shrink-0 uppercase tracking-wider">Plekje</span>
+                                    <span className="font-body uppercase tracking-widest">Utrecht, NL</span>
                                 </div>
                                 <div className="flex gap-4">
-                                    <span className="text-black/35 w-20 shrink-0 uppercase tracking-wider">Wat dan?</span>
-                                    <span className="uppercase tracking-widest">Theater × Kunst × Tech</span>
+                                    <span className="font-mono text-black/35 w-20 shrink-0 uppercase tracking-wider">Wat dan?</span>
+                                    <span className="font-body uppercase tracking-widest">Theater × Kunst × Tech</span>
                                 </div>
                             </div>
                         </div>
 
-                        {/* Bio — open editorial style, no heavy box */}
                         <div className="border-l-2 border-pink-500 pl-6 flex flex-col gap-4">
-                            <div className="flex flex-col gap-3 text-sm leading-relaxed text-black/55 font-mono">
-                                <p>&gt; Dorus Kleijne (2006) maakt onverstaanbaar, intellectueel, eclectisch en interdisciplinair werk. Doormiddel van sci-fi ontstaan ruizige ervaringen, die inherent queer zijn.</p>
-                                <p>&gt; Sci-fi als taal. Queer als basishouding.</p>
-                                <p className="text-pink-500 mt-1">
+                            <div className="flex flex-col gap-3 text-sm leading-relaxed text-black/55">
+                                <p className="font-body">&gt; Dorus Kleijne (2006) maakt onverstaanbaar, intellectueel, eclectisch en interdisciplinair werk. Doormiddel van sci-fi ontstaan ruizige ervaringen, die inherent queer zijn.</p>
+                                <p className="font-body">&gt; Sci-fi als taal. Queer als basishouding.</p>
+                                <p className="font-body text-pink-500 mt-1">
                                     &gt;&nbsp;<Link to="/contact" className="hover:underline transition-colors">stuur een bericht →</Link>
                                 </p>
-                                <p className="text-black/20">&gt; {glitchChar}</p>
+                                <p className="font-mono text-black/20">&gt; {glitchChar}</p>
                             </div>
                         </div>
 
-                        {/* Footer */}
                         <div className="mt-auto flex items-end justify-between pt-8 border-t border-black/8">
-                            <p className="text-[10px] text-black/20 tracking-widest uppercase leading-loose">
-                                [badabum!]<br />
+                            <p className="font-mono text-[10px] text-black/20 tracking-widest uppercase leading-loose">
+                                [badabum! fonts by: Sligoil by Ariel Martín Pérez, with the contribution of Đông Trúc Nguyễn. Distributed by velvetyne.fr.]<br />
                             </p>
-                            <span className="insert-coin text-[11px] text-black/40 tracking-widest uppercase">
+                            <span className="font-mono insert-coin text-[11px] text-black/40 tracking-widest uppercase">
                                 INSERT COIN
                             </span>
                         </div>
                     </div>
 
-                    {/* Right: image — taller, more dominant */}
                     <div
                         className="relative cursor-crosshair overflow-hidden"
                         style={{ minHeight: '80vh' }}
@@ -210,24 +199,21 @@ export default function About() {
                                     className="absolute inset-0 w-full h-full object-cover"
                                     style={{ filter: 'contrast(1.08) saturate(0.8)' }}
                                 />
-                                {/* CRT vignette */}
                                 <div
                                     className="absolute inset-0 pointer-events-none"
                                     style={{ background: 'radial-gradient(ellipse at center, transparent 55%, rgba(0,0,0,0.5) 100%)' }}
                                 />
-                                {/* Screen tear */}
                                 <div className="screen-tear" />
-                                {/* Corner brackets */}
                                 <div className="absolute top-3 left-3  w-5 h-5 border-t-2 border-l-2 border-white/60 pointer-events-none" />
                                 <div className="absolute top-3 right-3 w-5 h-5 border-t-2 border-r-2 border-white/60 pointer-events-none" />
                                 <div className="absolute bottom-10 left-3  w-5 h-5 border-b-2 border-l-2 border-white/60 pointer-events-none" />
                                 <div className="absolute bottom-10 right-3 w-5 h-5 border-b-2 border-r-2 border-white/60 pointer-events-none" />
-                                <p className="absolute bottom-4 inset-x-0 text-center text-[10px] text-white/45 tracking-widest uppercase pointer-events-none">
+                                <p className="font-mono absolute bottom-4 inset-x-0 text-center text-[10px] text-white/45 tracking-widest uppercase pointer-events-none">
                                     [ PRESS TO EXPAND ]
                                 </p>
                             </>
                         ) : (
-                            <div className="absolute inset-0 flex items-center justify-center text-xs text-black/20">
+                            <div className="font-mono absolute inset-0 flex items-center justify-center text-xs text-black/20">
                                 [loading from sanity...]
                             </div>
                         )}
@@ -235,7 +221,6 @@ export default function About() {
                 </div>
             </main>
 
-            {/* ── Lightbox ── */}
             {isLightboxOpen && assets?.profileImage && (
                 <div
                     className="fixed inset-0 z-[60] bg-black/96 flex flex-col cursor-zoom-out"

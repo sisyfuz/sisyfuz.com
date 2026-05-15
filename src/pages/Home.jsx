@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import DynamicFocusBg from "../components/DynamicFocusBG";
 import GlitchTitle from "../components/GlitchTitle";
+import { useTypography } from "../hooks/useTypography";
 
 const CONFIG = {
     scrollRange: 700,
@@ -23,6 +24,8 @@ const getInterpolatedColor = (progress, colors) => {
 };
 
 export default function Home() {
+    useTypography();
+
     const [progress, setProgress] = useState(0);
 
     useEffect(() => {
@@ -38,12 +41,10 @@ export default function Home() {
     const titleColor = getInterpolatedColor(progress, CONFIG.colors);
     const titleTranslateY = progress * -42;
     const dynamicGap = 36 + (progress * -18);
+
     return (
         <DynamicFocusBg imageUrl={CONFIG.bgImage}>
-            {/* Als je hier ergens een losse {inputBuffer} ziet staan, 
-                moet die weg! De onderstaande structuur is 100% clean.
-            */}
-            <div className="relative min-h-[250vh] font-sans">
+            <div className="relative min-h-[250vh] font-body">
 
                 <div
                     className="fixed inset-0 z-0 pointer-events-none bg-white transition-opacity duration-75"
@@ -60,25 +61,25 @@ export default function Home() {
                     >
                         <GlitchTitle progress={progress} />
 
-                        <p
-                            className="text-lg font-medium opacity-80 transition-all duration-75 ease-out"
+                        <h2
+                            className="font-title text-2xl md:text-3xl font-bold opacity-80 transition-all duration-75 ease-out"
                             style={{ marginTop: `${dynamicGap}px`, textShadow: '0 4px 12px rgba(0,0,0,0.45)' }}
                         >
                             a.k.a. Dorus Kleijne
-                        </p>
+                        </h2>
                     </div>
                 </header>
-                
+
                 <main className="relative z-10 mx-auto max-w-2xl px-6 pb-60">
                     <section className="mt-12 text-black">
-                        <h2 className="text-3xl font-semibold tracking-tight uppercase">
+                        <h2 className="font-title text-3xl font-semibold tracking-tight uppercase">
                             artist_statement
                         </h2>
                         <div className="mt-8 space-y-8 text-lg leading-relaxed text-justify indent-2">
-                            <p className="italic text-gray-600 font-light">
+                            <p className="italic text-gray-600 font-light font-body">
                                 "Ik noem mezelf sisyfuz, omdat ik blijf proberen als Sisyphos."
                             </p>
-                            <p>
+                            <p className="font-body">
                                 Dorus Kleijne (2006) maakt onverstaanbaar, intellectueel, eclectisch en interdisciplinair werk.
                                 Doormiddel van sci-fi ontstaan ruizige ervaringen, die inherent queer zijn.
                             </p>

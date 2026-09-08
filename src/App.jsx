@@ -7,6 +7,7 @@ import Work from "./pages/Work";
 import Archive from "./pages/Archive";
 import About from "./pages/About";
 import Contact from "./pages/Contact";
+import Press from "./pages/Press";
 import NotFound from "./pages/NotFound";
 
 const menuItems = [
@@ -170,6 +171,7 @@ function Layout() {
                 <Route path="/archive" element={<Archive />} />
                 <Route path="/about" element={<About />} />
                 <Route path="/contact" element={<Contact />} />
+                <Route path="/press" element={<Press />} />
                 <Route path="*" element={<NotFound />} />
             </Routes>
             <MarqueeMenu isVisible={menuVisible} />

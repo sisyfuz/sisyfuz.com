@@ -4,9 +4,9 @@
  * broadcast.js
  *
  * Automated High-Performance Broadcaster for sisyfuz.com:
- * 1. Starts MediaMTX low-latency media server (RTMP -> HLS/WebRTC).
+ * 1. Starts MediaMTX low-latency media server (RTMP -> HLS).
  * 2. Starts a unified reverse proxy on port 9988:
- *    - /live/* -> MediaMTX (HLS video at 60 FPS H.264)
+ *    - /live/* -> MediaMTX (transparent cookie-handling HLS proxy)
  *    - /ws     -> TouchDesigner webserver1 (multi-user cursor tracking)
  * 3. Launches secure Cloudflare Tunnel.
  * 4. Publishes stream URL to sisyfuz.com via Cloudflare Worker.
@@ -93,6 +93,14 @@ async function main() {
             console.error(`      [ERR] Failed to start mediamtx: ${err.message}`);
         });
 
+        // Pipe connection logs
+        mediamtxProc.stdout.on("data", (data) => {
+            const line = data.toString().trim();
+            if (line.includes("is publishing to path 'live'") || line.includes("stream is available")) {
+                console.log(`      [STREAM DETECTED] OBS is actively broadcasting to MediaMTX!`);
+            }
+        });
+
         // Wait up to 3 seconds for MediaMTX to initialize
         for (let i = 0; i < 15; i++) {
             await new Promise((r) => setTimeout(r, 200));
@@ -101,45 +109,113 @@ async function main() {
         console.log("      [OK] MediaMTX started on port 1935 (RTMP) and 8888 (HLS)!\n");
     }
 
-    // 3. Start Unified Proxy (Port 9988)
+    // 3. Start Transparent Cookie-Handling Proxy (Port 9988)
     console.log(`[3/4] Starting unified proxy on port ${PROXY_PORT}...`);
-    const proxy = httpProxy.createProxyServer({
+    const wsProxy = httpProxy.createProxyServer({
         ws: true,
         xfwd: true,
     });
 
-    proxy.on("error", (err, req, res) => {
-        if (res && res.writeHead) {
-            res.writeHead(502, { "Content-Type": "text/plain" });
-            res.end("Stream buffer initializing...");
-        }
-    });
-
-    const MEDIAMTX_WEBRTC_PORT = 8889;
+    const activeCookies = new Map();
 
     proxyServer = http.createServer((req, res) => {
-        // Forward WebRTC WHEP/WHIP requests to MediaMTX WebRTC port 8889
-        if (req.url && (req.url.includes("/whep") || req.url.includes("/whip"))) {
-            proxy.web(req, res, { target: `http://127.0.0.1:${MEDIAMTX_WEBRTC_PORT}` });
-        } else {
-            // Forward HTTP requests (HLS stream files) to MediaMTX HLS port 8888
-            proxy.web(req, res, { target: `http://127.0.0.1:${MEDIAMTX_HLS_PORT}` });
+        // Universal CORS headers for web browsers
+        res.setHeader("Access-Control-Allow-Origin", "*");
+        res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS, HEAD");
+        res.setHeader("Access-Control-Allow-Headers", "*");
+
+        if (req.method === "OPTIONS") {
+            res.writeHead(204);
+            res.end();
+            return;
         }
+
+        const clientKey = req.headers["x-forwarded-for"] || req.socket.remoteAddress || "client";
+        const sessionCookie = activeCookies.get(clientKey) || "cookieCheck=1";
+
+        const proxyReq = http.request({
+            hostname: "127.0.0.1",
+            port: MEDIAMTX_HLS_PORT,
+            path: req.url,
+            method: req.method,
+            headers: {
+                ...req.headers,
+                host: `127.0.0.1:${MEDIAMTX_HLS_PORT}`,
+                cookie: sessionCookie,
+            },
+        }, (proxyRes) => {
+            const setCookie = proxyRes.headers["set-cookie"];
+            if (setCookie) {
+                const cookieStr = Array.isArray(setCookie) ? setCookie.join("; ") : setCookie;
+                activeCookies.set(clientKey, cookieStr);
+            }
+
+            // Transparently follow MediaMTX 302 cookieCheck redirects internally
+            if (proxyRes.statusCode === 301 || proxyRes.statusCode === 302) {
+                const redirectLoc = proxyRes.headers["location"];
+                if (redirectLoc) {
+                    const nextUrl = new URL(redirectLoc, `http://127.0.0.1:${MEDIAMTX_HLS_PORT}`);
+                    const nextCookie = activeCookies.get(clientKey) || "cookieCheck=1";
+
+                    const followReq = http.request({
+                        hostname: "127.0.0.1",
+                        port: MEDIAMTX_HLS_PORT,
+                        path: nextUrl.pathname + nextUrl.search,
+                        method: "GET",
+                        headers: {
+                            host: `127.0.0.1:${MEDIAMTX_HLS_PORT}`,
+                            cookie: nextCookie,
+                        },
+                    }, (followRes) => {
+                        const nextSetCookie = followRes.headers["set-cookie"];
+                        if (nextSetCookie) {
+                            const cookieStr = Array.isArray(nextSetCookie) ? nextSetCookie.join("; ") : nextSetCookie;
+                            activeCookies.set(clientKey, cookieStr);
+                        }
+
+                        const headers = { ...followRes.headers };
+                        headers["access-control-allow-origin"] = "*";
+                        delete headers["set-cookie"]; // Don't leak internal cookies
+                        res.writeHead(followRes.statusCode, headers);
+                        followRes.pipe(res);
+                    });
+
+                    followReq.on("error", () => {
+                        res.writeHead(502, { "Content-Type": "text/plain" });
+                        res.end("Stream buffer initializing...");
+                    });
+                    followReq.end();
+                    return;
+                }
+            }
+
+            const headers = { ...proxyRes.headers };
+            headers["access-control-allow-origin"] = "*";
+            res.writeHead(proxyRes.statusCode, headers);
+            proxyRes.pipe(res);
+        });
+
+        proxyReq.on("error", () => {
+            res.writeHead(502, { "Content-Type": "text/plain" });
+            res.end("Media server initializing...");
+        });
+
+        req.pipe(proxyReq);
     });
 
+    // Forward WebSocket upgrades (mouse telemetry) to TouchDesigner
     proxyServer.on("upgrade", (req, socket, head) => {
-        // Forward WebSocket upgrades (mouse telemetry) to TouchDesigner
-        proxy.ws(req, socket, head, { target: `ws://127.0.0.1:${TD_PORT}` }, (err) => {
+        wsProxy.ws(req, socket, head, { target: `ws://127.0.0.1:${TD_PORT}` }, (err) => {
             socket.destroy();
         });
     });
 
-    await new Promise((resolve) => proxyServer.listen(PROXY_PORT, resolve));
+    await new Promise((resolve) => proxyServer.listen(PROXY_PORT, "0.0.0.0", resolve));
     console.log(`      [OK] Unified proxy ready at http://127.0.0.1:${PROXY_PORT}!\n`);
 
     // 4. Launch Cloudflare Tunnel
     console.log("[4/4] Launching Cloudflare Tunnel...");
-    cfProc = spawn("npx", ["--yes", "cloudflared", "tunnel", "--url", `http://localhost:${PROXY_PORT}`], {
+    cfProc = spawn("npx", ["--yes", "cloudflared", "tunnel", "--url", `http://127.0.0.1:${PROXY_PORT}`], {
         stdio: ["ignore", "pipe", "pipe"],
     });
 

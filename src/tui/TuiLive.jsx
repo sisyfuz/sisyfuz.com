@@ -75,7 +75,6 @@ export default function TuiLive({ onNavigate }) {
     const containerRef = useRef(null);
     const wsRef = useRef(null);
     const hlsRef = useRef(null);
-    const pcRef = useRef(null);
     const progressRef = useRef(0);
 
     // Smooth animation loop for top-bar ASCII cellular wipe
@@ -103,7 +102,7 @@ export default function TuiLive({ onNavigate }) {
         return () => cancelAnimationFrame(frameId);
     }, [isHoverTop]);
 
-    // Check Worker & Sanity for live stream URL (poll every 5s)
+    // Check Worker & Sanity for live stream URL (poll every 4s)
     useEffect(() => {
         const params = new URLSearchParams(window.location.search);
         if (params.get("stream") || params.get("s")) return;
@@ -131,7 +130,7 @@ export default function TuiLive({ onNavigate }) {
         };
 
         checkLiveStatus();
-        const poll = setInterval(checkLiveStatus, 5000);
+        const poll = setInterval(checkLiveStatus, 4000);
         return () => clearInterval(poll);
     }, []);
 
@@ -172,172 +171,91 @@ export default function TuiLive({ onNavigate }) {
         return () => clearTimeout(timer);
     }, [modeToast]);
 
-    // 1. Video Player Engine (Ultra-Low Latency: WebRTC WHEP first, then Low-Latency HLS fallback)
+    // 1. Direct Low-Latency Hardware HLS Video Engine (60 FPS)
     useEffect(() => {
         let isMounted = true;
         const isHttp = streamUrl && (streamUrl.startsWith("http://") || streamUrl.startsWith("https://"));
 
-        if (!isHttp) return;
+        if (!isHttp) {
+            setIsLive(false);
+            return;
+        }
 
         const video = videoRef.current;
         if (!video) return;
 
+        // Ensure muted so browser autoplay is never blocked
+        video.muted = true;
+
         const cleanUrl = streamUrl.replace(/\/+$/, "");
-        const whepUrl = cleanUrl.includes(".m3u8")
-            ? cleanUrl.replace(/index\.m3u8.*$/, "whep")
-            : `${cleanUrl}/live/whep`;
         const hlsUrl = cleanUrl.includes(".m3u8")
             ? cleanUrl
             : `${cleanUrl}/live/index.m3u8`;
 
         let hlsInstance = null;
-        let pc = null;
-        let whepTimeout = null;
-        let fallbackTriggered = false;
 
-        const startHls = () => {
-            if (!isMounted || fallbackTriggered) return;
-            fallbackTriggered = true;
+        if (Hls.isSupported()) {
+            const hls = new Hls({
+                lowLatencyMode: true,
+                liveSyncDuration: 0.5,
+                liveMaxLatencyDuration: 1.5,
+                maxLiveSyncPlaybackRate: 1.2,
+                enableWorker: true,
+                backBufferLength: 0,
+            });
+            hlsRef.current = hls;
+            hlsInstance = hls;
 
-            if (pc) {
-                try { pc.close(); } catch {}
-                pc = null;
-                pcRef.current = null;
-            }
+            hls.loadSource(hlsUrl);
+            hls.attachMedia(video);
 
-            if (Hls.isSupported()) {
-                const hls = new Hls({
-                    lowLatencyMode: true,
-                    liveSyncDuration: 0.5,
-                    liveMaxLatencyDuration: 1.2,
-                    maxLiveSyncPlaybackRate: 1.25,
-                    enableWorker: true,
-                    backBufferLength: 0,
-                });
-                hlsRef.current = hls;
-                hlsInstance = hls;
-
-                hls.loadSource(hlsUrl);
-                hls.attachMedia(video);
-
-                hls.on(Hls.Events.MANIFEST_PARSED, () => {
-                    if (isMounted) {
-                        video.play().catch(() => {});
-                        setIsLive(true);
-                        setStreamProtocol("LL-HLS");
-                    }
-                });
-
-                hls.on(Hls.Events.ERROR, (event, data) => {
-                    if (data.fatal) {
-                        switch (data.type) {
-                            case Hls.ErrorTypes.NETWORK_ERROR:
-                                hls.startLoad();
-                                break;
-                            case Hls.ErrorTypes.MEDIA_ERROR:
-                                hls.recoverMediaError();
-                                break;
-                            default:
-                                if (isMounted) {
-                                    setIsLive(false);
-                                    setStreamProtocol("");
-                                }
-                                break;
-                        }
-                    }
-                });
-            } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
-                video.src = hlsUrl;
-                const onLoaded = () => {
-                    if (isMounted) {
-                        video.play().catch(() => {});
-                        setIsLive(true);
-                        setStreamProtocol("LL-HLS");
-                    }
-                };
-                const onError = () => {
-                    if (isMounted) {
-                        setIsLive(false);
-                        setStreamProtocol("");
-                    }
-                };
-                video.addEventListener("loadedmetadata", onLoaded);
-                video.addEventListener("error", onError);
-            }
-        };
-
-        const startWhep = async () => {
-            try {
-                pc = new RTCPeerConnection({
-                    iceServers: [
-                        { urls: "stun:stun.l.google.com:19302" },
-                        { urls: "stun:global.stun.twilio.com:3478" }
-                    ]
-                });
-                pcRef.current = pc;
-
-                pc.addTransceiver("video", { direction: "recvonly" });
-
-                pc.ontrack = (event) => {
-                    if (!isMounted) return;
-                    clearTimeout(whepTimeout);
-                    video.srcObject = event.streams[0];
+            hls.on(Hls.Events.MANIFEST_PARSED, () => {
+                if (isMounted) {
                     video.play().catch(() => {});
                     setIsLive(true);
-                    setStreamProtocol("WEBRTC ~150MS");
-                };
-
-                pc.oniceconnectionstatechange = () => {
-                    if (pc.iceConnectionState === "failed" || pc.iceConnectionState === "disconnected") {
-                        startHls();
-                    }
-                };
-
-                const offer = await pc.createOffer();
-                await pc.setLocalDescription(offer);
-
-                const res = await fetch(whepUrl, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/sdp" },
-                    body: offer.sdp,
-                });
-
-                if (!res.ok) {
-                    throw new Error(`WHEP status ${res.status}`);
+                    setStreamProtocol("60 FPS");
                 }
+            });
 
-                const answerSdp = await res.text();
-                if (!isMounted) return;
-                await pc.setRemoteDescription({ type: "answer", sdp: answerSdp });
-
-                // If no video arrives within 2.5s, fall back cleanly to Low-Latency HLS
-                whepTimeout = setTimeout(() => {
-                    if (!video.srcObject && isMounted) {
-                        startHls();
+            hls.on(Hls.Events.ERROR, (event, data) => {
+                if (data.fatal) {
+                    switch (data.type) {
+                        case Hls.ErrorTypes.NETWORK_ERROR:
+                            setTimeout(() => {
+                                if (isMounted && hls) hls.startLoad();
+                            }, 1500);
+                            break;
+                        case Hls.ErrorTypes.MEDIA_ERROR:
+                            hls.recoverMediaError();
+                            break;
+                        default:
+                            break;
                     }
-                }, 2500);
-            } catch {
-                startHls();
-            }
-        };
-
-        // Try ultra-low-latency WebRTC first, fallback to LL-HLS
-        startWhep();
+                }
+            });
+        } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
+            // Safari Native HLS
+            video.src = hlsUrl;
+            const onLoaded = () => {
+                if (isMounted) {
+                    video.play().catch(() => {});
+                    setIsLive(true);
+                    setStreamProtocol("60 FPS");
+                }
+            };
+            video.addEventListener("loadedmetadata", onLoaded);
+        }
 
         return () => {
             isMounted = false;
-            clearTimeout(whepTimeout);
-            if (pc) {
-                try { pc.close(); } catch {}
-                pcRef.current = null;
-            }
             if (hlsInstance) {
                 hlsInstance.destroy();
                 hlsRef.current = null;
             }
             if (video) {
-                video.srcObject = null;
-                video.src = "";
+                video.pause();
+                video.removeAttribute("src");
+                video.load();
             }
         };
     }, [streamUrl]);
@@ -624,6 +542,7 @@ export default function TuiLive({ onNavigate }) {
                     autoPlay
                     playsInline
                     muted
+                    onPlaying={() => setIsLive(true)}
                     className={`select-none pointer-events-none transition-opacity duration-300 ${
                         isLive ? "opacity-100 block" : "opacity-0 hidden"
                     } ${

@@ -260,6 +260,9 @@ export default function TuiLive({ onNavigate }) {
         };
     }, [streamUrl]);
 
+    // Unique session ID for multi-user cursor tracking in TouchDesigner
+    const sessionIdRef = useRef("usr_" + Math.random().toString(36).substring(2, 7));
+
     // Mouse & Touch Tracking Engine (Sends normalized UV coordinates to TouchDesigner)
     const lastMouseSendRef = useRef(0);
     const isMouseDownRef = useRef(false);
@@ -287,6 +290,7 @@ export default function TuiLive({ onNavigate }) {
         try {
             wsRef.current.send(JSON.stringify({
                 type: "mouse",
+                id: sessionIdRef.current,
                 u: Number(u.toFixed(4)),
                 v: Number(v.toFixed(4)),
                 click: isDown ? 1 : 0,

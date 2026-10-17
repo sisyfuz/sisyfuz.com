@@ -235,7 +235,7 @@ export default function SharpDisplay() {
                 )}
 
                 {activeSection === "live" && (
-                    <TuiLive />
+                    <TuiLive onNavigate={handleSwitchSection} />
                 )}
             </main>
 

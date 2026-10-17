@@ -1,0 +1,115 @@
+/**
+ * Cloudflare Worker: sisyfuz-counter
+ *
+ * Proxies press-counter increments to Sanity so the write token
+ * stays server-side. Deploy with `npx wrangler deploy`.
+ *
+ * Environment secrets (set via `npx wrangler secret put`):
+ *   SANITY_WRITE_TOKEN — your Sanity Editor-level API token
+ */
+
+const SANITY_PROJECT_ID = "gt7prmxg";
+const SANITY_DATASET = "production";
+const SANITY_API_VERSION = "2026-04-17";
+const COUNTER_ID = "site-button-counter";
+
+const ALLOWED_ORIGINS = [
+  "https://sisyfuz.com",
+  "http://localhost:5173",    // local dev
+  "http://localhost:4173",    // vite preview
+];
+
+function corsHeaders(origin) {
+  const allowedOrigin = ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
+  return {
+    "Access-Control-Allow-Origin": allowedOrigin,
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type",
+  };
+}
+
+export default {
+  async fetch(request, env) {
+    const origin = request.headers.get("Origin") || "";
+
+    // Handle CORS preflight
+    if (request.method === "OPTIONS") {
+      return new Response(null, { status: 204, headers: corsHeaders(origin) });
+    }
+
+    if (request.method !== "POST") {
+      return new Response(JSON.stringify({ error: "Method not allowed" }), {
+        status: 405,
+        headers: { ...corsHeaders(origin), "Content-Type": "application/json" },
+      });
+    }
+
+    const sanityUrl = `https://${SANITY_PROJECT_ID}.api.sanity.io/v${SANITY_API_VERSION}/data/mutate/${SANITY_DATASET}`;
+
+    // First, ensure the document exists
+    const createRes = await fetch(sanityUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${env.SANITY_WRITE_TOKEN}`,
+      },
+      body: JSON.stringify({
+        mutations: [
+          {
+            createIfNotExists: {
+              _id: COUNTER_ID,
+              _type: "buttonCounter",
+              count: 0,
+            },
+          },
+        ],
+      }),
+    });
+
+    if (!createRes.ok) {
+      return new Response(JSON.stringify({ error: "Failed to ensure counter exists" }), {
+        status: 500,
+        headers: { ...corsHeaders(origin), "Content-Type": "application/json" },
+      });
+    }
+
+    // Increment the counter
+    const patchRes = await fetch(sanityUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${env.SANITY_WRITE_TOKEN}`,
+      },
+      body: JSON.stringify({
+        mutations: [
+          {
+            patch: {
+              id: COUNTER_ID,
+              inc: { count: 1 },
+            },
+          },
+        ],
+      }),
+    });
+
+    if (!patchRes.ok) {
+      return new Response(JSON.stringify({ error: "Failed to increment" }), {
+        status: 500,
+        headers: { ...corsHeaders(origin), "Content-Type": "application/json" },
+      });
+    }
+
+    const patchData = await patchRes.json();
+    // The response contains the transaction, get the updated count by querying
+    const queryUrl = `https://${SANITY_PROJECT_ID}.api.sanity.io/v${SANITY_API_VERSION}/data/query/${SANITY_DATASET}?query=*[_id=="${COUNTER_ID}"][0].count`;
+    const queryRes = await fetch(queryUrl, {
+      headers: { Authorization: `Bearer ${env.SANITY_WRITE_TOKEN}` },
+    });
+    const queryData = await queryRes.json();
+
+    return new Response(JSON.stringify({ count: queryData.result ?? 0 }), {
+      status: 200,
+      headers: { ...corsHeaders(origin), "Content-Type": "application/json" },
+    });
+  },
+};

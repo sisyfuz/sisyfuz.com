@@ -260,7 +260,41 @@ export default function TuiLive({ onNavigate }) {
         };
     }, [streamUrl]);
 
-    // Mouse coordinates tracker (sends normalized u,v coordinates back to TouchDesigner)
+    // Mouse & Touch Tracking Engine (Sends normalized UV coordinates to TouchDesigner)
+    const lastMouseSendRef = useRef(0);
+    const isMouseDownRef = useRef(false);
+
+    const sendMouse = (clientX, clientY, isDown = isMouseDownRef.current) => {
+        if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
+
+        const now = performance.now();
+        if (now - lastMouseSendRef.current < 16) return; // 60 FPS throttle
+        lastMouseSendRef.current = now;
+
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+
+        const rect = canvas.getBoundingClientRect();
+        if (!rect.width || !rect.height) return;
+
+        const rawU = (clientX - rect.left) / rect.width;
+        const rawV = 1.0 - (clientY - rect.top) / rect.height;
+
+        const inside = rawU >= 0 && rawU <= 1 && rawV >= 0 && rawV <= 1 ? 1 : 0;
+        const u = Math.max(0, Math.min(1, rawU));
+        const v = Math.max(0, Math.min(1, rawV));
+
+        try {
+            wsRef.current.send(JSON.stringify({
+                type: "mouse",
+                u: Number(u.toFixed(4)),
+                v: Number(v.toFixed(4)),
+                click: isDown ? 1 : 0,
+                inside,
+            }));
+        } catch {}
+    };
+
     const handleMouseMove = (e) => {
         // Detect top hover zone (top 70px)
         if (e.clientY < 70) {
@@ -269,17 +303,28 @@ export default function TuiLive({ onNavigate }) {
             setIsHoverTop(false);
         }
 
-        // Send mouse tracking back to TouchDesigner
-        if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-            const rect = containerRef.current?.getBoundingClientRect();
-            if (rect && rect.width && rect.height) {
-                const u = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-                const v = Math.max(0, Math.min(1, 1 - (e.clientY - rect.top) / rect.height));
-                try {
-                    wsRef.current.send(JSON.stringify({ type: "mouse", u: Number(u.toFixed(4)), v: Number(v.toFixed(4)) }));
-                } catch {}
-            }
+        sendMouse(e.clientX, e.clientY);
+    };
+
+    const handleMouseDown = (e) => {
+        isMouseDownRef.current = true;
+        sendMouse(e.clientX, e.clientY, true);
+    };
+
+    const handleMouseUp = (e) => {
+        isMouseDownRef.current = false;
+        sendMouse(e.clientX, e.clientY, false);
+    };
+
+    const handleTouchMove = (e) => {
+        if (!e.touches || !e.touches[0]) return;
+        const t = e.touches[0];
+        if (t.clientY < 70) {
+            setIsHoverTop(true);
+        } else {
+            setIsHoverTop(false);
         }
+        sendMouse(t.clientX, t.clientY, true);
     };
 
     const toggleFullscreen = () => {
@@ -307,7 +352,15 @@ export default function TuiLive({ onNavigate }) {
         <div
             ref={containerRef}
             onMouseMove={handleMouseMove}
-            onMouseLeave={() => setIsHoverTop(false)}
+            onMouseDown={handleMouseDown}
+            onMouseUp={handleMouseUp}
+            onTouchMove={handleTouchMove}
+            onTouchStart={handleMouseDown}
+            onTouchEnd={handleMouseUp}
+            onMouseLeave={() => {
+                setIsHoverTop(false);
+                isMouseDownRef.current = false;
+            }}
             className="fixed inset-0 w-screen h-screen z-40 bg-[#050505] overflow-hidden select-none cursor-crosshair font-mono text-xs sm:text-[13px]"
         >
             {/* 1. TOP HOVER TRIGGER ZONE (Top 65px) */}

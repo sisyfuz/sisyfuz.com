@@ -251,30 +251,51 @@ export default function SharpDisplay() {
                 }}
                 onClick={() => inputRef.current?.focus()}
             >
-                <div className={`w-[285px] xs:w-[320px] sm:w-[380px] font-mono text-xs uppercase transition-colors ${
-                    isSearchFocused
-                        ? "text-white"
-                        : buffer
-                        ? "text-neutral-200"
-                        : "text-neutral-400 hover:text-neutral-200"
-                }`}>
+                <div
+                    style={activeSection === "live" || location.pathname.toLowerCase().startsWith("/live") ? { textShadow: '0 1px 3px rgba(0,0,0,0.95)' } : undefined}
+                    className={`w-[285px] xs:w-[320px] sm:w-[380px] font-mono text-xs uppercase transition-colors ${
+                        isSearchFocused
+                            ? "text-white"
+                            : buffer
+                            ? "text-neutral-200"
+                            : "text-neutral-400 hover:text-neutral-200"
+                    }`}
+                >
                     {/* Top ASCII border line */}
-                    <div className="flex items-center text-neutral-600 leading-none select-none overflow-hidden whitespace-nowrap">
+                    <div className={`flex items-center leading-none select-none overflow-hidden whitespace-nowrap ${
+                        activeSection === "live" || location.pathname.toLowerCase().startsWith("/live") ? "text-neutral-400" : "text-neutral-600"
+                    }`}>
                         <span>+--[</span>
                         <span className="text-[#ff0080] font-bold px-1">&gt;</span>
-                        <span className={`font-bold transition-colors ${isSearchFocused ? "text-white" : "text-neutral-400"}`}>
+                        <span className={`font-bold transition-colors ${
+                            isSearchFocused
+                                ? "text-white"
+                                : activeSection === "live" || location.pathname.toLowerCase().startsWith("/live")
+                                ? "text-neutral-300"
+                                : "text-neutral-400"
+                        }`}>
                             SEARCH
                         </span>
                         <span>]</span>
-                        <span className="flex-1 overflow-hidden whitespace-nowrap text-neutral-700">----------------------------------------------------</span>
+                        <span className={`flex-1 overflow-hidden whitespace-nowrap ${
+                            activeSection === "live" || location.pathname.toLowerCase().startsWith("/live") ? "text-neutral-500" : "text-neutral-700"
+                        }`}>
+                            ----------------------------------------------------
+                        </span>
                         <span>+</span>
                     </div>
 
                     {/* Middle ASCII interactive row */}
-                    <div className={`flex items-center bg-black/95 px-1 py-1 transition-colors ${
+                    <div className={`flex items-center px-1 py-1 transition-colors ${
+                        activeSection === "live" || location.pathname.toLowerCase().startsWith("/live")
+                            ? "bg-transparent"
+                            : "bg-black/95"
+                    } ${
                         isSearchFocused ? "text-white" : "text-neutral-300"
                     }`}>
-                        <span className="text-neutral-600 mr-2 select-none">|</span>
+                        <span className={`mr-2 select-none ${
+                            activeSection === "live" || location.pathname.toLowerCase().startsWith("/live") ? "text-neutral-400" : "text-neutral-600"
+                        }`}>|</span>
                         <span className="text-[#ff0080] font-bold mr-1.5 select-none">&gt;</span>
 
                         <input
@@ -298,7 +319,11 @@ export default function SharpDisplay() {
                                     e.target.blur();
                                 }
                             }}
-                            className="bg-transparent text-white font-mono text-xs uppercase tracking-widest outline-none border-none p-0 flex-1 min-w-0 placeholder:text-neutral-600"
+                            className={`bg-transparent text-white font-mono text-xs uppercase tracking-widest outline-none border-none p-0 flex-1 min-w-0 ${
+                                activeSection === "live" || location.pathname.toLowerCase().startsWith("/live")
+                                    ? "placeholder:text-neutral-400"
+                                    : "placeholder:text-neutral-600"
+                            }`}
                             autoComplete="off"
                             autoCorrect="off"
                             spellCheck="false"
@@ -327,13 +352,21 @@ export default function SharpDisplay() {
                             </button>
                         )}
 
-                        <span className="text-neutral-600 ml-auto select-none">|</span>
+                        <span className={`ml-auto select-none ${
+                            activeSection === "live" || location.pathname.toLowerCase().startsWith("/live") ? "text-neutral-400" : "text-neutral-600"
+                        }`}>|</span>
                     </div>
 
                     {/* Bottom ASCII border line */}
-                    <div className="flex items-center text-neutral-600 leading-none select-none overflow-hidden whitespace-nowrap">
+                    <div className={`flex items-center leading-none select-none overflow-hidden whitespace-nowrap ${
+                        activeSection === "live" || location.pathname.toLowerCase().startsWith("/live") ? "text-neutral-400" : "text-neutral-600"
+                    }`}>
                         <span>+</span>
-                        <span className="flex-1 overflow-hidden whitespace-nowrap text-neutral-700">----------------------------------------------------</span>
+                        <span className={`flex-1 overflow-hidden whitespace-nowrap ${
+                            activeSection === "live" || location.pathname.toLowerCase().startsWith("/live") ? "text-neutral-500" : "text-neutral-700"
+                        }`}>
+                            ----------------------------------------------------
+                        </span>
                         <span>+</span>
                     </div>
                 </div>

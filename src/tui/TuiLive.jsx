@@ -100,6 +100,22 @@ export default function TuiLive({ onNavigate }) {
     const progressRef = useRef(0);
     const isVisibleRef = useRef(typeof document !== "undefined" ? !document.hidden : true);
     const touchTimeoutRef = useRef(null);
+    const displayModeRef = useRef(displayMode);
+    const isMutedRef = useRef(isMuted);
+    const fpsRef = useRef(fps);
+    const lastKnownAspectRef = useRef(1.0);
+
+    useEffect(() => {
+        displayModeRef.current = displayMode;
+    }, [displayMode]);
+
+    useEffect(() => {
+        isMutedRef.current = isMuted;
+    }, [isMuted]);
+
+    useEffect(() => {
+        fpsRef.current = fps;
+    }, [fps]);
 
     const handleMobileToggle = (e) => {
         if (e) e.stopPropagation();
@@ -247,6 +263,7 @@ export default function TuiLive({ onNavigate }) {
                 e.preventDefault();
                 setDisplayMode(prev => {
                     const next = prev === "cover" ? "fit" : "cover";
+                    displayModeRef.current = next;
                     setModeToast(next === "cover" ? "MODE: COVER (100% FILL)" : "MODE: FIT (1:1 BEST FIT)");
                     return next;
                 });
@@ -664,6 +681,7 @@ export default function TuiLive({ onNavigate }) {
         if (now - lastMouseSendRef.current < throttleMs) return;
         lastMouseSendRef.current = now;
 
+        const currentMode = displayModeRef.current;
         const viewportWidth = window.innerWidth;
         const viewportHeight = window.innerHeight;
         if (!viewportWidth || !viewportHeight) return;
@@ -671,16 +689,17 @@ export default function TuiLive({ onNavigate }) {
         const viewportAspect = viewportWidth / Math.max(1, viewportHeight);
 
         const video = videoRef.current;
-        const vW = (video && video.videoWidth > 0) ? video.videoWidth : 1920;
-        const vH = (video && video.videoHeight > 0) ? video.videoHeight : 1080;
-        const vAspect = vW / vH;
+        if (video && video.videoWidth > 0 && video.videoHeight > 0) {
+            lastKnownAspectRef.current = video.videoWidth / video.videoHeight;
+        }
+        const vAspect = lastKnownAspectRef.current;
 
         let imgX = 0;
         let imgY = 0;
         let imgW = viewportWidth;
         let imgH = viewportHeight;
 
-        if (displayMode === "cover") {
+        if (currentMode === "cover") {
             if (vAspect > viewportAspect) {
                 imgH = viewportHeight;
                 imgW = viewportHeight * vAspect;
@@ -693,7 +712,7 @@ export default function TuiLive({ onNavigate }) {
                 imgY = (viewportHeight - imgH) / 2;
             }
         } else {
-            // displayMode === "fit" (object-contain)
+            // currentMode === "fit" (object-contain)
             if (vAspect > viewportAspect) {
                 imgW = viewportWidth;
                 imgH = viewportWidth / vAspect;
@@ -762,10 +781,10 @@ export default function TuiLive({ onNavigate }) {
             hour: localHour,
             tz: tzOffset,
             dark: window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? 1 : 0,
-            audio: isMuted ? 0 : 1,
+            audio: isMutedRef.current ? 0 : 1,
             visible: isVisibleRef.current ? 1 : 0,
-            fps: fps || 60,
-            mode: displayMode,
+            fps: fpsRef.current || 60,
+            mode: currentMode,
         };
 
         try {
@@ -989,7 +1008,13 @@ export default function TuiLive({ onNavigate }) {
 
                         {/* Tab Mode: [TAB: COVER] / [TAB: FIT] */}
                         <button
-                            onClick={() => setDisplayMode(prev => prev === "cover" ? "fit" : "cover")}
+                            onClick={() => {
+                                setDisplayMode(prev => {
+                                    const next = prev === "cover" ? "fit" : "cover";
+                                    displayModeRef.current = next;
+                                    return next;
+                                });
+                            }}
                             className="text-neutral-300 hover:bg-white hover:text-black px-1 uppercase cursor-pointer"
                             title="Press Tab to toggle anytime"
                         >

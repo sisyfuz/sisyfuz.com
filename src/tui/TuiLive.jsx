@@ -113,6 +113,9 @@ export default function TuiLive({ onNavigate }) {
 
     useEffect(() => {
         isMutedRef.current = isMuted;
+        if (videoRef.current) {
+            videoRef.current.muted = isMuted;
+        }
     }, [isMuted]);
 
     useEffect(() => {
@@ -161,10 +164,12 @@ export default function TuiLive({ onNavigate }) {
         };
     }, [isHoverTop]);
 
-    // Check Worker & Sanity for live stream URL (poll every 4s)
+    // Check Worker & Sanity for live stream URL (poll every 4s with debounce)
     useEffect(() => {
         const params = new URLSearchParams(window.location.search);
         if (params.get("stream") || params.get("s")) return;
+
+        let consecutiveFails = 0;
 
         const checkLiveStatus = async () => {
             try {
@@ -172,18 +177,28 @@ export default function TuiLive({ onNavigate }) {
                 if (res.ok) {
                     const data = await res.json();
                     if (data.active && data.url) {
-                        setStreamUrl(data.url);
-                    } else if (!isLocalhost) {
-                        setStreamUrl("");
-                        setIsLive(false);
+                        consecutiveFails = 0;
+                        setStreamUrl((prev) => (prev === data.url ? prev : data.url));
+                        return;
                     }
                 }
-            } catch {
-                client.fetch(`*[_id == "site-live-stream"][0]`).then(doc => {
-                    if (doc?.active && doc?.url) {
-                        setStreamUrl(doc.url);
-                    }
-                }).catch(() => {});
+            } catch {}
+
+            // Try Sanity fallback
+            try {
+                const doc = await client.fetch(`*[_id == "site-live-stream"][0]`);
+                if (doc?.active && doc?.url) {
+                    consecutiveFails = 0;
+                    setStreamUrl((prev) => (prev === doc.url ? prev : doc.url));
+                    return;
+                }
+            } catch {}
+
+            // Require 3 consecutive failed checks (12s) before declaring offline
+            consecutiveFails++;
+            if (consecutiveFails >= 3 && !isLocalhost) {
+                setStreamUrl("");
+                setIsLive(false);
             }
         };
 
@@ -201,18 +216,14 @@ export default function TuiLive({ onNavigate }) {
         return () => clearInterval(interval);
     }, [isLive]);
 
-    // Page Visibility API Optimization (Throttle background tabs to save battery & CPU)
+    // Page Visibility API Optimization (Re-sync playback on tab return)
     useEffect(() => {
         const handleVisibilityChange = () => {
             const visible = !document.hidden;
             isVisibleRef.current = visible;
             const video = videoRef.current;
-            if (video) {
-                if (!visible) {
-                    video.pause();
-                } else if (isLive) {
-                    video.play().catch(() => {});
-                }
+            if (video && visible && isLive && video.paused) {
+                video.play().catch(() => {});
             }
         };
 
@@ -313,15 +324,58 @@ export default function TuiLive({ onNavigate }) {
         const video = videoRef.current;
         if (!video) return;
 
-        // Apply saved mute state
-        video.muted = isMuted;
-
         const cleanUrl = streamUrl.replace(/\/+$/, "");
         let hlsInstance = null;
 
-        // --- HLS fallback: exact same code path as before ---
+        // Autoplay guarantee: attempt playback respecting user mute state; fallback to muted if blocked
+        const playVideoSafe = async () => {
+            if (!video || !isMounted) return;
+            try {
+                video.muted = isMutedRef.current;
+                await video.play();
+            } catch (err) {
+                console.warn("[TuiLive] Play failed, falling back to muted autoplay:", err);
+                video.muted = true;
+                try {
+                    await video.play();
+                } catch (e2) {
+                    console.warn("[TuiLive] Autoplay blocked, waiting for interaction:", e2);
+                    const resumeOnGesture = () => {
+                        if (video) video.play().catch(() => {});
+                        window.removeEventListener("pointerdown", resumeOnGesture);
+                        window.removeEventListener("keydown", resumeOnGesture);
+                    };
+                    window.addEventListener("pointerdown", resumeOnGesture, { once: true });
+                    window.addEventListener("keydown", resumeOnGesture, { once: true });
+                }
+            }
+        };
+
+        // --- HLS fallback: exact same code path as before, with clean buffer reset ---
         const startHLS = () => {
             if (!isMounted) return;
+
+            // Clean up any remaining WebRTC state
+            if (pcRef.current) {
+                try {
+                    pcRef.current.close();
+                } catch {}
+                pcRef.current = null;
+            }
+
+            // Cleanly detach WebRTC MediaStream before attaching HLS
+            if (video.srcObject) {
+                try {
+                    const stream = video.srcObject;
+                    if (stream && stream.getTracks) {
+                        stream.getTracks().forEach((track) => track.stop());
+                    }
+                } catch {}
+                video.srcObject = null;
+            }
+            video.removeAttribute("src");
+            video.load();
+
             const hlsUrl = cleanUrl.includes(".m3u8")
                 ? cleanUrl
                 : `${cleanUrl}/live/index.m3u8`;
@@ -336,9 +390,12 @@ export default function TuiLive({ onNavigate }) {
                     enableWorker: true,
                     maxBufferLength: 4,
                     maxMaxBufferLength: 8,
-                    highBufferWatchdogPeriod: 1,
+                    highBufferWatchdogPeriod: 2,
                     nudgeOffset: 0.1,
                     nudgeMaxRetry: 5,
+                    manifestLoadingMaxRetry: 8,
+                    fragLoadingMaxRetry: 6,
+                    levelLoadingMaxRetry: 6,
                 });
                 hlsRef.current = hls;
                 hlsInstance = hls;
@@ -348,7 +405,7 @@ export default function TuiLive({ onNavigate }) {
 
                 hls.on(Hls.Events.MANIFEST_PARSED, () => {
                     if (isMounted) {
-                        video.play().catch(() => {});
+                        playVideoSafe();
                         setIsLive(true);
                         setTransport("HLS");
                     }
@@ -375,12 +432,12 @@ export default function TuiLive({ onNavigate }) {
                 video.src = hlsUrl;
                 const onLoaded = () => {
                     if (isMounted) {
-                        video.play().catch(() => {});
+                        playVideoSafe();
                         setIsLive(true);
                         setTransport("HLS");
                     }
                 };
-                video.addEventListener("loadedmetadata", onLoaded);
+                video.addEventListener("loadedmetadata", onLoaded, { once: true });
             }
         };
 
@@ -429,9 +486,35 @@ export default function TuiLive({ onNavigate }) {
                 const offer = await pc.createOffer();
                 await pc.setLocalDescription(offer);
 
-                // 5-second timeout for WHEP signaling
+                // Wait for ICE candidate gathering (host + STUN + TURN) before POSTing offer
+                await new Promise((resolve) => {
+                    if (pc.iceGatheringState === "complete") return resolve();
+                    let gatherTimeout;
+                    const cleanup = () => {
+                        clearTimeout(gatherTimeout);
+                        pc.removeEventListener("icecandidate", onCandidate);
+                        pc.removeEventListener("icegatheringstatechange", onGatheringChange);
+                        resolve();
+                    };
+                    const onCandidate = (e) => {
+                        if (!e.candidate) cleanup(); // null candidate indicates gathering complete
+                    };
+                    const onGatheringChange = () => {
+                        if (pc.iceGatheringState === "complete") cleanup();
+                    };
+                    pc.addEventListener("icecandidate", onCandidate);
+                    pc.addEventListener("icegatheringstatechange", onGatheringChange);
+                    gatherTimeout = setTimeout(cleanup, 1200); // 1.2s ceiling
+                });
+
+                if (!isMounted) {
+                    pc.close();
+                    return;
+                }
+
+                // 6-second timeout for WHEP signaling
                 const controller = new AbortController();
-                const timeout = setTimeout(() => controller.abort(), 5000);
+                const timeout = setTimeout(() => controller.abort(), 6000);
 
                 const whepRes = await fetch(`${cleanUrl}/live/whep`, {
                     method: "POST",
@@ -457,9 +540,9 @@ export default function TuiLive({ onNavigate }) {
                     }
                 }
 
-                // Wait for connection with 5-second timeout
+                // Wait for connection with 6-second timeout
                 await new Promise((resolve, reject) => {
-                    const connTimeout = setTimeout(() => reject(new Error("WebRTC connection timeout")), 5000);
+                    const connTimeout = setTimeout(() => reject(new Error("WebRTC connection timeout")), 6000);
 
                     const onStateChange = () => {
                         const state = pc.connectionState;
@@ -489,7 +572,7 @@ export default function TuiLive({ onNavigate }) {
                     return;
                 }
 
-                video.play().catch(() => {});
+                await playVideoSafe();
                 setIsLive(true);
                 setTransport("WEBRTC");
 
@@ -497,21 +580,24 @@ export default function TuiLive({ onNavigate }) {
                 pc.addEventListener("connectionstatechange", () => {
                     const state = pc.connectionState;
                     if (state === "failed" || state === "disconnected") {
-                        pc.close();
+                        console.warn(`[WebRTC] Connection ${state}, falling back to HLS`);
+                        try {
+                            pc.close();
+                        } catch {}
                         pcRef.current = null;
-                        video.srcObject = null;
                         if (isMounted) {
                             startHLS();
                         }
                     }
                 });
-            } catch {
-                // WebRTC failed — clean up and fall back to HLS
+            } catch (err) {
+                console.warn("[WebRTC] Handshake failed, falling back to HLS:", err);
                 if (pcRef.current) {
-                    pcRef.current.close();
+                    try {
+                        pcRef.current.close();
+                    } catch {}
                     pcRef.current = null;
                 }
-                video.srcObject = null;
                 if (isMounted) {
                     startHLS();
                 }
@@ -523,7 +609,9 @@ export default function TuiLive({ onNavigate }) {
         return () => {
             isMounted = false;
             if (pcRef.current) {
-                pcRef.current.close();
+                try {
+                    pcRef.current.close();
+                } catch {}
                 pcRef.current = null;
             }
             if (hlsInstance) {
@@ -532,13 +620,21 @@ export default function TuiLive({ onNavigate }) {
             }
             if (video) {
                 video.pause();
-                video.srcObject = null;
+                if (video.srcObject) {
+                    try {
+                        const stream = video.srcObject;
+                        if (stream && stream.getTracks) {
+                            stream.getTracks().forEach((track) => track.stop());
+                        }
+                    } catch {}
+                    video.srcObject = null;
+                }
                 video.removeAttribute("src");
                 video.load();
             }
             setTransport("");
         };
-    }, [streamUrl, isMuted]);
+    }, [streamUrl]);
 
     // 2. Hardware FPS Meter (via requestVideoFrameCallback)
     useEffect(() => {

@@ -110,30 +110,28 @@ async function main() {
         console.log(`      [OK] TouchDesigner cursor receiver is active!\n`);
     }
 
-    // 2. Start MediaMTX
+    // 2. Start MediaMTX with Watchdog
     console.log("[2/4] Starting MediaMTX low-latency engine...");
-    const mediamtxRunning = await checkPort(MEDIAMTX_HLS_PORT);
-    if (mediamtxRunning) {
-        console.log("      [OK] MediaMTX is already running on port 1935 / 8888.\n");
-    } else {
-        const confPath = path.join(__dirname, "mediamtx.yml");
-        const mtxEnv = {
-            ...process.env,
-            PATH: `${process.env.PATH || ""}:/opt/homebrew/bin:/usr/local/bin`,
-        };
-        if (TURN_USERNAME && TURN_CREDENTIAL) {
-            mtxEnv.MTX_WEBRTCICESERVERS2 = JSON.stringify([
-                { url: "stun:stun.l.google.com:19302" },
-                { url: `turn:${TURN_HOST}:80`, username: TURN_USERNAME, password: TURN_CREDENTIAL },
-                { url: `turn:${TURN_HOST}:443`, username: TURN_USERNAME, password: TURN_CREDENTIAL },
-                { url: `turn:${TURN_HOST}:443?transport=tcp`, username: TURN_USERNAME, password: TURN_CREDENTIAL },
-            ]);
-        }
+    const confPath = path.join(__dirname, "mediamtx.yml");
+    const mtxEnv = {
+        ...process.env,
+        PATH: `${process.env.PATH || ""}:/opt/homebrew/bin:/usr/local/bin`,
+    };
+    if (TURN_USERNAME && TURN_CREDENTIAL) {
+        mtxEnv.MTX_WEBRTCICESERVERS2 = JSON.stringify([
+            { url: "stun:stun.l.google.com:19302" },
+            { url: `turn:${TURN_HOST}:80`, username: TURN_USERNAME, password: TURN_CREDENTIAL },
+            { url: `turn:${TURN_HOST}:443`, username: TURN_USERNAME, password: TURN_CREDENTIAL },
+            { url: `turn:${TURN_HOST}:443?transport=tcp`, username: TURN_USERNAME, password: TURN_CREDENTIAL },
+        ]);
+    }
 
-        const bin = fs.existsSync("/opt/homebrew/bin/mediamtx")
-            ? "/opt/homebrew/bin/mediamtx"
-            : (fs.existsSync("/usr/local/bin/mediamtx") ? "/usr/local/bin/mediamtx" : "mediamtx");
+    const bin = fs.existsSync("/opt/homebrew/bin/mediamtx")
+        ? "/opt/homebrew/bin/mediamtx"
+        : (fs.existsSync("/usr/local/bin/mediamtx") ? "/usr/local/bin/mediamtx" : "mediamtx");
 
+    const launchMediaMTX = () => {
+        if (isShuttingDown) return;
         mediamtxProc = spawn(bin, [confPath], {
             env: mtxEnv,
             stdio: ["ignore", "pipe", "pipe"],
@@ -159,9 +157,31 @@ async function main() {
 
         mediamtxProc.on("exit", (code, sig) => {
             if (!isShuttingDown) {
-                console.error(`      [FATAL] MediaMTX stopped (code: ${code}, signal: ${sig})`);
+                console.error(`      [WATCHDOG] MediaMTX stopped unexpectedly (code: ${code}, signal: ${sig}). Restarting in 1s...`);
+                setTimeout(() => {
+                    killPort(MEDIAMTX_HLS_PORT);
+                    killPort(MEDIAMTX_WEBRTC_PORT);
+                    killPort(1935);
+                    launchMediaMTX();
+                }, 1000);
             }
         });
+    };
+
+    const isHlsListening = await checkPort(MEDIAMTX_HLS_PORT);
+    const isRtmpListening = await checkPort(1935);
+
+    if (isHlsListening && isRtmpListening) {
+        console.log("      [OK] MediaMTX is already active on port 1935 / 8888.\n");
+    } else {
+        // Clear any half-open/stale ports before starting fresh
+        killPort(MEDIAMTX_HLS_PORT);
+        killPort(MEDIAMTX_WEBRTC_PORT);
+        killPort(1935);
+        killPort(9997);
+        await new Promise((r) => setTimeout(r, 300));
+
+        launchMediaMTX();
 
         // Wait up to 4 seconds for MediaMTX to initialize
         let isStarted = false;
@@ -212,6 +232,17 @@ async function main() {
     }
     const pathDetectorInterval = setInterval(detectActiveStreamPath, 1500);
 
+    function getAlternatePath(url) {
+        if (!url || typeof url !== "string") return null;
+        if (url === "/live/whep") return "/live/live/whep";
+        if (url.startsWith("/live/whep/")) return url.replace("/live/whep/", "/live/live/whep/");
+        if (url === "/live/live/whep") return "/live/whep";
+        if (url.startsWith("/live/live/whep/")) return url.replace("/live/live/whep/", "/live/whep/");
+        if (url.startsWith("/live/live/")) return url.replace("/live/live/", "/live/");
+        if (url.startsWith("/live/")) return url.replace("/live/", "/live/live/");
+        return null;
+    }
+
     function mapStreamUrl(url) {
         if (activeStreamPath && activeStreamPath !== "live") {
             if (url === "/live/whep" || url.startsWith("/live/whep/")) {
@@ -256,136 +287,168 @@ async function main() {
             return;
         }
 
-        // --- WHEP proxy: Forward WebRTC signaling to MediaMTX (POST/PATCH/DELETE /live/whep*) ---
-        if (req.url.startsWith("/live/whep") || (activeStreamPath !== "live" && req.url.startsWith(`/${activeStreamPath}/whep`))) {
+        // --- WHEP proxy: Forward WebRTC signaling to MediaMTX with auto-retry ---
+        if (req.url.startsWith("/live/whep") || req.url.startsWith("/live/live/whep")) {
             const chunks = [];
             req.on("data", (chunk) => chunks.push(chunk));
             req.on("end", () => {
                 const body = Buffer.concat(chunks);
-                const targetPath = mapStreamUrl(req.url);
-                const whepReq = http.request({
-                    hostname: "127.0.0.1",
-                    port: MEDIAMTX_WEBRTC_PORT,
-                    path: targetPath,
-                    method: req.method,
-                    headers: {
-                        "content-type": req.headers["content-type"] || "application/sdp",
-                        "content-length": body.length,
-                    },
-                }, (whepRes) => {
-                    const fwdHeaders = {
-                        "access-control-allow-origin": "*",
-                        "access-control-expose-headers": "Location, Link",
-                    };
-                    if (whepRes.headers["content-type"]) fwdHeaders["content-type"] = whepRes.headers["content-type"];
-                    if (whepRes.headers["location"]) {
-                        let loc = whepRes.headers["location"];
-                        if (activeStreamPath !== "live" && loc.includes(`/${activeStreamPath}/whep`)) {
-                            loc = loc.replace(`/${activeStreamPath}/whep`, "/live/whep");
+                const sendWhep = (targetPath, isRetry = false) => {
+                    const whepReq = http.request({
+                        hostname: "127.0.0.1",
+                        port: MEDIAMTX_WEBRTC_PORT,
+                        path: targetPath,
+                        method: req.method,
+                        headers: {
+                            "content-type": req.headers["content-type"] || "application/sdp",
+                            "content-length": body.length,
+                        },
+                    }, (whepRes) => {
+                        // If 404 on initial attempt, transparently try alternate path immediately
+                        if (whepRes.statusCode === 404 && !isRetry) {
+                            const alt = getAlternatePath(targetPath);
+                            if (alt) {
+                                return sendWhep(alt, true);
+                            }
                         }
-                        fwdHeaders["location"] = loc;
-                    }
-                    if (whepRes.headers["link"]) fwdHeaders["link"] = whepRes.headers["link"];
 
-                    res.writeHead(whepRes.statusCode, fwdHeaders);
-                    whepRes.pipe(res);
-                });
+                        if (whepRes.statusCode >= 200 && whepRes.statusCode < 300) {
+                            if (targetPath.includes("/live/live/")) activeStreamPath = "live/live";
+                            else if (targetPath.includes("/live/")) activeStreamPath = "live";
+                        }
 
-                whepReq.on("error", () => {
-                    res.writeHead(502, { "Content-Type": "text/plain" });
-                    res.end("WebRTC signaling server unavailable");
-                });
-                whepReq.write(body);
-                whepReq.end();
+                        const fwdHeaders = {
+                            "access-control-allow-origin": "*",
+                            "access-control-expose-headers": "Location, Link",
+                        };
+                        if (whepRes.headers["content-type"]) fwdHeaders["content-type"] = whepRes.headers["content-type"];
+                        if (whepRes.headers["location"]) {
+                            let loc = whepRes.headers["location"];
+                            if (activeStreamPath !== "live" && loc.includes(`/${activeStreamPath}/whep`)) {
+                                loc = loc.replace(`/${activeStreamPath}/whep`, "/live/whep");
+                            }
+                            fwdHeaders["location"] = loc;
+                        }
+                        if (whepRes.headers["link"]) fwdHeaders["link"] = whepRes.headers["link"];
+
+                        res.writeHead(whepRes.statusCode, fwdHeaders);
+                        whepRes.pipe(res);
+                    });
+
+                    whepReq.on("error", () => {
+                        res.writeHead(502, { "Content-Type": "text/plain" });
+                        res.end("WebRTC signaling server unavailable");
+                    });
+                    whepReq.write(body);
+                    whepReq.end();
+                };
+
+                sendWhep(mapStreamUrl(req.url));
             });
             return;
         }
 
-        // --- HLS proxy: Transparent cookie-handling proxy to MediaMTX ---
+        // --- HLS proxy: Transparent cookie-handling proxy to MediaMTX with auto-retry ---
         const clientKey = req.headers["x-forwarded-for"] || req.socket.remoteAddress || "client";
         const sessionCookie = activeCookies.get(clientKey) || "cookieCheck=1";
-        const targetPath = mapStreamUrl(req.url);
 
-        const proxyReq = http.request({
-            agent: httpAgent,
-            hostname: "127.0.0.1",
-            port: MEDIAMTX_HLS_PORT,
-            path: targetPath,
-            method: req.method,
-            headers: {
-                ...req.headers,
-                host: `127.0.0.1:${MEDIAMTX_HLS_PORT}`,
-                cookie: sessionCookie,
-            },
-        }, (proxyRes) => {
-            const setCookie = proxyRes.headers["set-cookie"];
-            if (setCookie) {
-                const cookieStr = Array.isArray(setCookie) ? setCookie.join("; ") : setCookie;
-                activeCookies.set(clientKey, cookieStr);
-            }
-
-            // Transparently follow MediaMTX 302 cookieCheck redirects internally
-            if (proxyRes.statusCode === 301 || proxyRes.statusCode === 302) {
-                const redirectLoc = proxyRes.headers["location"];
-                if (redirectLoc) {
-                    const nextUrl = new URL(redirectLoc, `http://127.0.0.1:${MEDIAMTX_HLS_PORT}`);
-                    const nextCookie = activeCookies.get(clientKey) || "cookieCheck=1";
-
-                    const followReq = http.request({
-                        agent: httpAgent,
-                        hostname: "127.0.0.1",
-                        port: MEDIAMTX_HLS_PORT,
-                        path: nextUrl.pathname + nextUrl.search,
-                        method: "GET",
-                        headers: {
-                            host: `127.0.0.1:${MEDIAMTX_HLS_PORT}`,
-                            cookie: nextCookie,
-                        },
-                    }, (followRes) => {
-                        const nextSetCookie = followRes.headers["set-cookie"];
-                        if (nextSetCookie) {
-                            const cookieStr = Array.isArray(nextSetCookie) ? nextSetCookie.join("; ") : nextSetCookie;
-                            activeCookies.set(clientKey, cookieStr);
-                        }
-
-                        const headers = { ...followRes.headers };
-                        headers["access-control-allow-origin"] = "*";
-                        if (req.url && req.url.includes(".m3u8")) {
-                            headers["cache-control"] = "no-cache, no-store, must-revalidate, max-age=0";
-                            headers["pragma"] = "no-cache";
-                            headers["expires"] = "0";
-                        }
-                        delete headers["set-cookie"]; // Don't leak internal cookies
-                        res.writeHead(followRes.statusCode, headers);
-                        followRes.pipe(res);
-                    });
-
-                    followReq.on("error", () => {
-                        res.writeHead(502, { "Content-Type": "text/plain" });
-                        res.end("Stream buffer initializing...");
-                    });
-                    followReq.end();
-                    return;
+        const sendHls = (targetPath, isRetry = false) => {
+            const proxyReq = http.request({
+                agent: httpAgent,
+                hostname: "127.0.0.1",
+                port: MEDIAMTX_HLS_PORT,
+                path: targetPath,
+                method: req.method,
+                headers: {
+                    ...req.headers,
+                    host: `127.0.0.1:${MEDIAMTX_HLS_PORT}`,
+                    cookie: sessionCookie,
+                },
+            }, (proxyRes) => {
+                // If 404 on playlist request, transparently retry alternate path
+                if (proxyRes.statusCode === 404 && !isRetry && (targetPath.endsWith(".m3u8") || targetPath.includes("/live/"))) {
+                    const alt = getAlternatePath(targetPath);
+                    if (alt) {
+                        return sendHls(alt, true);
+                    }
                 }
-            }
 
-            const headers = { ...proxyRes.headers };
-            headers["access-control-allow-origin"] = "*";
-            if (req.url && req.url.includes(".m3u8")) {
-                headers["cache-control"] = "no-cache, no-store, must-revalidate, max-age=0";
-                headers["pragma"] = "no-cache";
-                headers["expires"] = "0";
-            }
-            res.writeHead(proxyRes.statusCode, headers);
-            proxyRes.pipe(res);
-        });
+                if (proxyRes.statusCode === 200 || proxyRes.statusCode === 302) {
+                    if (targetPath.includes("/live/live/")) activeStreamPath = "live/live";
+                    else if (targetPath.includes("/live/")) activeStreamPath = "live";
+                }
 
-        proxyReq.on("error", () => {
-            res.writeHead(502, { "Content-Type": "text/plain" });
-            res.end("Media server initializing...");
-        });
+                const setCookie = proxyRes.headers["set-cookie"];
+                if (setCookie) {
+                    const cookieStr = Array.isArray(setCookie) ? setCookie.join("; ") : setCookie;
+                    activeCookies.set(clientKey, cookieStr);
+                }
 
-        req.pipe(proxyReq);
+                // Transparently follow MediaMTX 302 cookieCheck redirects internally
+                if (proxyRes.statusCode === 301 || proxyRes.statusCode === 302) {
+                    const redirectLoc = proxyRes.headers["location"];
+                    if (redirectLoc) {
+                        const nextUrl = new URL(redirectLoc, `http://127.0.0.1:${MEDIAMTX_HLS_PORT}`);
+                        const nextCookie = activeCookies.get(clientKey) || "cookieCheck=1";
+
+                        const followReq = http.request({
+                            agent: httpAgent,
+                            hostname: "127.0.0.1",
+                            port: MEDIAMTX_HLS_PORT,
+                            path: nextUrl.pathname + nextUrl.search,
+                            method: "GET",
+                            headers: {
+                                host: `127.0.0.1:${MEDIAMTX_HLS_PORT}`,
+                                cookie: nextCookie,
+                            },
+                        }, (followRes) => {
+                            const nextSetCookie = followRes.headers["set-cookie"];
+                            if (nextSetCookie) {
+                                const cookieStr = Array.isArray(nextSetCookie) ? nextSetCookie.join("; ") : nextSetCookie;
+                                activeCookies.set(clientKey, cookieStr);
+                            }
+
+                            const headers = { ...followRes.headers };
+                            headers["access-control-allow-origin"] = "*";
+                            if (req.url && req.url.includes(".m3u8")) {
+                                headers["cache-control"] = "no-cache, no-store, must-revalidate, max-age=0";
+                                headers["pragma"] = "no-cache";
+                                headers["expires"] = "0";
+                            }
+                            delete headers["set-cookie"]; // Don't leak internal cookies
+                            res.writeHead(followRes.statusCode, headers);
+                            followRes.pipe(res);
+                        });
+
+                        followReq.on("error", () => {
+                            res.writeHead(502, { "Content-Type": "text/plain" });
+                            res.end("Stream buffer initializing...");
+                        });
+                        followReq.end();
+                        return;
+                    }
+                }
+
+                const headers = { ...proxyRes.headers };
+                headers["access-control-allow-origin"] = "*";
+                if (req.url && req.url.includes(".m3u8")) {
+                    headers["cache-control"] = "no-cache, no-store, must-revalidate, max-age=0";
+                    headers["pragma"] = "no-cache";
+                    headers["expires"] = "0";
+                }
+                res.writeHead(proxyRes.statusCode, headers);
+                proxyRes.pipe(res);
+            });
+
+            proxyReq.on("error", () => {
+                res.writeHead(502, { "Content-Type": "text/plain" });
+                res.end("Media server initializing...");
+            });
+
+            req.pipe(proxyReq);
+        };
+
+        sendHls(mapStreamUrl(req.url));
     });
 
     // Forward WebSocket upgrades (mouse telemetry) to TouchDesigner

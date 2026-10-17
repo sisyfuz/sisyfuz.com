@@ -35,6 +35,8 @@ hlsAllowOrigins:
 paths:
   live:
     source: publisher
+    fallback: /live/live
   live/live:
     source: publisher
+    fallback: /live
   all_others:

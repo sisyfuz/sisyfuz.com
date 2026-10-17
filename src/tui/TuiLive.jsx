@@ -10,22 +10,34 @@ const DEFAULT_STREAM_URL = isLocalhost ? "http://localhost:9988" : "";
 const GLITCH_CHARS = ["█", "▓", "▒", "░", "#", "+", "*", "~", "/", "\\", "%", "$", ">", "_"];
 
 // Helper component to render text with cellular ASCII wipe animation
-function AsciiWipeItem({ text, progress, startIndex = 0, totalLength = 80 }) {
+function AsciiWipeItem({ text, progress, startIndex = 0, totalLength = 110 }) {
     if (progress <= 0.005) return null;
+
+    // Full reveal fallback: Guarantee all characters are 100% visible and resolved
+    if (progress >= 0.95) {
+        return (
+            <span className="inline-block whitespace-pre font-mono">
+                {text}
+            </span>
+        );
+    }
+
+    // Dynamic wave progression with 1.35x headroom so wave sweeps completely past the end
+    const wavePos = progress * 1.35;
 
     return (
         <span className="inline-block whitespace-pre font-mono">
             {text.split("").map((char, idx) => {
                 const i = startIndex + idx;
                 const normX = i / Math.max(1, totalLength);
-                const stagger = ((i * 17) % 7) * 0.018;
+                const stagger = ((i * 17) % 7) * 0.015;
                 const threshold = normX + stagger;
-                const delta = progress - threshold;
+                const delta = wavePos - threshold;
 
-                if (delta > 0.06) {
+                if (delta > 0.05) {
                     // Fully resolved crisp character
                     return <span key={idx}>{char}</span>;
-                } else if (delta >= -0.04 && delta <= 0.06) {
+                } else if (delta >= -0.04 && delta <= 0.05) {
                     // Active wave front: Hot-pink glitch
                     const g = GLITCH_CHARS[(i + Math.floor(progress * 25)) % GLITCH_CHARS.length];
                     return (
@@ -635,7 +647,7 @@ export default function TuiLive({ onNavigate }) {
                                         text={item.label}
                                         progress={wipeProgress}
                                         startIndex={idx * 8}
-                                        totalLength={95}
+                                        totalLength={110}
                                     />
                                 </button>
                             );
@@ -658,8 +670,8 @@ export default function TuiLive({ onNavigate }) {
                                             : "OFFLINE"
                                     }
                                     progress={wipeProgress}
-                                    startIndex={35}
-                                    totalLength={95}
+                                    startIndex={48}
+                                    totalLength={110}
                                 />
                             </span>
                         </div>
@@ -678,8 +690,8 @@ export default function TuiLive({ onNavigate }) {
                                 <AsciiWipeItem
                                     text={isMuted ? "[M: MUTED]" : "[M: AUDIO ON]"}
                                     progress={wipeProgress}
-                                    startIndex={58}
-                                    totalLength={95}
+                                    startIndex={72}
+                                    totalLength={110}
                                 />
                             </button>
                         )}
@@ -693,8 +705,8 @@ export default function TuiLive({ onNavigate }) {
                             <AsciiWipeItem
                                 text={`[TAB: ${displayMode.toUpperCase()}]`}
                                 progress={wipeProgress}
-                                startIndex={72}
-                                totalLength={95}
+                                startIndex={85}
+                                totalLength={110}
                             />
                         </button>
 
@@ -707,8 +719,8 @@ export default function TuiLive({ onNavigate }) {
                             <AsciiWipeItem
                                 text="[F: FULLSCREEN]"
                                 progress={wipeProgress}
-                                startIndex={84}
-                                totalLength={95}
+                                startIndex={98}
+                                totalLength={110}
                             />
                         </button>
                     </div>

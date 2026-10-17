@@ -458,6 +458,8 @@ export default function TuiLive({ onNavigate }) {
                 {/* WebSocket Canvas Stream (Native Mac 1280x1280) */}
                 <canvas
                     ref={canvasRef}
+                    width={1280}
+                    height={1280}
                     className={`select-none pointer-events-none ${
                         isLive && !isHttp ? "block" : "hidden"
                     } ${

@@ -42,10 +42,10 @@ export default function TuiArchive({ onSelectWork }) {
                 <table className="w-full text-left font-mono border-collapse">
                     <thead>
                         <tr className="text-neutral-500 uppercase">
-                            <th className="py-2 pr-4 w-24 font-normal">YEAR</th>
-                            <th className="py-2 px-4 font-normal">TITLE</th>
+                            <th className="py-2 pr-2 sm:pr-4 w-14 sm:w-24 font-normal">YEAR</th>
+                            <th className="py-2 px-2 sm:px-4 font-normal">TITLE</th>
                             <th className="py-2 px-4 w-40 font-normal hidden sm:table-cell">MEDIUM</th>
-                            <th className="py-2 pl-4 w-28 text-right font-normal">ACCESS</th>
+                            <th className="py-2 pl-2 sm:pl-4 w-20 sm:w-28 text-right font-normal">ACCESS</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -72,14 +72,14 @@ export default function TuiArchive({ onSelectWork }) {
                                     onClick={handleClick}
                                     className={`cursor-pointer group hover:bg-white hover:text-black transition-none`}
                                 >
-                                    <td className="py-2.5 pr-4 text-neutral-500 group-hover:text-black">{item.year}</td>
-                                    <td className="py-2.5 px-4 font-bold uppercase text-white group-hover:text-black">
+                                    <td className="py-2 sm:py-2.5 pr-2 sm:pr-4 text-neutral-500 group-hover:text-black">{item.year}</td>
+                                    <td className="py-2 sm:py-2.5 px-2 sm:px-4 font-bold uppercase text-white group-hover:text-black">
                                         {item.title}
                                     </td>
                                     <td className="py-2.5 px-4 text-neutral-400 group-hover:text-black hidden sm:table-cell uppercase">
                                         [{item.type || "project"}]
                                     </td>
-                                    <td className="py-2.5 pl-4 text-right">
+                                    <td className="py-2 sm:py-2.5 pl-2 sm:pl-4 text-right">
                                         {isExternal ? (
                                             <span className="text-pink-500 group-hover:text-black font-bold uppercase">
                                                 [EXT ↗]

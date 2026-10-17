@@ -21,7 +21,7 @@ export default function TuiContact() {
                     <span className="text-neutral-500 uppercase block mb-1">EMAIL DIRECT:</span>
                     <a
                         href="mailto:info@sisyfuz.com"
-                        className="text-white hover:bg-white hover:text-black font-bold uppercase px-1 -mx-1"
+                        className="text-white hover:bg-white hover:text-black font-bold uppercase py-1 px-2 -ml-2 inline-block transition-colors"
                     >
                         [INFO@SISYFUZ.COM]
                     </a>
@@ -33,7 +33,7 @@ export default function TuiContact() {
                         href="https://instagram.com/sisyfuz"
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="text-white hover:bg-white hover:text-black font-bold uppercase px-1 -mx-1"
+                        className="text-white hover:bg-white hover:text-black font-bold uppercase py-1 px-2 -ml-2 inline-block transition-colors"
                     >
                         [INSTAGRAM.COM/SISYFUZ]
                     </a>

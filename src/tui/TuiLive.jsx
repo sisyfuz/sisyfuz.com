@@ -84,6 +84,21 @@ export default function TuiLive({ onNavigate }) {
     const hlsRef = useRef(null);
     const progressRef = useRef(0);
     const isVisibleRef = useRef(typeof document !== "undefined" ? !document.hidden : true);
+    const touchTimeoutRef = useRef(null);
+
+    const handleMobileToggle = (e) => {
+        if (e) e.stopPropagation();
+        setIsHoverTop(prev => {
+            const next = !prev;
+            if (next) {
+                if (touchTimeoutRef.current) clearTimeout(touchTimeoutRef.current);
+                touchTimeoutRef.current = setTimeout(() => {
+                    setIsHoverTop(false);
+                }, 7000);
+            }
+            return next;
+        });
+    };
 
     // Smooth animation loop for top-bar ASCII cellular wipe
     useEffect(() => {
@@ -107,7 +122,10 @@ export default function TuiLive({ onNavigate }) {
         };
 
         frameId = requestAnimationFrame(animate);
-        return () => cancelAnimationFrame(frameId);
+        return () => {
+            cancelAnimationFrame(frameId);
+            if (touchTimeoutRef.current) clearTimeout(touchTimeoutRef.current);
+        };
     }, [isHoverTop]);
 
     // Check Worker & Sanity for live stream URL (poll every 4s)
@@ -190,11 +208,20 @@ export default function TuiLive({ onNavigate }) {
 
     const toggleFullscreen = () => {
         const el = containerRef.current;
+        const video = videoRef.current;
         if (!el) return;
-        if (!document.fullscreenElement) {
-            el.requestFullscreen().catch(err => console.warn(err));
+        if (!document.fullscreenElement && !document.webkitFullscreenElement) {
+            if (el.requestFullscreen) {
+                el.requestFullscreen().catch(err => console.warn(err));
+            } else if (video?.webkitEnterFullscreen) {
+                video.webkitEnterFullscreen();
+            }
         } else {
-            document.exitFullscreen();
+            if (document.exitFullscreen) {
+                document.exitFullscreen();
+            } else if (document.webkitExitFullscreen) {
+                document.webkitExitFullscreen();
+            }
         }
     };
 
@@ -559,11 +586,26 @@ export default function TuiLive({ onNavigate }) {
             }}
             className="fixed inset-0 w-screen h-screen z-40 bg-[#050505] overflow-hidden select-none cursor-crosshair font-mono text-xs sm:text-[13px]"
         >
-            {/* 1. TOP HOVER TRIGGER ZONE (Top 65px) */}
+            {/* 1. TOP HOVER / TOUCH TRIGGER ZONE (Top 65px) */}
             <div
                 onMouseEnter={() => setIsHoverTop(true)}
+                onTouchStart={handleMobileToggle}
                 className="fixed top-0 left-0 w-full h-16 z-50 pointer-events-auto"
             />
+
+            {/* Mobile quick-reveal pill when menu is hidden */}
+            <button
+                type="button"
+                onClick={handleMobileToggle}
+                className="sm:hidden fixed top-2 left-1/2 -translate-x-1/2 z-40 bg-black/90 border border-white/20 text-neutral-300 px-3 py-1 text-[10px] uppercase font-mono tracking-wider cursor-pointer shadow-lg"
+                style={{
+                    opacity: wipeProgress < 0.2 ? 0.85 : 0,
+                    pointerEvents: wipeProgress < 0.2 ? "auto" : "none",
+                    transition: "opacity 200ms ease"
+                }}
+            >
+                [MENU // STATS]
+            </button>
 
             {/* 2. TOP OPTIONS BAR REVEAL (CELLULAR ASCII WIPE ANIMATION) */}
             <div
@@ -571,12 +613,12 @@ export default function TuiLive({ onNavigate }) {
                     opacity: wipeProgress > 0.01 ? 1 : 0,
                     pointerEvents: wipeProgress > 0.5 ? "auto" : "none",
                 }}
-                className="fixed top-0 left-0 w-full z-50 transition-opacity duration-150 bg-black/85 backdrop-blur-md border-b border-white/10 px-6 sm:px-12 py-3"
+                className="fixed top-0 left-0 w-full z-50 transition-opacity duration-150 bg-black/90 backdrop-blur-md border-b border-white/10 px-4 sm:px-12 py-2.5 sm:py-3"
             >
-                <div className="flex items-center justify-between flex-wrap gap-4 uppercase">
+                <div className="flex flex-wrap items-center justify-between gap-3 uppercase">
                     
                     {/* Left: Site Navigation */}
-                    <div className="flex items-center gap-4 sm:gap-6">
+                    <div className="flex flex-wrap items-center gap-3 sm:gap-6">
                         {navItems.map((item, idx) => {
                             const isLiveTab = item.key === "live";
                             return (
@@ -601,7 +643,7 @@ export default function TuiLive({ onNavigate }) {
                     </div>
 
                     {/* Right: Live Telemetry, Audio, Mode, Fullscreen */}
-                    <div className="flex items-center gap-3 sm:gap-4 text-xs">
+                    <div className="flex flex-wrap items-center gap-2 sm:gap-4 text-xs">
                         
                         {/* Telemetry: LIVE // 60 FPS // N VIEWERS */}
                         <div className="flex items-center gap-2">
@@ -694,8 +736,8 @@ export default function TuiLive({ onNavigate }) {
 
                 {/* STANDBY: PURE PROCEDURAL ASCII OSCILLOSCOPE */}
                 {!isLive && (
-                    <div className="flex flex-col items-center justify-center p-6 text-center space-y-6 select-none animate-fadeIn">
-                        <pre className="text-xs sm:text-sm leading-none text-neutral-400 font-mono">
+                    <div className="flex flex-col items-center justify-center p-4 sm:p-6 text-center space-y-4 sm:space-y-6 select-none animate-fadeIn max-w-full overflow-hidden">
+                        <pre className="text-[9px] xs:text-[10px] sm:text-xs leading-none text-neutral-400 font-mono overflow-x-auto no-scrollbar">
                             {renderOscilloscope(animFrame)}
                         </pre>
 
@@ -724,17 +766,17 @@ export default function TuiLive({ onNavigate }) {
 }
 
 function renderOscilloscope(frame) {
-    const width = 50;
+    const width = 42;
     const lines = [];
 
-    lines.push("+--------------------------------------------------+");
+    lines.push("+------------------------------------------+");
     for (let y = 0; y < 11; y++) {
         let row = "|";
         for (let x = 0; x < width; x++) {
             const wave1 = Math.sin((x + frame * 2) * 0.18) * 3.8 + 5;
             const wave2 = Math.cos((x - frame * 1.6) * 0.14) * 2.5 + 5;
             const isWave = Math.round(wave1) === y || Math.round(wave2) === y;
-            const isCenter = y === 5 && x > 14 && x < 36;
+            const isCenter = y === 5 && x > 11 && x < 31;
 
             if (isCenter) {
                 row += "=";
@@ -747,7 +789,7 @@ function renderOscilloscope(frame) {
         row += "|";
         lines.push(row);
     }
-    lines.push("+--------------------------------------------------+");
+    lines.push("+------------------------------------------+");
 
     return lines.join("\n");
 }

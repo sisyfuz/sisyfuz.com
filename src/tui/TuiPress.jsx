@@ -65,7 +65,7 @@ export default function TuiPress() {
                 <button
                     onClick={handlePress}
                     disabled={hasPressed || pressing}
-                    className={`uppercase font-bold transition-none px-1 -mx-1 cursor-pointer ${
+                    className={`uppercase font-bold transition-none py-1.5 px-3 -ml-3 cursor-pointer ${
                         hasPressed || pressing
                             ? "text-neutral-600 cursor-not-allowed"
                             : "text-white hover:bg-white hover:text-black"

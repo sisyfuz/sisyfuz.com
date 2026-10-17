@@ -27,6 +27,7 @@ export default function SharpDisplay() {
     const [activeSection, setActiveSection] = useState("home");
     const [selectedWorkId, setSelectedWorkId] = useState(null);
     const [buffer, setBuffer] = useState("");
+    const [isSearchFocused, setIsSearchFocused] = useState(false);
 
     const inputRef = useRef(null);
     const bufferRef = useRef(buffer);
@@ -90,42 +91,29 @@ export default function SharpDisplay() {
         }
     }, [activeSection, navigate, setDiscoMode, setSearchQuery]);
 
+    // Clear search on global Escape key
     useEffect(() => {
-        const handleKeyDown = (e) => {
-            if (e.target.tagName === "INPUT" && e.target !== inputRef.current) return;
-            if (e.target.tagName === "TEXTAREA") return;
-
-            if (e.key === "Enter" || e.key === "Escape") {
+        const handleGlobalKeyDown = (e) => {
+            if (e.key === "Escape") {
                 setBuffer("");
                 bufferRef.current = "";
                 setSearchQuery("");
                 inputRef.current?.blur();
-                return;
-            }
-
-            if (e.key === "Backspace") {
-                processCommand(bufferRef.current.slice(0, -1));
-                return;
-            }
-
-            const key = e.key.toLowerCase();
-            if (key.length === 1 && /[a-z0-9 ]/.test(key)) {
-                processCommand((bufferRef.current + key).slice(-25));
             }
         };
 
-        window.addEventListener("keydown", handleKeyDown);
-        return () => window.removeEventListener("keydown", handleKeyDown);
-    }, [processCommand, setSearchQuery]);
+        window.addEventListener("keydown", handleGlobalKeyDown);
+        return () => window.removeEventListener("keydown", handleGlobalKeyDown);
+    }, [setSearchQuery]);
 
     return (
-        <div className={`min-h-screen w-full bg-[#050505] text-[#f0f0f0] font-mono text-xs sm:text-[13px] leading-relaxed px-6 sm:px-12 md:px-16 lg:px-24 py-8 md:py-12 flex flex-col justify-between select-text relative ${
+        <div className={`min-h-screen w-full bg-[#050505] text-[#f0f0f0] font-mono text-xs sm:text-[13px] leading-relaxed px-4 sm:px-8 md:px-16 lg:px-24 py-6 sm:py-8 md:py-12 flex flex-col justify-between select-text relative ${
             discoMode ? "animate-disco" : ""
         }`}>
             
             {/* Top Raw Header */}
-            <div className="space-y-4 pb-10 z-10">
-                <header className="flex items-center justify-between uppercase">
+            <div className="space-y-4 pb-8 sm:pb-10 z-10">
+                <header className="flex flex-wrap items-center justify-between gap-y-3 gap-x-4 uppercase">
                     <button
                         onClick={() => handleSwitchSection("home")}
                         className="font-bold cursor-pointer hover:bg-white hover:text-black px-1 -mx-1"
@@ -133,14 +121,14 @@ export default function SharpDisplay() {
                         sisyfuz
                     </button>
 
-                    <nav className="flex items-center gap-4 sm:gap-6">
+                    <nav className="flex flex-wrap items-center gap-x-3 sm:gap-x-6 gap-y-1.5">
                         {SECTIONS.map((sec) => {
                             const isActive = activeSection === sec.key;
                             return (
                                 <button
                                     key={sec.key}
                                     onClick={() => handleSwitchSection(sec.key)}
-                                    className={`cursor-pointer px-1 -mx-1 font-mono uppercase ${
+                                    className={`cursor-pointer px-1 -mx-1 font-mono uppercase transition-colors ${
                                         isActive
                                             ? "bg-pink-500 text-black font-bold"
                                             : "text-neutral-400 hover:bg-white hover:text-black"
@@ -159,11 +147,11 @@ export default function SharpDisplay() {
             </div>
 
             {/* Main Content Body */}
-            <main className="flex-1 pb-24 z-10">
+            <main className="flex-1 pb-16 z-10">
                 {activeSection === "home" && (
                     <div className="space-y-10 animate-fadeIn max-w-3xl">
                         {/* ASCII Banner */}
-                        <pre className="text-[10px] sm:text-xs leading-none font-bold text-neutral-300 select-none overflow-x-auto whitespace-pre">
+                        <pre className="text-[9px] xs:text-[10px] sm:text-xs leading-none font-bold text-neutral-300 select-none overflow-x-auto whitespace-pre no-scrollbar">
                             {SISYFUZ_BANNER}
                         </pre>
 
@@ -181,7 +169,7 @@ export default function SharpDisplay() {
                         </div>
 
                         {/* Raw Jump Links with Reverse-Video */}
-                        <div className="pt-4 flex flex-wrap gap-6 uppercase">
+                        <div className="pt-4 flex flex-wrap gap-x-4 gap-y-2 sm:gap-6 uppercase">
                             <button
                                 onClick={() => handleSwitchSection("work")}
                                 className="text-white hover:bg-white hover:text-black font-bold px-1 -mx-1 cursor-pointer"
@@ -240,60 +228,72 @@ export default function SharpDisplay() {
             </main>
 
             {/* Subtle Minimal Footer */}
-            <footer className="pt-8 text-neutral-600 flex items-center justify-between uppercase z-10">
+            <footer className="pt-8 pb-4 text-neutral-600 flex flex-wrap items-center justify-between gap-2 uppercase z-10 text-[11px] sm:text-xs">
                 <span>SISYFUZ // DORUS KLEIJNE</span>
                 <span>UTRECHT, NL</span>
             </footer>
 
-            {/* AMBIENT FLOATING SEARCH PROMPT */}
+            {/* EXPLICIT TERMINAL SEARCH BAR */}
             <div
-                className="fixed z-50 text-center pointer-events-auto md:pointer-events-none"
-                style={{
-                    bottom: 'calc(2.5rem + env(safe-area-inset-bottom))',
-                    left: '50%',
-                    transform: 'translateX(-50%)'
-                }}
-                onClick={() => {
-                    if (window.innerWidth < 768) inputRef.current?.focus();
-                }}
+                className="sticky bottom-0 z-50 w-full bg-[#050505]/95 backdrop-blur-sm border-t border-white/10 pt-2.5 pb-[calc(0.6rem+env(safe-area-inset-bottom))] px-2 mt-auto"
             >
-                <input
-                    ref={inputRef}
-                    type="text"
-                    value={buffer}
-                    onChange={(e) => {
-                        const cleanVal = e.target.value.toLowerCase().replace(/[^a-z0-9 ]/g, '').slice(-25);
-                        processCommand(cleanVal);
-                    }}
-                    onKeyDown={(e) => {
-                        if (e.key === "Enter" || e.key === "Escape") {
-                            setBuffer("");
-                            bufferRef.current = "";
-                            setSearchQuery("");
-                            e.target.blur();
-                        }
-                    }}
-                    className="absolute inset-0 opacity-0 w-full h-full cursor-text md:hidden font-mono"
-                    autoComplete="off"
-                    autoCorrect="off"
-                    spellCheck="false"
-                />
-
-                <div className="font-mono text-xs uppercase tracking-[0.3em] text-white flex items-center justify-center">
-                    {/* Mobile View */}
-                    <div className="md:hidden flex items-center bg-black/90 px-3 py-1.5 border border-white/20 text-neutral-300">
-                        <span className="mr-2 text-pink-500">&gt;</span>
-                        <span>{buffer || "tap_to_search"}</span>
-                        <span className="animate-pulse ml-2 w-1.5 h-3 bg-pink-500"></span>
-                    </div>
-
-                    {/* Desktop View */}
-                    <div className={`hidden md:flex items-center ${
-                        buffer ? "text-white" : "text-neutral-500"
-                    }`}>
-                        <span className="mr-2 text-pink-500 font-bold">&gt;</span>
-                        <span>{buffer || "..."}</span>
-                        <span className="animate-pulse ml-1 text-pink-500">_</span>
+                <div className="max-w-xl mx-auto flex items-center justify-between font-mono text-xs">
+                    <div
+                        onClick={() => inputRef.current?.focus()}
+                        className={`w-full flex items-center gap-2 px-3 py-1.5 border transition-colors cursor-text ${
+                            isSearchFocused
+                                ? "border-pink-500 bg-black text-white"
+                                : buffer
+                                ? "border-neutral-500 bg-neutral-950 text-white"
+                                : "border-neutral-800 bg-neutral-950/80 text-neutral-400 hover:border-neutral-700"
+                        }`}
+                    >
+                        <span className="text-pink-500 font-bold select-none">&gt;</span>
+                        <input
+                            ref={inputRef}
+                            type="text"
+                            value={buffer}
+                            placeholder="SEARCH OR TYPE COMMAND..."
+                            onFocus={() => setIsSearchFocused(true)}
+                            onBlur={() => setIsSearchFocused(false)}
+                            onChange={(e) => {
+                                const cleanVal = e.target.value.toLowerCase().replace(/[^a-z0-9 ]/g, '').slice(-30);
+                                processCommand(cleanVal);
+                            }}
+                            onKeyDown={(e) => {
+                                if (e.key === "Enter") {
+                                    e.target.blur();
+                                } else if (e.key === "Escape") {
+                                    setBuffer("");
+                                    bufferRef.current = "";
+                                    setSearchQuery("");
+                                    e.target.blur();
+                                }
+                            }}
+                            className="bg-transparent text-white placeholder-neutral-600 outline-none w-full font-mono text-xs uppercase"
+                            autoComplete="off"
+                            autoCorrect="off"
+                            spellCheck="false"
+                        />
+                        {isSearchFocused && !buffer && (
+                            <span className="animate-pulse w-1.5 h-3 bg-pink-500 select-none"></span>
+                        )}
+                        {buffer && (
+                            <button
+                                type="button"
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    setBuffer("");
+                                    bufferRef.current = "";
+                                    setSearchQuery("");
+                                    inputRef.current?.blur();
+                                }}
+                                className="text-neutral-500 hover:text-white px-1 font-bold uppercase select-none cursor-pointer"
+                                title="Clear query (ESC)"
+                            >
+                                [ESC]
+                            </button>
+                        )}
                     </div>
                 </div>
             </div>

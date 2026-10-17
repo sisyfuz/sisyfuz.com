@@ -56,24 +56,27 @@ export default function AsciiMedia({
         const destW = width || 600;
         const destH = height || 400;
 
+        // Auto-adapt column count for small mobile viewports to prevent squished characters
+        const activeCols = destW < 420 ? Math.min(cols, 38) : (destW < 600 ? Math.min(cols, 46) : cols);
+
         // Character font aspect ratio ~ 0.52 (width/height)
         const charAspect = 0.52;
-        const rows = Math.max(14, Math.floor(cols * (destH / destW) * charAspect));
+        const rows = Math.max(14, Math.floor(activeCols * (destH / destW) * charAspect));
 
         stateRef.current.rows = rows;
-        stateRef.current.cols = cols;
+        stateRef.current.cols = activeCols;
 
         const { cropX, cropY, cropW, cropH } = getCoverCrop(srcW, srcH, destW, destH);
 
         const offscreen = document.createElement("canvas");
-        offscreen.width = cols;
+        offscreen.width = activeCols;
         offscreen.height = rows;
         const ctx = offscreen.getContext("2d", { willReadFrequently: true });
         if (!ctx) return;
 
-        // Draw cropped source into cols x rows without stretching
-        ctx.drawImage(img, cropX, cropY, cropW, cropH, 0, 0, cols, rows);
-        const { data } = ctx.getImageData(0, 0, cols, rows);
+        // Draw cropped source into activeCols x rows without stretching
+        ctx.drawImage(img, cropX, cropY, cropW, cropH, 0, 0, activeCols, rows);
+        const { data } = ctx.getImageData(0, 0, activeCols, rows);
 
         const ramp = ASCII_RAMP;
         const rampLength = ramp.length;
@@ -81,8 +84,8 @@ export default function AsciiMedia({
 
         for (let y = 0; y < rows; y++) {
             const row = [];
-            for (let x = 0; x < cols; x++) {
-                const idx = (y * cols + x) * 4;
+            for (let x = 0; x < activeCols; x++) {
+                const idx = (y * activeCols + x) * 4;
                 const r = data[idx];
                 const g = data[idx + 1];
                 const b = data[idx + 2];

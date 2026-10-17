@@ -74,7 +74,7 @@ export default function TuiWork({ selectedId = null }) {
     if (activeProject) {
         return (
             <div className="space-y-8 animate-fadeIn max-w-4xl text-xs sm:text-[13px] leading-relaxed">
-                <div className="flex items-center justify-between">
+                <div className="flex flex-wrap items-center justify-between gap-2">
                     <span className="font-bold uppercase text-white">
                         {activeProject.title} ({activeProject.year})
                     </span>
@@ -188,14 +188,14 @@ export default function TuiWork({ selectedId = null }) {
     return (
         <div className="space-y-10 text-xs sm:text-[13px] leading-relaxed">
             {searchQuery && (
-                <div className="flex items-center gap-2 uppercase">
+                <div className="flex flex-wrap items-center gap-2 uppercase">
                     <span className="text-neutral-500">FILTER:</span>
                     <span className="bg-pink-500 text-black font-bold px-1">"{searchQuery}"</span>
-                    <span className="text-neutral-600 text-[11px]">(PRESS ESC TO CLEAR)</span>
+                    <span className="text-neutral-600 text-[11px]">(PRESS ESC OR TAP [ESC] TO CLEAR)</span>
                 </div>
             )}
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-10 lg:gap-14">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 sm:gap-10 lg:gap-14">
                 {filteredProjects.map((project) => (
                     <div
                         key={project.id}
@@ -216,11 +216,11 @@ export default function TuiWork({ selectedId = null }) {
                             )}
 
                             {/* Title & Metadata */}
-                            <div className="flex items-center justify-between uppercase mb-1">
+                            <div className="flex items-start justify-between gap-2 uppercase mb-1">
                                 <h3 className="font-bold text-white group-hover:bg-white group-hover:text-black px-1 -mx-1 transition-none">
                                     {project.title}
                                 </h3>
-                                <span className="text-neutral-500">{project.year}</span>
+                                <span className="text-neutral-500 shrink-0">{project.year}</span>
                             </div>
 
                             <p className="text-neutral-400 line-clamp-3 mb-2">

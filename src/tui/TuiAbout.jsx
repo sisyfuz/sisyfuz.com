@@ -51,7 +51,7 @@ export default function TuiAbout({ onNavigate }) {
                     <div className="pt-2">
                         <button
                             onClick={() => onNavigate && onNavigate("contact")}
-                            className="text-white hover:bg-white hover:text-black font-bold uppercase px-1 -mx-1 cursor-pointer"
+                            className="text-white hover:bg-white hover:text-black font-bold uppercase py-1 px-2 -ml-2 cursor-pointer transition-colors inline-block"
                         >
                             [STUUR_EEN_BERICHT →]
                         </button>
@@ -62,7 +62,7 @@ export default function TuiAbout({ onNavigate }) {
                             {ASCII_DIVIDER}
                         </div>
                         <p className="text-[11px] text-neutral-500 uppercase leading-relaxed font-mono">
-                            [badabum! fonts by: Sligoil by Ariel Martín Pérez, with the contribution of Đông Trúc Nguyễn. Distributed by velvetyne.fr.]
+                            [FONTS: SLIGOIL BY ARIEL MARTÍN PÉREZ, WITH THE CONTRIBUTION OF ĐÔNG TRÚC NGUYỄN. DISTRIBUTED BY VELVETYNE.FR]
                         </p>
                     </div>
                 </div>

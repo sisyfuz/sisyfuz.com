@@ -61,7 +61,14 @@ export default function TuiLive({ onNavigate }) {
 
     const [isLive, setIsLive] = useState(false);
     const [fps, setFps] = useState(0);
-    const [streamProtocol, setStreamProtocol] = useState("");
+    const [viewerCount, setViewerCount] = useState(1);
+    const [isMuted, setIsMuted] = useState(() => {
+        if (typeof window !== "undefined") {
+            const saved = localStorage.getItem("sisyfuz_live_muted");
+            return saved !== "false"; // default muted true
+        }
+        return true;
+    });
     const [displayMode, setDisplayMode] = useState("cover"); // "cover" | "fit"
     const [modeToast, setModeToast] = useState("");
     const [animFrame, setAnimFrame] = useState(0);
@@ -76,6 +83,7 @@ export default function TuiLive({ onNavigate }) {
     const wsRef = useRef(null);
     const hlsRef = useRef(null);
     const progressRef = useRef(0);
+    const isVisibleRef = useRef(typeof document !== "undefined" ? !document.hidden : true);
 
     // Smooth animation loop for top-bar ASCII cellular wipe
     useEffect(() => {
@@ -117,7 +125,6 @@ export default function TuiLive({ onNavigate }) {
                     } else if (!isLocalhost) {
                         setStreamUrl("");
                         setIsLive(false);
-                        setStreamProtocol("");
                     }
                 }
             } catch {
@@ -143,7 +150,55 @@ export default function TuiLive({ onNavigate }) {
         return () => clearInterval(interval);
     }, [isLive]);
 
-    // Keyboard Shortcuts: Tab toggles Fit / Cover, Escape exits
+    // Page Visibility API Optimization (Throttle background tabs to save battery & CPU)
+    useEffect(() => {
+        const handleVisibilityChange = () => {
+            const visible = !document.hidden;
+            isVisibleRef.current = visible;
+            const video = videoRef.current;
+            if (video) {
+                if (!visible) {
+                    video.pause();
+                } else if (isLive) {
+                    video.play().catch(() => {});
+                }
+            }
+        };
+
+        document.addEventListener("visibilitychange", handleVisibilityChange);
+        return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
+    }, [isLive]);
+
+    // Audio Mute / Unmute Toggle
+    const toggleAudio = () => {
+        setIsMuted(prev => {
+            const next = !prev;
+            if (videoRef.current) {
+                videoRef.current.muted = next;
+                if (!next) {
+                    videoRef.current.volume = 1.0;
+                    videoRef.current.play().catch(() => {});
+                }
+            }
+            if (typeof localStorage !== "undefined") {
+                localStorage.setItem("sisyfuz_live_muted", String(next));
+            }
+            setModeToast(next ? "AUDIO: MUTED" : "AUDIO: ACTIVE");
+            return next;
+        });
+    };
+
+    const toggleFullscreen = () => {
+        const el = containerRef.current;
+        if (!el) return;
+        if (!document.fullscreenElement) {
+            el.requestFullscreen().catch(err => console.warn(err));
+        } else {
+            document.exitFullscreen();
+        }
+    };
+
+    // Keyboard Shortcuts: Tab (Cover/Fit), M (Audio), F (Fullscreen), Esc (Home)
     useEffect(() => {
         const handleKeyDown = (e) => {
             if (e.key === "Tab") {
@@ -153,6 +208,12 @@ export default function TuiLive({ onNavigate }) {
                     setModeToast(next === "cover" ? "MODE: COVER (100% FILL)" : "MODE: FIT (1:1 BEST FIT)");
                     return next;
                 });
+            } else if (e.key === "m" || e.key === "M") {
+                e.preventDefault();
+                toggleAudio();
+            } else if (e.key === "f" || e.key === "F") {
+                e.preventDefault();
+                toggleFullscreen();
             } else if (e.key === "Escape") {
                 if (onNavigate) {
                     onNavigate("home");
@@ -184,8 +245,8 @@ export default function TuiLive({ onNavigate }) {
         const video = videoRef.current;
         if (!video) return;
 
-        // Ensure muted so browser autoplay is never blocked
-        video.muted = true;
+        // Apply saved mute state
+        video.muted = isMuted;
 
         const cleanUrl = streamUrl.replace(/\/+$/, "");
         const hlsUrl = cleanUrl.includes(".m3u8")
@@ -215,7 +276,6 @@ export default function TuiLive({ onNavigate }) {
                 if (isMounted) {
                     video.play().catch(() => {});
                     setIsLive(true);
-                    setStreamProtocol("60 FPS");
                 }
             });
 
@@ -242,7 +302,6 @@ export default function TuiLive({ onNavigate }) {
                 if (isMounted) {
                     video.play().catch(() => {});
                     setIsLive(true);
-                    setStreamProtocol("60 FPS");
                 }
             };
             video.addEventListener("loadedmetadata", onLoaded);
@@ -260,7 +319,7 @@ export default function TuiLive({ onNavigate }) {
                 video.load();
             }
         };
-    }, [streamUrl]);
+    }, [streamUrl, isMuted]);
 
     // 2. Hardware FPS Meter (via requestVideoFrameCallback)
     useEffect(() => {
@@ -294,7 +353,7 @@ export default function TuiLive({ onNavigate }) {
         };
     }, [isLive]);
 
-    // 3. Multi-User Cursor WebSocket Connection to TouchDesigner
+    // 3. Multi-User Telemetry WebSocket Connection to TouchDesigner
     const sessionIdRef = useRef("usr_" + Math.random().toString(36).substring(2, 7));
 
     useEffect(() => {
@@ -327,6 +386,18 @@ export default function TuiLive({ onNavigate }) {
                 ws = new WebSocket(wsUrl);
                 wsRef.current = ws;
 
+                // Receive real-time server stats from TouchDesigner
+                ws.onmessage = (event) => {
+                    try {
+                        const msg = JSON.parse(event.data);
+                        if (msg.type === "stats") {
+                            if (typeof msg.viewers === "number") {
+                                setViewerCount(Math.max(1, msg.viewers));
+                            }
+                        }
+                    } catch {}
+                };
+
                 ws.onclose = () => {
                     if (isMounted) {
                         reconnectTimer = setTimeout(connectWs, 3000);
@@ -348,15 +419,21 @@ export default function TuiLive({ onNavigate }) {
         };
     }, [streamUrl]);
 
-    // Mouse & Touch Tracking Engine (Sends normalized UV coordinates to TouchDesigner)
+    // 4. Creative Kinetic & Environmental Telemetry Engine (Streams to TouchDesigner at 60 FPS)
     const lastMouseSendRef = useRef(0);
     const isMouseDownRef = useRef(false);
+    const isTouchRef = useRef(false);
+    const prevCoordRef = useRef({ u: 0.5, v: 0.5, time: performance.now() });
+    const clickStartRef = useRef(0);
+    const totalClicksRef = useRef(0);
 
-    const sendMouse = (clientX, clientY, isDown = isMouseDownRef.current) => {
+    const sendTelemetry = (clientX, clientY, isDown = isMouseDownRef.current) => {
         if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
 
         const now = performance.now();
-        if (now - lastMouseSendRef.current < 16) return; // 60 FPS throttle
+        // If tab is in background, throttle to 500ms
+        const throttleMs = isVisibleRef.current ? 16 : 500;
+        if (now - lastMouseSendRef.current < throttleMs) return;
         lastMouseSendRef.current = now;
 
         const targetEl = videoRef.current || canvasRef.current || containerRef.current;
@@ -372,58 +449,90 @@ export default function TuiLive({ onNavigate }) {
         const u = Math.max(0, Math.min(1, rawU));
         const v = Math.max(0, Math.min(1, rawV));
 
+        // Kinetic Velocity Calculation
+        const dt = Math.max(0.001, (now - prevCoordRef.current.time) / 1000);
+        const du = u - prevCoordRef.current.u;
+        const dv = v - prevCoordRef.current.v;
+        const vx = Number((du / dt).toFixed(3));
+        const vy = Number((dv / dt).toFixed(3));
+        const speed = Number(Math.hypot(vx, vy).toFixed(3));
+
+        prevCoordRef.current = { u, v, time: now };
+
+        // Click Duration
+        let clickDur = 0;
+        if (isDown) {
+            if (!clickStartRef.current) clickStartRef.current = now;
+            clickDur = Number(((now - clickStartRef.current) / 1000).toFixed(2));
+        } else {
+            clickStartRef.current = 0;
+        }
+
+        // Environmental: Local Time of Day (e.g. 15.35 = 3:21 PM) & Timezone
+        const d = new Date();
+        const localHour = Number((d.getHours() + d.getMinutes() / 60).toFixed(2));
+        const tzOffset = -Number((d.getTimezoneOffset() / 60).toFixed(1));
+
+        const packet = {
+            type: "mouse",
+            id: sessionIdRef.current,
+            u: Number(u.toFixed(4)),
+            v: Number(v.toFixed(4)),
+            vx,
+            vy,
+            speed,
+            click: isDown ? 1 : 0,
+            click_dur: clickDur,
+            clicks: totalClicksRef.current,
+            inside,
+            is_touch: isTouchRef.current ? 1 : 0,
+            aspect: Number((window.innerWidth / Math.max(1, window.innerHeight)).toFixed(2)),
+            hour: localHour,
+            tz: tzOffset,
+            dark: window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? 1 : 0,
+            audio: isMuted ? 0 : 1,
+            visible: isVisibleRef.current ? 1 : 0,
+            fps: fps || 60,
+            mode: displayMode,
+        };
+
         try {
-            wsRef.current.send(JSON.stringify({
-                type: "mouse",
-                id: sessionIdRef.current,
-                u: Number(u.toFixed(4)),
-                v: Number(v.toFixed(4)),
-                click: isDown ? 1 : 0,
-                inside,
-            }));
+            wsRef.current.send(JSON.stringify(packet));
         } catch {}
     };
 
     const handleMouseMove = (e) => {
-        // Detect top hover zone (top 70px)
+        isTouchRef.current = false;
         if (e.clientY < 70) {
             setIsHoverTop(true);
         } else {
             setIsHoverTop(false);
         }
-
-        sendMouse(e.clientX, e.clientY);
+        sendTelemetry(e.clientX, e.clientY);
     };
 
     const handleMouseDown = (e) => {
         isMouseDownRef.current = true;
-        sendMouse(e.clientX, e.clientY, true);
+        totalClicksRef.current++;
+        clickStartRef.current = performance.now();
+        sendTelemetry(e.clientX, e.clientY, true);
     };
 
     const handleMouseUp = (e) => {
         isMouseDownRef.current = false;
-        sendMouse(e.clientX, e.clientY, false);
+        sendTelemetry(e.clientX, e.clientY, false);
     };
 
     const handleTouchMove = (e) => {
         if (!e.touches || !e.touches[0]) return;
+        isTouchRef.current = true;
         const t = e.touches[0];
         if (t.clientY < 70) {
             setIsHoverTop(true);
         } else {
             setIsHoverTop(false);
         }
-        sendMouse(t.clientX, t.clientY, true);
-    };
-
-    const toggleFullscreen = () => {
-        const el = containerRef.current;
-        if (!el) return;
-        if (!document.fullscreenElement) {
-            el.requestFullscreen().catch(err => console.warn(err));
-        } else {
-            document.exitFullscreen();
-        }
+        sendTelemetry(t.clientX, t.clientY, true);
     };
 
     const navItems = useMemo(() => [
@@ -483,30 +592,57 @@ export default function TuiLive({ onNavigate }) {
                                     <AsciiWipeItem
                                         text={item.label}
                                         progress={wipeProgress}
-                                        startIndex={idx * 10}
-                                        totalLength={85}
+                                        startIndex={idx * 8}
+                                        totalLength={95}
                                     />
                                 </button>
                             );
                         })}
                     </div>
 
-                    {/* Right: Live Telemetry & Quick Controls */}
-                    <div className="flex items-center gap-4 text-xs">
+                    {/* Right: Live Telemetry, Audio, Mode, Fullscreen */}
+                    <div className="flex items-center gap-3 sm:gap-4 text-xs">
+                        
+                        {/* Telemetry: LIVE // 60 FPS // N VIEWERS */}
                         <div className="flex items-center gap-2">
                             <span className={`w-2 h-2 rounded-full inline-block ${
                                 isLive ? "bg-[#ff0080] animate-pulse" : "bg-neutral-600"
                             }`} />
                             <span className={isLive ? "text-white font-bold" : "text-neutral-500"}>
                                 <AsciiWipeItem
-                                    text={isLive ? `LIVE ${fps > 0 ? `// ${fps} FPS` : ""}${streamProtocol ? ` // ${streamProtocol}` : ""}` : "OFFLINE"}
+                                    text={
+                                        isLive
+                                            ? `LIVE ${fps > 0 ? `// ${fps} FPS` : ""} // ${viewerCount} ${viewerCount === 1 ? "VIEWER" : "VIEWERS"}`
+                                            : "OFFLINE"
+                                    }
                                     progress={wipeProgress}
-                                    startIndex={45}
-                                    totalLength={90}
+                                    startIndex={35}
+                                    totalLength={95}
                                 />
                             </span>
                         </div>
 
+                        {/* Audio Toggle: [M: MUTED] / [M: AUDIO ON] */}
+                        {isLive && (
+                            <button
+                                onClick={toggleAudio}
+                                className={`px-1 uppercase cursor-pointer transition-colors ${
+                                    !isMuted
+                                        ? "text-[#ff0080] font-bold hover:bg-[#ff0080] hover:text-black"
+                                        : "text-neutral-400 hover:bg-white hover:text-black"
+                                }`}
+                                title="Press M to toggle audio"
+                            >
+                                <AsciiWipeItem
+                                    text={isMuted ? "[M: MUTED]" : "[M: AUDIO ON]"}
+                                    progress={wipeProgress}
+                                    startIndex={58}
+                                    totalLength={95}
+                                />
+                            </button>
+                        )}
+
+                        {/* Tab Mode: [TAB: COVER] / [TAB: FIT] */}
                         <button
                             onClick={() => setDisplayMode(prev => prev === "cover" ? "fit" : "cover")}
                             className="text-neutral-300 hover:bg-white hover:text-black px-1 uppercase cursor-pointer"
@@ -515,20 +651,22 @@ export default function TuiLive({ onNavigate }) {
                             <AsciiWipeItem
                                 text={`[TAB: ${displayMode.toUpperCase()}]`}
                                 progress={wipeProgress}
-                                startIndex={65}
-                                totalLength={90}
+                                startIndex={72}
+                                totalLength={95}
                             />
                         </button>
 
+                        {/* Fullscreen Toggle */}
                         <button
                             onClick={toggleFullscreen}
                             className="text-neutral-400 hover:bg-[#ff0080] hover:text-black px-1 uppercase cursor-pointer"
+                            title="Press F to toggle fullscreen"
                         >
                             <AsciiWipeItem
-                                text="[FULLSCREEN]"
+                                text="[F: FULLSCREEN]"
                                 progress={wipeProgress}
-                                startIndex={78}
-                                totalLength={90}
+                                startIndex={84}
+                                totalLength={95}
                             />
                         </button>
                     </div>
@@ -543,7 +681,7 @@ export default function TuiLive({ onNavigate }) {
                     ref={videoRef}
                     autoPlay
                     playsInline
-                    muted
+                    muted={isMuted}
                     onPlaying={() => setIsLive(true)}
                     className={`select-none pointer-events-none transition-opacity duration-300 ${
                         isLive ? "opacity-100 block" : "opacity-0 hidden"

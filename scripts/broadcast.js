@@ -89,9 +89,16 @@ async function main() {
     const mediamtxRunning = await checkPort(MEDIAMTX_HLS_PORT);
     if (mediamtxRunning) {
         console.log("      [OK] MediaMTX is already running.\n");
-    } else {
         const confPath = path.join(__dirname, "mediamtx.yml");
+        const mtxEnv = { ...process.env };
+        if (TURN_URL && TURN_USERNAME && TURN_CREDENTIAL) {
+            mtxEnv.MTX_WEBRTCICESERVERS2 = JSON.stringify([
+                { url: "stun:stun.l.google.com:19302" },
+                { url: TURN_URL, username: TURN_USERNAME, password: TURN_CREDENTIAL },
+            ]);
+        }
         mediamtxProc = spawn("mediamtx", [confPath], {
+            env: mtxEnv,
             stdio: ["ignore", "pipe", "pipe"],
         });
 

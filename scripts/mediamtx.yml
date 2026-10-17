@@ -10,13 +10,11 @@ rtmpAddress: :1935
 # WebRTC Ultra-Low Latency Playback (WHEP)
 webrtc: yes
 webrtcAddress: :8889
+webrtcAllowOrigins:
+  - '*'
 webrtcICEServers2:
   # Google public STUN (free, no credentials)
   - url: stun:stun.l.google.com:19302
-  # Metered.ca TURN relay (env vars injected at runtime)
-  - url: $METERED_TURN_URL
-    username: $METERED_TURN_USERNAME
-    password: $METERED_TURN_CREDENTIAL
 
 # High-Performance HLS (1s segments for zero buffer starvation)
 hls: yes

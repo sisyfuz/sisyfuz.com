@@ -21,6 +21,15 @@ import { fileURLToPath } from "url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
+// Auto-load .env.local or .env if present
+try {
+    process.loadEnvFile(path.join(__dirname, "../.env.local"));
+} catch {
+    try {
+        process.loadEnvFile(path.join(__dirname, "../.env"));
+    } catch {}
+}
+
 const TD_PORT = 9980;
 const MEDIAMTX_HLS_PORT = 8888;
 const MEDIAMTX_WEBRTC_PORT = 8889;
@@ -28,9 +37,10 @@ const PROXY_PORT = 9988;
 const WORKER_LIVE_URL = "https://sisyfuz-counter.sisyfuz.workers.dev/live";
 
 // Metered.ca TURN credentials (optional — WebRTC falls back to STUN-only if unset)
-const TURN_URL = process.env.METERED_TURN_URL || "";
 const TURN_USERNAME = process.env.METERED_TURN_USERNAME || "";
 const TURN_CREDENTIAL = process.env.METERED_TURN_CREDENTIAL || "";
+const TURN_HOST = process.env.METERED_TURN_HOST || "global.relay.metered.ca";
+const TURN_URL = process.env.METERED_TURN_URL || (TURN_USERNAME ? `turn:${TURN_HOST}:80` : "");
 
 console.log("\n==============================================================");
 console.log("   SISYFUZ // 60+ FPS ULTRA-RAW BROADCASTER                   ");
@@ -91,10 +101,12 @@ async function main() {
         console.log("      [OK] MediaMTX is already running.\n");
         const confPath = path.join(__dirname, "mediamtx.yml");
         const mtxEnv = { ...process.env };
-        if (TURN_URL && TURN_USERNAME && TURN_CREDENTIAL) {
+        if (TURN_USERNAME && TURN_CREDENTIAL) {
             mtxEnv.MTX_WEBRTCICESERVERS2 = JSON.stringify([
                 { url: "stun:stun.l.google.com:19302" },
-                { url: TURN_URL, username: TURN_USERNAME, password: TURN_CREDENTIAL },
+                { url: `turn:${TURN_HOST}:80`, username: TURN_USERNAME, password: TURN_CREDENTIAL },
+                { url: `turn:${TURN_HOST}:443`, username: TURN_USERNAME, password: TURN_CREDENTIAL },
+                { url: `turn:${TURN_HOST}:443?transport=tcp`, username: TURN_USERNAME, password: TURN_CREDENTIAL },
             ]);
         }
         mediamtxProc = spawn("mediamtx", [confPath], {
@@ -152,9 +164,13 @@ async function main() {
         // --- /turn-config: Expose ICE server configuration to the frontend ---
         if (req.url === "/turn-config") {
             const iceServers = [{ urls: "stun:stun.l.google.com:19302" }];
-            if (TURN_URL && TURN_USERNAME && TURN_CREDENTIAL) {
+            if (TURN_USERNAME && TURN_CREDENTIAL) {
                 iceServers.push({
-                    urls: TURN_URL,
+                    urls: [
+                        `turn:${TURN_HOST}:80`,
+                        `turn:${TURN_HOST}:443`,
+                        `turn:${TURN_HOST}:443?transport=tcp`,
+                    ],
                     username: TURN_USERNAME,
                     credential: TURN_CREDENTIAL,
                 });

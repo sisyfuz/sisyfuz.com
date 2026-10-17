@@ -817,6 +817,38 @@ export default function TuiLive({ onNavigate }) {
         sendTelemetry(t.clientX, t.clientY, true);
     };
 
+    // Global Capture-Phase Tracking Listeners (Ensures 60 FPS tracking works over all text, buttons, and inputs)
+    useEffect(() => {
+        const onMouseMove = (e) => handleMouseMove(e);
+        const onMouseDown = (e) => handleMouseDown(e);
+        const onMouseUp = (e) => handleMouseUp(e);
+        const onTouchStart = (e) => handleTouchStart(e);
+        const onTouchMove = (e) => handleTouchMove(e);
+        const onTouchEnd = (e) => handleMouseUp(e);
+        const onMouseLeave = () => {
+            setIsHoverTop(false);
+            isMouseDownRef.current = false;
+        };
+
+        window.addEventListener("mousemove", onMouseMove, { capture: true, passive: true });
+        window.addEventListener("mousedown", onMouseDown, { capture: true, passive: true });
+        window.addEventListener("mouseup", onMouseUp, { capture: true, passive: true });
+        window.addEventListener("touchstart", onTouchStart, { capture: true, passive: true });
+        window.addEventListener("touchmove", onTouchMove, { capture: true, passive: true });
+        window.addEventListener("touchend", onTouchEnd, { capture: true, passive: true });
+        window.addEventListener("mouseleave", onMouseLeave, { passive: true });
+
+        return () => {
+            window.removeEventListener("mousemove", onMouseMove, { capture: true });
+            window.removeEventListener("mousedown", onMouseDown, { capture: true });
+            window.removeEventListener("mouseup", onMouseUp, { capture: true });
+            window.removeEventListener("touchstart", onTouchStart, { capture: true });
+            window.removeEventListener("touchmove", onTouchMove, { capture: true });
+            window.removeEventListener("touchend", onTouchEnd, { capture: true });
+            window.removeEventListener("mouseleave", onMouseLeave);
+        };
+    }, []);
+
     const navItems = useMemo(() => [
         { key: "home", label: "sisyfuz" },
         { key: "work", label: "[work]" },
@@ -829,16 +861,6 @@ export default function TuiLive({ onNavigate }) {
     return (
         <div
             ref={containerRef}
-            onMouseMove={handleMouseMove}
-            onMouseDown={handleMouseDown}
-            onMouseUp={handleMouseUp}
-            onTouchMove={handleTouchMove}
-            onTouchStart={handleTouchStart}
-            onTouchEnd={handleMouseUp}
-            onMouseLeave={() => {
-                setIsHoverTop(false);
-                isMouseDownRef.current = false;
-            }}
             className="fixed inset-0 w-screen h-screen z-40 bg-[#050505] overflow-hidden select-none cursor-crosshair font-mono text-xs sm:text-[13px]"
         >
             {/* 1. TOP HOVER / TOUCH TRIGGER ZONE (Top 65px) */}

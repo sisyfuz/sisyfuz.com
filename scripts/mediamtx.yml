@@ -1,5 +1,5 @@
 # scripts/mediamtx.yml
-# Ultra-Low Latency Media Engine for sisyfuz.com Live Stream
+# High-Stability Smooth 60 FPS Video Engine for sisyfuz.com
 
 rtsp: no
 
@@ -7,20 +7,14 @@ rtsp: no
 rtmp: yes
 rtmpAddress: :1935
 
-# WebRTC Engine (WHIP Ingest & WHEP Sub-Second Playback ~150ms)
-webrtc: yes
-webrtcAddress: :8889
-webrtcAllowOrigins:
-  - '*'
-
-# Low-Latency HLS (Aggressive 500ms segments, 100ms parts)
+# High-Performance HLS (1s segments for zero buffer starvation)
 hls: yes
 hlsAddress: :8888
 hlsAlwaysRemux: yes
-hlsVariant: lowLatency
-hlsSegmentCount: 7
-hlsSegmentDuration: 500ms
-hlsPartDuration: 100ms
+hlsVariant: fmp4
+hlsSegmentCount: 5
+hlsSegmentDuration: 1s
+hlsPartDuration: 200ms
 hlsAllowOrigins:
   - '*'
 

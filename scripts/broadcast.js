@@ -117,6 +117,11 @@ async function main() {
     });
 
     const activeCookies = new Map();
+    const httpAgent = new http.Agent({
+        keepAlive: true,
+        maxSockets: 100,
+        keepAliveMsecs: 5000,
+    });
 
     proxyServer = http.createServer((req, res) => {
         // Universal CORS headers for web browsers
@@ -134,6 +139,7 @@ async function main() {
         const sessionCookie = activeCookies.get(clientKey) || "cookieCheck=1";
 
         const proxyReq = http.request({
+            agent: httpAgent,
             hostname: "127.0.0.1",
             port: MEDIAMTX_HLS_PORT,
             path: req.url,
@@ -158,6 +164,7 @@ async function main() {
                     const nextCookie = activeCookies.get(clientKey) || "cookieCheck=1";
 
                     const followReq = http.request({
+                        agent: httpAgent,
                         hostname: "127.0.0.1",
                         port: MEDIAMTX_HLS_PORT,
                         path: nextUrl.pathname + nextUrl.search,

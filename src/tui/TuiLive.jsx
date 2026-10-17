@@ -196,12 +196,14 @@ export default function TuiLive({ onNavigate }) {
 
         if (Hls.isSupported()) {
             const hls = new Hls({
-                lowLatencyMode: true,
-                liveSyncDuration: 0.5,
-                liveMaxLatencyDuration: 1.5,
-                maxLiveSyncPlaybackRate: 1.2,
+                lowLatencyMode: false,
+                liveSyncDuration: 1.2,
+                liveMaxLatencyDuration: 2.5,
+                maxLiveSyncPlaybackRate: 1.05,
                 enableWorker: true,
-                backBufferLength: 0,
+                backBufferLength: 2,
+                maxBufferLength: 4,
+                maxMaxBufferLength: 8,
             });
             hlsRef.current = hls;
             hlsInstance = hls;

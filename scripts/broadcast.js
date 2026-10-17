@@ -14,6 +14,7 @@
  */
 
 import { spawn } from "child_process";
+import fs from "fs";
 import http from "http";
 import httpProxy from "http-proxy";
 import path from "path";
@@ -98,9 +99,13 @@ async function main() {
     console.log("[2/4] Starting MediaMTX low-latency engine...");
     const mediamtxRunning = await checkPort(MEDIAMTX_HLS_PORT);
     if (mediamtxRunning) {
-        console.log("      [OK] MediaMTX is already running.\n");
+        console.log("      [OK] MediaMTX is already running on port 1935 / 8888.\n");
+    } else {
         const confPath = path.join(__dirname, "mediamtx.yml");
-        const mtxEnv = { ...process.env };
+        const mtxEnv = {
+            ...process.env,
+            PATH: `${process.env.PATH || ""}:/opt/homebrew/bin:/usr/local/bin`,
+        };
         if (TURN_USERNAME && TURN_CREDENTIAL) {
             mtxEnv.MTX_WEBRTCICESERVERS2 = JSON.stringify([
                 { url: "stun:stun.l.google.com:19302" },
@@ -109,29 +114,55 @@ async function main() {
                 { url: `turn:${TURN_HOST}:443?transport=tcp`, username: TURN_USERNAME, password: TURN_CREDENTIAL },
             ]);
         }
-        mediamtxProc = spawn("mediamtx", [confPath], {
+
+        const bin = fs.existsSync("/opt/homebrew/bin/mediamtx")
+            ? "/opt/homebrew/bin/mediamtx"
+            : (fs.existsSync("/usr/local/bin/mediamtx") ? "/usr/local/bin/mediamtx" : "mediamtx");
+
+        mediamtxProc = spawn(bin, [confPath], {
             env: mtxEnv,
             stdio: ["ignore", "pipe", "pipe"],
         });
 
         mediamtxProc.on("error", (err) => {
-            console.error(`      [ERR] Failed to start mediamtx: ${err.message}`);
+            console.error(`      [ERR] Failed to start MediaMTX binary (${bin}): ${err.message}`);
         });
 
-        // Pipe connection logs
         mediamtxProc.stdout.on("data", (data) => {
             const line = data.toString().trim();
-            if (line.includes("is publishing to path 'live'") || line.includes("stream is available")) {
-                console.log(`      [STREAM DETECTED] OBS is actively broadcasting to MediaMTX!`);
+            if (line.includes("ERR") || line.includes("WARN")) {
+                console.error(`      [MediaMTX] ${line}`);
+            }
+            if (line.includes("is publishing to path 'live'") || line.includes("stream is available") || line.includes("[RTMP]")) {
+                console.log(`      [STREAM DETECTED] OBS is broadcasting to MediaMTX!`);
             }
         });
 
-        // Wait up to 3 seconds for MediaMTX to initialize
-        for (let i = 0; i < 15; i++) {
+        mediamtxProc.stderr.on("data", (data) => {
+            console.error(`      [MediaMTX ERR] ${data.toString().trim()}`);
+        });
+
+        mediamtxProc.on("exit", (code, sig) => {
+            if (!isShuttingDown) {
+                console.error(`      [FATAL] MediaMTX stopped (code: ${code}, signal: ${sig})`);
+            }
+        });
+
+        // Wait up to 4 seconds for MediaMTX to initialize
+        let isStarted = false;
+        for (let i = 0; i < 20; i++) {
             await new Promise((r) => setTimeout(r, 200));
-            if (await checkPort(MEDIAMTX_HLS_PORT)) break;
+            if (await checkPort(MEDIAMTX_HLS_PORT)) {
+                isStarted = true;
+                break;
+            }
         }
-        console.log("      [OK] MediaMTX started on port 1935 (RTMP), 8888 (HLS), and 8889 (WebRTC)!\n");
+
+        if (isStarted) {
+            console.log("      [OK] MediaMTX started on port 1935 (RTMP), 8888 (HLS), and 8889 (WebRTC)!\n");
+        } else {
+            console.error("      [FATAL] MediaMTX failed to start! Make sure mediamtx is installed and port 1935/8888/8889 is free.\n");
+        }
     }
 
     // 3. Start Transparent Cookie-Handling Proxy (Port 9988)

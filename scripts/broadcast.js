@@ -13,7 +13,7 @@
  * 5. On Ctrl+C, gracefully stops all services and resets site to standby.
  */
 
-import { spawn } from "child_process";
+import { spawn, execSync } from "child_process";
 import fs from "fs";
 import http from "http";
 import httpProxy from "http-proxy";
@@ -58,6 +58,21 @@ function checkPort(port) {
             resolve(false);
         });
     });
+}
+
+// Gracefully clear any stale zombie process holding a port
+function killPort(port) {
+    try {
+        const out = execSync(`lsof -t -i :${port}`, { encoding: "utf8" }).trim();
+        if (out) {
+            const pids = out.split(/\s+/).map(Number).filter((p) => p && p !== process.pid);
+            for (const pid of pids) {
+                try {
+                    process.kill(pid, "SIGKILL");
+                } catch {}
+            }
+        }
+    } catch {}
 }
 
 // Publish/Unpublish status to worker
@@ -342,7 +357,24 @@ async function main() {
         });
     });
 
-    await new Promise((resolve) => proxyServer.listen(PROXY_PORT, "0.0.0.0", resolve));
+    if (await checkPort(PROXY_PORT)) {
+        killPort(PROXY_PORT);
+        await new Promise((r) => setTimeout(r, 400));
+    }
+
+    await new Promise((resolve, reject) => {
+        proxyServer.once("error", (err) => {
+            if (err.code === "EADDRINUSE") {
+                killPort(PROXY_PORT);
+                setTimeout(() => {
+                    proxyServer.listen(PROXY_PORT, "0.0.0.0", resolve);
+                }, 500);
+            } else {
+                reject(err);
+            }
+        });
+        proxyServer.listen(PROXY_PORT, "0.0.0.0", resolve);
+    });
     console.log(`      [OK] Unified proxy ready at http://127.0.0.1:${PROXY_PORT}!\n`);
 
     // 4. Launch Cloudflare Tunnel

@@ -228,36 +228,56 @@ export default function SharpDisplay() {
             </main>
 
             {/* Subtle Minimal Footer */}
-            <footer className="pt-8 pb-4 text-neutral-600 flex flex-wrap items-center justify-between gap-2 uppercase z-10 text-[11px] sm:text-xs">
+            <footer className="pt-8 pb-16 text-neutral-600 flex flex-wrap items-center justify-between gap-2 uppercase z-10 text-[11px] sm:text-xs">
                 <span>SISYFUZ // DORUS KLEIJNE</span>
                 <span>UTRECHT, NL</span>
             </footer>
 
-            {/* EXPLICIT TERMINAL SEARCH BAR */}
+            {/* RAW ASCII FLOATING SEARCH BOX */}
             <div
-                className="sticky bottom-0 z-50 w-full bg-[#050505]/95 backdrop-blur-sm border-t border-white/10 pt-2.5 pb-[calc(0.6rem+env(safe-area-inset-bottom))] px-2 mt-auto"
+                className="fixed z-50 select-none cursor-pointer"
+                style={{
+                    bottom: 'calc(1.5rem + env(safe-area-inset-bottom))',
+                    left: '50%',
+                    transform: 'translateX(-50%)'
+                }}
+                onClick={() => inputRef.current?.focus()}
             >
-                <div className="max-w-xl mx-auto flex items-center justify-between font-mono text-xs">
-                    <div
-                        onClick={() => inputRef.current?.focus()}
-                        className={`w-full flex items-center gap-2 px-3 py-1.5 border transition-colors cursor-text ${
-                            isSearchFocused
-                                ? "border-pink-500 bg-black text-white"
-                                : buffer
-                                ? "border-neutral-500 bg-neutral-950 text-white"
-                                : "border-neutral-800 bg-neutral-950/80 text-neutral-400 hover:border-neutral-700"
-                        }`}
-                    >
-                        <span className="text-pink-500 font-bold select-none">&gt;</span>
+                <div className={`w-[285px] xs:w-[320px] sm:w-[380px] font-mono text-xs uppercase transition-colors ${
+                    isSearchFocused
+                        ? "text-white"
+                        : buffer
+                        ? "text-neutral-200"
+                        : "text-neutral-400 hover:text-neutral-200"
+                }`}>
+                    {/* Top ASCII border line */}
+                    <div className="flex items-center text-neutral-600 leading-none select-none overflow-hidden whitespace-nowrap">
+                        <span>+--[</span>
+                        <span className="text-[#ff0080] font-bold px-1">&gt;</span>
+                        <span className={`font-bold transition-colors ${isSearchFocused ? "text-white" : "text-neutral-400"}`}>
+                            SEARCH
+                        </span>
+                        <span>]</span>
+                        <span className="flex-1 overflow-hidden whitespace-nowrap text-neutral-700">----------------------------------------------------</span>
+                        <span>+</span>
+                    </div>
+
+                    {/* Middle ASCII interactive row */}
+                    <div className={`flex items-center bg-black/95 px-1 py-1 transition-colors ${
+                        isSearchFocused ? "text-white" : "text-neutral-300"
+                    }`}>
+                        <span className="text-neutral-600 mr-2 select-none">|</span>
+                        <span className="text-[#ff0080] font-bold mr-1.5 select-none">&gt;</span>
+
                         <input
                             ref={inputRef}
                             type="text"
                             value={buffer}
-                            placeholder="SEARCH OR TYPE COMMAND..."
+                            placeholder={isSearchFocused ? "" : "PRESS_TO_SEARCH"}
                             onFocus={() => setIsSearchFocused(true)}
                             onBlur={() => setIsSearchFocused(false)}
                             onChange={(e) => {
-                                const cleanVal = e.target.value.toLowerCase().replace(/[^a-z0-9 ]/g, '').slice(-30);
+                                const cleanVal = e.target.value.toLowerCase().replace(/[^a-z0-9 ]/g, '').slice(-25);
                                 processCommand(cleanVal);
                             }}
                             onKeyDown={(e) => {
@@ -270,14 +290,18 @@ export default function SharpDisplay() {
                                     e.target.blur();
                                 }
                             }}
-                            className="bg-transparent text-white placeholder-neutral-600 outline-none w-full font-mono text-xs uppercase"
+                            className="bg-transparent text-white font-mono text-xs uppercase tracking-widest outline-none border-none p-0 flex-1 min-w-0 placeholder:text-neutral-600"
                             autoComplete="off"
                             autoCorrect="off"
                             spellCheck="false"
                         />
-                        {isSearchFocused && !buffer && (
-                            <span className="animate-pulse w-1.5 h-3 bg-pink-500 select-none"></span>
-                        )}
+
+                        {/* Blinking Pink ASCII Cursor */}
+                        <span className="animate-pulse text-[#ff0080] font-bold select-none mr-2">
+                            {isSearchFocused ? "█" : "_"}
+                        </span>
+
+                        {/* ESC Clear Button */}
                         {buffer && (
                             <button
                                 type="button"
@@ -288,12 +312,21 @@ export default function SharpDisplay() {
                                     setSearchQuery("");
                                     inputRef.current?.blur();
                                 }}
-                                className="text-neutral-500 hover:text-white px-1 font-bold uppercase select-none cursor-pointer"
+                                className="font-mono text-[11px] font-bold uppercase text-neutral-400 hover:bg-[#ff0080] hover:text-black px-1 cursor-pointer select-none transition-none mr-1 shrink-0"
                                 title="Clear query (ESC)"
                             >
                                 [ESC]
                             </button>
                         )}
+
+                        <span className="text-neutral-600 ml-auto select-none">|</span>
+                    </div>
+
+                    {/* Bottom ASCII border line */}
+                    <div className="flex items-center text-neutral-600 leading-none select-none overflow-hidden whitespace-nowrap">
+                        <span>+</span>
+                        <span className="flex-1 overflow-hidden whitespace-nowrap text-neutral-700">----------------------------------------------------</span>
+                        <span>+</span>
                     </div>
                 </div>
             </div>

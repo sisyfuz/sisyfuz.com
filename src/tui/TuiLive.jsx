@@ -1,10 +1,11 @@
 // src/tui/TuiLive.jsx
 import { useState, useEffect, useRef, useMemo } from "react";
+import Hls from "hls.js";
 import { client } from "../sanityClient";
 
 const isLocalhost = typeof window !== "undefined" && (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
 const WORKER_LIVE_URL = "https://sisyfuz-counter.sisyfuz.workers.dev/live";
-const DEFAULT_STREAM_URL = isLocalhost ? "ws://localhost:9980" : "";
+const DEFAULT_STREAM_URL = isLocalhost ? "http://localhost:9988" : "";
 
 const GLITCH_CHARS = ["█", "▓", "▒", "░", "#", "+", "*", "~", "/", "\\", "%", "$", ">", "_"];
 
@@ -68,11 +69,11 @@ export default function TuiLive({ onNavigate }) {
     const [isHoverTop, setIsHoverTop] = useState(false);
     const [wipeProgress, setWipeProgress] = useState(0);
 
+    const videoRef = useRef(null);
     const canvasRef = useRef(null);
     const containerRef = useRef(null);
     const wsRef = useRef(null);
-    const frameCountRef = useRef(0);
-    const lastFpsTimeRef = useRef(Date.now());
+    const hlsRef = useRef(null);
     const progressRef = useRef(0);
 
     // Smooth animation loop for top-bar ASCII cellular wipe
@@ -100,7 +101,7 @@ export default function TuiLive({ onNavigate }) {
         return () => cancelAnimationFrame(frameId);
     }, [isHoverTop]);
 
-    // Check Worker & Sanity for live stream URL (poll every 6s)
+    // Check Worker & Sanity for live stream URL (poll every 5s)
     useEffect(() => {
         const params = new URLSearchParams(window.location.search);
         if (params.get("stream") || params.get("s")) return;
@@ -127,7 +128,7 @@ export default function TuiLive({ onNavigate }) {
         };
 
         checkLiveStatus();
-        const poll = setInterval(checkLiveStatus, 6000);
+        const poll = setInterval(checkLiveStatus, 5000);
         return () => clearInterval(poll);
     }, []);
 
@@ -168,100 +169,167 @@ export default function TuiLive({ onNavigate }) {
         return () => clearTimeout(timer);
     }, [modeToast]);
 
-    // WebSocket Stream Client for TouchDesigner
+    // 1. Video Player Engine (HLS 60 FPS Hardware-Accelerated)
     useEffect(() => {
         let isMounted = true;
-        let reconnectTimer = null;
+        const isHls = streamUrl && (streamUrl.startsWith("http://") || streamUrl.startsWith("https://"));
 
-        if (!streamUrl) {
-            setIsLive(false);
-            return;
-        }
+        if (!isHls) return;
 
-        const isWs = streamUrl.startsWith("ws://") || streamUrl.startsWith("wss://");
+        const video = videoRef.current;
+        if (!video) return;
 
-        if (isWs) {
-            const connectWs = () => {
-                if (!isMounted) return;
+        const hlsUrl = streamUrl.includes(".m3u8")
+            ? streamUrl
+            : `${streamUrl.replace(/\/+$/, "")}/live/index.m3u8`;
 
-                try {
-                    const ws = new WebSocket(streamUrl);
-                    ws.binaryType = "blob";
-                    wsRef.current = ws;
+        let hls = null;
 
-                    ws.onopen = () => {
-                        if (isMounted) setIsLive(true);
-                    };
+        if (Hls.isSupported()) {
+            hls = new Hls({
+                lowLatencyMode: true,
+                liveSyncDurationCount: 1,
+                maxLiveSyncPlaybackRate: 1.15,
+                enableWorker: true,
+                backBufferLength: 0,
+            });
+            hlsRef.current = hls;
 
-                    ws.onmessage = async (e) => {
-                        if (!isMounted) return;
-                        setIsLive(true);
+            hls.loadSource(hlsUrl);
+            hls.attachMedia(video);
 
-                        // FPS Calculation
-                        frameCountRef.current++;
-                        const now = Date.now();
-                        if (now - lastFpsTimeRef.current >= 1000) {
-                            setFps(frameCountRef.current);
-                            frameCountRef.current = 0;
-                            lastFpsTimeRef.current = now;
-                        }
+            hls.on(Hls.Events.MANIFEST_PARSED, () => {
+                if (isMounted) {
+                    video.play().catch(() => {});
+                    setIsLive(true);
+                }
+            });
 
-                        // Draw incoming TouchDesigner 1280x1280 binary frame onto canvas
-                        try {
-                            const bitmap = await createImageBitmap(e.data);
-                            const canvas = canvasRef.current;
-                            if (canvas) {
-                                if (canvas.width !== 1280 || canvas.height !== 1280) {
-                                    canvas.width = 1280;
-                                    canvas.height = 1280;
-                                }
-                                const ctx = canvas.getContext("2d");
-                                if (ctx) {
-                                    ctx.drawImage(bitmap, 0, 0, 1280, 1280);
-                                }
-                            }
-                            bitmap.close();
-                        } catch (err) {
-                            console.warn("Frame draw error:", err);
-                        }
-                    };
-
-                    ws.onerror = () => {
-                        if (isMounted) setIsLive(false);
-                    };
-
-                    ws.onclose = () => {
-                        if (isMounted) {
-                            setIsLive(false);
-                            reconnectTimer = setTimeout(connectWs, 3000);
-                        }
-                    };
-                } catch {
-                    if (isMounted) {
-                        setIsLive(false);
-                        reconnectTimer = setTimeout(connectWs, 3000);
+            hls.on(Hls.Events.ERROR, (event, data) => {
+                if (data.fatal) {
+                    switch (data.type) {
+                        case Hls.ErrorTypes.NETWORK_ERROR:
+                            hls.startLoad();
+                            break;
+                        case Hls.ErrorTypes.MEDIA_ERROR:
+                            hls.recoverMediaError();
+                            break;
+                        default:
+                            if (isMounted) setIsLive(false);
+                            break;
                     }
                 }
+            });
+        } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
+            // Native Safari HLS
+            video.src = hlsUrl;
+            const onLoaded = () => {
+                if (isMounted) {
+                    video.play().catch(() => {});
+                    setIsLive(true);
+                }
             };
-
-            connectWs();
-        } else {
-            // HTTP fallback
-            const testImg = new Image();
-            testImg.onload = () => isMounted && setIsLive(true);
-            testImg.onerror = () => isMounted && setIsLive(false);
-            testImg.src = `${streamUrl}?t=${Date.now()}`;
+            const onError = () => {
+                if (isMounted) setIsLive(false);
+            };
+            video.addEventListener("loadedmetadata", onLoaded);
+            video.addEventListener("error", onError);
         }
 
         return () => {
             isMounted = false;
-            if (wsRef.current) wsRef.current.close();
-            if (reconnectTimer) clearTimeout(reconnectTimer);
+            if (hls) {
+                hls.destroy();
+                hlsRef.current = null;
+            }
         };
     }, [streamUrl]);
 
-    // Unique session ID for multi-user cursor tracking in TouchDesigner
+    // 2. Hardware FPS Meter (via requestVideoFrameCallback)
+    useEffect(() => {
+        if (!isLive || !videoRef.current) return;
+        const video = videoRef.current;
+
+        let frameCount = 0;
+        let lastTime = performance.now();
+        let callbackId;
+
+        const onFrame = (now) => {
+            frameCount++;
+            if (now - lastTime >= 1000) {
+                setFps(Math.round((frameCount * 1000) / (now - lastTime)));
+                frameCount = 0;
+                lastTime = now;
+            }
+            if (video.requestVideoFrameCallback) {
+                callbackId = video.requestVideoFrameCallback(onFrame);
+            }
+        };
+
+        if (video.requestVideoFrameCallback) {
+            callbackId = video.requestVideoFrameCallback(onFrame);
+        }
+
+        return () => {
+            if (callbackId && video.cancelVideoFrameCallback) {
+                video.cancelVideoFrameCallback(callbackId);
+            }
+        };
+    }, [isLive]);
+
+    // 3. Multi-User Cursor WebSocket Connection to TouchDesigner
     const sessionIdRef = useRef("usr_" + Math.random().toString(36).substring(2, 7));
+
+    useEffect(() => {
+        let isMounted = true;
+        let ws = null;
+        let reconnectTimer = null;
+
+        let wsUrl = "";
+        if (isLocalhost) {
+            wsUrl = "ws://localhost:9980";
+        } else if (streamUrl) {
+            try {
+                if (streamUrl.startsWith("wss://") || streamUrl.startsWith("ws://")) {
+                    wsUrl = streamUrl;
+                } else if (streamUrl.startsWith("https://")) {
+                    const u = new URL(streamUrl);
+                    wsUrl = `wss://${u.host}/ws`;
+                } else if (streamUrl.startsWith("http://")) {
+                    const u = new URL(streamUrl);
+                    wsUrl = `ws://${u.host}/ws`;
+                }
+            } catch {}
+        }
+
+        if (!wsUrl) return;
+
+        const connectWs = () => {
+            if (!isMounted) return;
+            try {
+                ws = new WebSocket(wsUrl);
+                wsRef.current = ws;
+
+                ws.onclose = () => {
+                    if (isMounted) {
+                        reconnectTimer = setTimeout(connectWs, 3000);
+                    }
+                };
+            } catch {
+                if (isMounted) {
+                    reconnectTimer = setTimeout(connectWs, 3000);
+                }
+            }
+        };
+
+        connectWs();
+
+        return () => {
+            isMounted = false;
+            if (ws) ws.close();
+            if (reconnectTimer) clearTimeout(reconnectTimer);
+        };
+    }, [streamUrl]);
 
     // Mouse & Touch Tracking Engine (Sends normalized UV coordinates to TouchDesigner)
     const lastMouseSendRef = useRef(0);
@@ -274,10 +342,10 @@ export default function TuiLive({ onNavigate }) {
         if (now - lastMouseSendRef.current < 16) return; // 60 FPS throttle
         lastMouseSendRef.current = now;
 
-        const canvas = canvasRef.current;
-        if (!canvas) return;
+        const targetEl = videoRef.current || canvasRef.current || containerRef.current;
+        if (!targetEl) return;
 
-        const rect = canvas.getBoundingClientRect();
+        const rect = targetEl.getBoundingClientRect();
         if (!rect.width || !rect.height) return;
 
         const rawU = (clientX - rect.left) / rect.width;
@@ -349,8 +417,6 @@ export default function TuiLive({ onNavigate }) {
         { key: "archive", label: "[archive]" },
         { key: "live", label: "[live]" },
     ], []);
-
-    const isHttp = streamUrl.startsWith("http://") || streamUrl.startsWith("https://");
 
     return (
         <div
@@ -455,32 +521,20 @@ export default function TuiLive({ onNavigate }) {
             {/* 3. VISUAL DISPLAY: FULL VIEWPORT (COVER OR FIT) */}
             <div className="relative w-full h-full flex items-center justify-center bg-black overflow-hidden">
                 
-                {/* WebSocket Canvas Stream (Native Mac 1280x1280) */}
-                <canvas
-                    ref={canvasRef}
-                    width={1280}
-                    height={1280}
-                    className={`select-none pointer-events-none ${
-                        isLive && !isHttp ? "block" : "hidden"
+                {/* Hardware-Accelerated 60 FPS Video Feed */}
+                <video
+                    ref={videoRef}
+                    autoPlay
+                    playsInline
+                    muted
+                    className={`select-none pointer-events-none transition-opacity duration-300 ${
+                        isLive ? "opacity-100 block" : "opacity-0 hidden"
                     } ${
                         displayMode === "cover"
                             ? "w-full h-full object-cover"
                             : "w-full h-full object-contain max-w-[1280px] max-h-[1280px]"
                     }`}
                 />
-
-                {/* HTTP Fallback */}
-                {isLive && isHttp && (
-                    <img
-                        src={streamUrl}
-                        alt="TouchDesigner Live Feed"
-                        className={`select-none pointer-events-none ${
-                            displayMode === "cover"
-                                ? "w-full h-full object-cover"
-                                : "w-full h-full object-contain max-w-[1280px] max-h-[1280px]"
-                        }`}
-                    />
-                )}
 
                 {/* STANDBY: PURE PROCEDURAL ASCII OSCILLOSCOPE */}
                 {!isLive && (

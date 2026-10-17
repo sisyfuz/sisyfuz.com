@@ -23,8 +23,14 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const TD_PORT = 9980;
 const MEDIAMTX_HLS_PORT = 8888;
+const MEDIAMTX_WEBRTC_PORT = 8889;
 const PROXY_PORT = 9988;
 const WORKER_LIVE_URL = "https://sisyfuz-counter.sisyfuz.workers.dev/live";
+
+// Metered.ca TURN credentials (optional — WebRTC falls back to STUN-only if unset)
+const TURN_URL = process.env.METERED_TURN_URL || "";
+const TURN_USERNAME = process.env.METERED_TURN_USERNAME || "";
+const TURN_CREDENTIAL = process.env.METERED_TURN_CREDENTIAL || "";
 
 console.log("\n==============================================================");
 console.log("   SISYFUZ // 60+ FPS ULTRA-RAW BROADCASTER                   ");
@@ -106,7 +112,7 @@ async function main() {
             await new Promise((r) => setTimeout(r, 200));
             if (await checkPort(MEDIAMTX_HLS_PORT)) break;
         }
-        console.log("      [OK] MediaMTX started on port 1935 (RTMP) and 8888 (HLS)!\n");
+        console.log("      [OK] MediaMTX started on port 1935 (RTMP), 8888 (HLS), and 8889 (WebRTC)!\n");
     }
 
     // 3. Start Transparent Cookie-Handling Proxy (Port 9988)
@@ -124,10 +130,11 @@ async function main() {
     });
 
     proxyServer = http.createServer((req, res) => {
-        // Universal CORS headers for web browsers
+        // Universal CORS headers for web browsers (extended for WHEP PATCH/DELETE)
         res.setHeader("Access-Control-Allow-Origin", "*");
-        res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS, HEAD");
+        res.setHeader("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS, HEAD");
         res.setHeader("Access-Control-Allow-Headers", "*");
+        res.setHeader("Access-Control-Expose-Headers", "Location, Link");
 
         if (req.method === "OPTIONS") {
             res.writeHead(204);
@@ -135,6 +142,60 @@ async function main() {
             return;
         }
 
+        // --- /turn-config: Expose ICE server configuration to the frontend ---
+        if (req.url === "/turn-config") {
+            const iceServers = [{ urls: "stun:stun.l.google.com:19302" }];
+            if (TURN_URL && TURN_USERNAME && TURN_CREDENTIAL) {
+                iceServers.push({
+                    urls: TURN_URL,
+                    username: TURN_USERNAME,
+                    credential: TURN_CREDENTIAL,
+                });
+            }
+            res.writeHead(200, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ iceServers }));
+            return;
+        }
+
+        // --- WHEP proxy: Forward WebRTC signaling to MediaMTX (POST/PATCH/DELETE /live/whep*) ---
+        if (req.url.startsWith("/live/whep")) {
+            const chunks = [];
+            req.on("data", (chunk) => chunks.push(chunk));
+            req.on("end", () => {
+                const body = Buffer.concat(chunks);
+                const whepReq = http.request({
+                    hostname: "127.0.0.1",
+                    port: MEDIAMTX_WEBRTC_PORT,
+                    path: req.url,
+                    method: req.method,
+                    headers: {
+                        "content-type": req.headers["content-type"] || "application/sdp",
+                        "content-length": body.length,
+                    },
+                }, (whepRes) => {
+                    const fwdHeaders = {
+                        "access-control-allow-origin": "*",
+                        "access-control-expose-headers": "Location, Link",
+                    };
+                    if (whepRes.headers["content-type"]) fwdHeaders["content-type"] = whepRes.headers["content-type"];
+                    if (whepRes.headers["location"]) fwdHeaders["location"] = whepRes.headers["location"];
+                    if (whepRes.headers["link"]) fwdHeaders["link"] = whepRes.headers["link"];
+
+                    res.writeHead(whepRes.statusCode, fwdHeaders);
+                    whepRes.pipe(res);
+                });
+
+                whepReq.on("error", () => {
+                    res.writeHead(502, { "Content-Type": "text/plain" });
+                    res.end("WebRTC signaling server unavailable");
+                });
+                whepReq.write(body);
+                whepReq.end();
+            });
+            return;
+        }
+
+        // --- HLS proxy: Transparent cookie-handling proxy to MediaMTX ---
         const clientKey = req.headers["x-forwarded-for"] || req.socket.remoteAddress || "client";
         const sessionCookie = activeCookies.get(clientKey) || "cookieCheck=1";
 
@@ -250,6 +311,7 @@ async function main() {
             console.log(`  Public Web Page:    https://sisyfuz.com/live`);
             console.log(`  Tunnel Stream URL:  ${liveUrl}`);
             console.log(`  HLS Video Feed:     ${liveUrl}/live/index.m3u8`);
+            console.log(`  WebRTC WHEP Feed:   ${liveUrl}/live/whep`);
             console.log(`  Cursor Telemetry:   wss://${match[1]}/ws`);
             console.log("--------------------------------------------------------------");
             console.log("  OBS STUDIO 60 FPS ULTRA-LOW LATENCY SETTINGS:");
@@ -261,7 +323,7 @@ async function main() {
             console.log("  6. Output -> Encoder: Apple VT H264 Hardware (or x264)");
             console.log("  7. Keyframe Interval: 1s (Strictly 1 second / 60 frames)");
             console.log("  8. B-Frames:          0 (Zero B-Frames for lowest latency)");
-            console.log("  9. Bitrate:           3500 - 5000 Kbps CBR");
+            console.log("  9. Bitrate:           6000 - 8000 Kbps CBR");
             console.log("  10. Click:            [Start Streaming] in OBS");
             console.log("==============================================================\n");
 

@@ -4,7 +4,8 @@ import { ASCII_DIVIDER } from "../utils/ascii";
 import { client } from "../sanityClient";
 
 const isLocalhost = typeof window !== "undefined" && (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
-const DEFAULT_STREAM_URL = isLocalhost ? "ws://localhost:9980" : "wss://polo-jake-physicians-twist.trycloudflare.com";
+const WORKER_LIVE_URL = "https://sisyfuz-counter.sisyfuz.workers.dev/live";
+const DEFAULT_STREAM_URL = isLocalhost ? "ws://localhost:9980" : "";
 
 export default function TuiLive() {
     const [streamUrl, setStreamUrl] = useState(() => {
@@ -13,7 +14,7 @@ export default function TuiLive() {
             const queryUrl = params.get("stream") || params.get("s");
             if (queryUrl) return queryUrl;
             const saved = localStorage.getItem("sisyfuz_td_url");
-            if (saved) return saved;
+            if (saved && isLocalhost) return saved;
         }
         return DEFAULT_STREAM_URL;
     });
@@ -24,6 +25,7 @@ export default function TuiLive() {
     const [tempUrl, setTempUrl] = useState(streamUrl);
     const [animFrame, setAnimFrame] = useState(0);
     const [copied, setCopied] = useState(false);
+    const [isBroadcastingGlobal, setIsBroadcastingGlobal] = useState(false);
 
     const canvasRef = useRef(null);
     const containerRef = useRef(null);
@@ -31,17 +33,42 @@ export default function TuiLive() {
     const frameCountRef = useRef(0);
     const lastFpsTimeRef = useRef(Date.now());
 
-    // Check Sanity for globally active live stream URL
+    // Check Worker & Sanity for globally active live stream URL (poll every 6s)
     useEffect(() => {
         const params = new URLSearchParams(window.location.search);
         if (params.get("stream") || params.get("s")) return;
 
-        client.fetch(`*[_id == "site-live-stream"][0]`).then(doc => {
-            if (doc?.active && doc?.url) {
-                setStreamUrl(doc.url);
-                setTempUrl(doc.url);
+        const checkLiveStatus = async () => {
+            try {
+                const res = await fetch(WORKER_LIVE_URL);
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data.active && data.url) {
+                        setIsBroadcastingGlobal(true);
+                        setStreamUrl(data.url);
+                        setTempUrl(data.url);
+                    } else {
+                        setIsBroadcastingGlobal(false);
+                        if (!isLocalhost) {
+                            setStreamUrl("");
+                            setIsLive(false);
+                        }
+                    }
+                }
+            } catch (err) {
+                client.fetch(`*[_id == "site-live-stream"][0]`).then(doc => {
+                    if (doc?.active && doc?.url) {
+                        setIsBroadcastingGlobal(true);
+                        setStreamUrl(doc.url);
+                        setTempUrl(doc.url);
+                    }
+                }).catch(() => {});
             }
-        }).catch(() => {});
+        };
+
+        checkLiveStatus();
+        const poll = setInterval(checkLiveStatus, 6000);
+        return () => clearInterval(poll);
     }, []);
 
     // Procedural ASCII oscilloscope for standby state
@@ -57,6 +84,11 @@ export default function TuiLive() {
     useEffect(() => {
         let isMounted = true;
         let reconnectTimer = null;
+
+        if (!streamUrl) {
+            setIsLive(false);
+            return;
+        }
 
         const isWs = streamUrl.startsWith("ws://") || streamUrl.startsWith("wss://");
 
@@ -146,8 +178,45 @@ export default function TuiLive() {
         e.preventDefault();
         const trimmed = tempUrl.trim();
         setStreamUrl(trimmed);
-        localStorage.setItem("sisyfuz_td_url", trimmed);
+        if (isLocalhost) {
+            localStorage.setItem("sisyfuz_td_url", trimmed);
+        }
         setShowSettings(false);
+    };
+
+    const handlePublishGlobal = async () => {
+        const trimmed = tempUrl.trim();
+        if (!trimmed) return;
+        try {
+            await fetch(WORKER_LIVE_URL, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ url: trimmed, active: true }),
+            });
+            setIsBroadcastingGlobal(true);
+            setStreamUrl(trimmed);
+            setShowSettings(false);
+        } catch (err) {
+            console.error("Failed to publish global stream:", err);
+        }
+    };
+
+    const handleUnpublishGlobal = async () => {
+        try {
+            await fetch(WORKER_LIVE_URL, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ active: false }),
+            });
+            setIsBroadcastingGlobal(false);
+            if (!isLocalhost) {
+                setStreamUrl("");
+                setIsLive(false);
+            }
+            setShowSettings(false);
+        } catch (err) {
+            console.error("Failed to unpublish stream:", err);
+        }
     };
 
     const toggleFullscreen = () => {
@@ -317,20 +386,40 @@ def broadcastFrame(webServerDAT, top_name='null1'):
                         Local Mac: <code>ws://localhost:9980</code> (Fastest for local testing)<br />
                         Public Cloudflare: <code>wss://&lt;subdomain&gt;.trycloudflare.com</code> (For everyone on the internet)
                     </p>
-                    <div className="flex gap-2 flex-wrap">
-                        <input
-                            type="text"
-                            value={tempUrl}
-                            onChange={(e) => setTempUrl(e.target.value)}
-                            className="flex-1 bg-black border border-white/40 px-3 py-1.5 text-xs text-white font-mono outline-none focus:border-pink-500"
-                            placeholder="ws://localhost:9980 or wss://...trycloudflare.com"
-                        />
-                        <button
-                            type="submit"
-                            className="bg-white text-black font-bold px-4 py-1.5 hover:bg-pink-500 hover:text-white uppercase cursor-pointer"
-                        >
-                            CONNECT
-                        </button>
+                    <div className="space-y-2">
+                        <div className="flex gap-2 flex-wrap">
+                            <input
+                                type="text"
+                                value={tempUrl}
+                                onChange={(e) => setTempUrl(e.target.value)}
+                                className="flex-1 bg-black border border-white/40 px-3 py-1.5 text-xs text-white font-mono outline-none focus:border-pink-500"
+                                placeholder="ws://localhost:9980 or wss://...trycloudflare.com"
+                            />
+                            <button
+                                type="submit"
+                                className="bg-white text-black font-bold px-4 py-1.5 hover:bg-pink-500 hover:text-white uppercase cursor-pointer"
+                            >
+                                CONNECT_TAB
+                            </button>
+                        </div>
+                        <div className="flex gap-2 flex-wrap pt-1">
+                            <button
+                                type="button"
+                                onClick={handlePublishGlobal}
+                                className="bg-pink-500 text-black font-bold px-3 py-1.5 hover:bg-white hover:text-black uppercase cursor-pointer text-xs"
+                            >
+                                [SET_GLOBAL_BROADCAST_FOR_ALL_VISITORS]
+                            </button>
+                            {isBroadcastingGlobal && (
+                                <button
+                                    type="button"
+                                    onClick={handleUnpublishGlobal}
+                                    className="border border-red-500 text-red-400 font-bold px-3 py-1.5 hover:bg-red-500 hover:text-white uppercase cursor-pointer text-xs"
+                                >
+                                    [END_GLOBAL_BROADCAST]
+                                </button>
+                            )}
+                        </div>
                     </div>
                 </form>
             )}

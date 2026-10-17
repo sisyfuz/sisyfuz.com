@@ -6,6 +6,7 @@ const DiscoContext = createContext();
 export function DiscoProvider({ children }) {
     const [discoMode, setDiscoMode] = useState(false);
     const [searchQuery, setSearchQuery] = useState("");
+    const [asciiLiveMode, setAsciiLiveMode] = useState(false);
 
     // NIEUW: State om de geheime commando's in op te slaan
     const [easterEggs, setEasterEggs] = useState([]);
@@ -48,7 +49,9 @@ export function DiscoProvider({ children }) {
             discoMode,
             setDiscoMode,
             searchQuery,
-            setSearchQuery
+            setSearchQuery,
+            asciiLiveMode,
+            setAsciiLiveMode
         }}>
             {children}
         </DiscoContext.Provider>

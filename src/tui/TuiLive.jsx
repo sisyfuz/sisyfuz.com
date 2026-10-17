@@ -2,6 +2,8 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import Hls from "hls.js";
 import { client } from "../sanityClient";
+import { ASCII_DIVIDER, ASCII_RAMP } from "../utils/ascii";
+import { useDisco } from "../context/DiscoContext";
 
 const isLocalhost = typeof window !== "undefined" && (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
 const WORKER_LIVE_URL = "https://sisyfuz-counter.sisyfuz.workers.dev/live";
@@ -60,6 +62,7 @@ function AsciiWipeItem({ text, progress, startIndex = 0, totalLength = 110 }) {
 }
 
 export default function TuiLive({ onNavigate }) {
+    const { asciiLiveMode, setAsciiLiveMode, discoMode } = useDisco();
     const [streamUrl, setStreamUrl] = useState(() => {
         if (typeof window !== "undefined") {
             const params = new URLSearchParams(window.location.search);
@@ -237,7 +240,7 @@ export default function TuiLive({ onNavigate }) {
         }
     };
 
-    // Keyboard Shortcuts: Tab (Cover/Fit), M (Audio), F (Fullscreen), Esc (Home)
+    // Keyboard Shortcuts: Tab (Cover/Fit), M (Audio), A (ASCII), F (Fullscreen), Esc (Home)
     useEffect(() => {
         const handleKeyDown = (e) => {
             if (e.key === "Tab") {
@@ -250,6 +253,13 @@ export default function TuiLive({ onNavigate }) {
             } else if (e.key === "m" || e.key === "M") {
                 e.preventDefault();
                 toggleAudio();
+            } else if (e.key === "a" || e.key === "A") {
+                e.preventDefault();
+                setAsciiLiveMode(prev => {
+                    const next = !prev;
+                    setModeToast(next ? "ASCII STREAM: ACTIVE" : "VIDEO STREAM: ACTIVE");
+                    return next;
+                });
             } else if (e.key === "f" || e.key === "F") {
                 e.preventDefault();
                 toggleFullscreen();
@@ -262,7 +272,7 @@ export default function TuiLive({ onNavigate }) {
 
         window.addEventListener("keydown", handleKeyDown);
         return () => window.removeEventListener("keydown", handleKeyDown);
-    }, [onNavigate]);
+    }, [onNavigate, setAsciiLiveMode]);
 
     // Toast auto-hide
     useEffect(() => {
@@ -391,6 +401,150 @@ export default function TuiLive({ onNavigate }) {
             }
         };
     }, [isLive]);
+
+    // 2.5 Real-Time 60 FPS Full-Page ASCII Stream Engine
+    useEffect(() => {
+        if (!isLive || !asciiLiveMode) return;
+
+        const video = videoRef.current;
+        const canvas = canvasRef.current;
+        if (!video || !canvas) return;
+
+        const ctx = canvas.getContext("2d", { alpha: false });
+        if (!ctx) return;
+
+        const offscreen = document.createElement("canvas");
+        const offCtx = offscreen.getContext("2d", { willReadFrequently: true });
+        if (!offCtx) return;
+
+        let animId;
+        let callbackId;
+
+        const renderAscii = () => {
+            if (!isVisibleRef.current) {
+                scheduleNext();
+                return;
+            }
+
+            if (!video || video.paused || video.ended || video.readyState < 2) {
+                scheduleNext();
+                return;
+            }
+
+            const width = window.innerWidth;
+            const height = window.innerHeight;
+            if (canvas.width !== width || canvas.height !== height) {
+                canvas.width = width;
+                canvas.height = height;
+            }
+
+            const isMobile = width < 640;
+            const cellW = isMobile ? 6 : 8;
+            const cellH = Math.round(cellW / 0.55);
+            const cols = Math.floor(width / cellW);
+            const rows = Math.floor(height / cellH);
+
+            if (cols <= 0 || rows <= 0) {
+                scheduleNext();
+                return;
+            }
+
+            if (offscreen.width !== cols || offscreen.height !== rows) {
+                offscreen.width = cols;
+                offscreen.height = rows;
+            }
+
+            const vW = video.videoWidth || 1920;
+            const vH = video.videoHeight || 1080;
+            const vAspect = vW / vH;
+            const targetAspect = width / height;
+
+            let sX = 0, sY = 0, sW = vW, sH = vH;
+            if (displayMode === "cover") {
+                if (vAspect > targetAspect) {
+                    sW = vH * targetAspect;
+                    sX = (vW - sW) / 2;
+                } else {
+                    sH = vW / targetAspect;
+                    sY = (vH - sH) / 2;
+                }
+                offCtx.drawImage(video, sX, sY, sW, sH, 0, 0, cols, rows);
+            } else {
+                offCtx.fillStyle = "#000000";
+                offCtx.fillRect(0, 0, cols, rows);
+                let dX = 0, dY = 0, dW = cols, dH = rows;
+                if (vAspect > targetAspect) {
+                    dH = cols / vAspect;
+                    dY = (rows - dH) / 2;
+                } else {
+                    dW = rows * vAspect;
+                    dX = (cols - dW) / 2;
+                }
+                offCtx.drawImage(video, 0, 0, vW, vH, Math.round(dX), Math.round(dY), Math.round(dW), Math.round(dH));
+            }
+
+            const imgData = offCtx.getImageData(0, 0, cols, rows);
+            const data = imgData.data;
+
+            ctx.fillStyle = "#050505";
+            ctx.fillRect(0, 0, width, height);
+
+            ctx.font = `${cellH - 1}px monospace`;
+            ctx.textBaseline = "top";
+
+            const ramp = ASCII_RAMP;
+            const rampLen = ramp.length;
+            const now = performance.now();
+
+            for (let y = 0; y < rows; y++) {
+                const yPos = y * cellH;
+                const rowOffset = y * cols * 4;
+                for (let x = 0; x < cols; x++) {
+                    const idx = rowOffset + x * 4;
+                    const r = data[idx];
+                    const g = data[idx + 1];
+                    const b = data[idx + 2];
+
+                    const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+                    if (lum < 16) continue;
+
+                    const charIdx = Math.min(rampLen - 1, Math.floor((1 - lum / 255) * rampLen));
+                    const char = ramp[charIdx];
+                    if (!char || char === " ") continue;
+
+                    if (discoMode) {
+                        const hue = (x * 4 + y * 6 + now * 0.1) % 360;
+                        ctx.fillStyle = `hsl(${hue}, 100%, 65%)`;
+                    } else {
+                        ctx.fillStyle = `rgb(${r},${g},${b})`;
+                    }
+
+                    ctx.fillText(char, x * cellW, yPos);
+                }
+            }
+
+            scheduleNext();
+        };
+
+        const scheduleNext = () => {
+            if (video.requestVideoFrameCallback) {
+                callbackId = video.requestVideoFrameCallback(renderAscii);
+            } else {
+                animId = requestAnimationFrame(renderAscii);
+            }
+        };
+
+        scheduleNext();
+
+        return () => {
+            if (callbackId && video.cancelVideoFrameCallback) {
+                video.cancelVideoFrameCallback(callbackId);
+            }
+            if (animId) {
+                cancelAnimationFrame(animId);
+            }
+        };
+    }, [isLive, asciiLiveMode, displayMode, discoMode]);
 
     // 3. Multi-User Telemetry WebSocket Connection to TouchDesigner
     const sessionIdRef = useRef("usr_" + Math.random().toString(36).substring(2, 7));
@@ -609,7 +763,7 @@ export default function TuiLive({ onNavigate }) {
             <button
                 type="button"
                 onClick={handleMobileToggle}
-                className="sm:hidden fixed top-2 left-1/2 -translate-x-1/2 z-40 bg-black/90 border border-white/20 text-neutral-300 px-3 py-1 text-[10px] uppercase font-mono tracking-wider cursor-pointer shadow-lg"
+                className="sm:hidden fixed top-2 left-1/2 -translate-x-1/2 z-40 bg-black/95 text-neutral-300 px-3 py-1 text-[10px] uppercase font-mono tracking-wider cursor-pointer shadow-lg"
                 style={{
                     opacity: wipeProgress < 0.2 ? 0.85 : 0,
                     pointerEvents: wipeProgress < 0.2 ? "auto" : "none",
@@ -625,7 +779,7 @@ export default function TuiLive({ onNavigate }) {
                     opacity: wipeProgress > 0.01 ? 1 : 0,
                     pointerEvents: wipeProgress > 0.5 ? "auto" : "none",
                 }}
-                className="fixed top-0 left-0 w-full z-50 transition-opacity duration-150 bg-black/90 backdrop-blur-md border-b border-white/10 px-4 sm:px-12 py-2.5 sm:py-3"
+                className="fixed top-0 left-0 w-full z-50 transition-opacity duration-150 bg-black/95 backdrop-blur-md px-4 sm:px-12 pt-2.5 sm:pt-3 pb-1"
             >
                 <div className="flex flex-wrap items-center justify-between gap-3 uppercase">
                     
@@ -676,6 +830,32 @@ export default function TuiLive({ onNavigate }) {
                             </span>
                         </div>
 
+                        {/* ASCII Stream Toggle: [A: ASCII] / [A: VIDEO] */}
+                        {isLive && (
+                            <button
+                                onClick={() => {
+                                    setAsciiLiveMode(prev => {
+                                        const next = !prev;
+                                        setModeToast(next ? "ASCII STREAM: ACTIVE" : "VIDEO STREAM: ACTIVE");
+                                        return next;
+                                    });
+                                }}
+                                className={`px-1 uppercase cursor-pointer transition-colors ${
+                                    asciiLiveMode
+                                        ? "text-[#ff0080] font-bold hover:bg-[#ff0080] hover:text-black"
+                                        : "text-neutral-400 hover:bg-white hover:text-black"
+                                }`}
+                                title="Press A to toggle ASCII mode"
+                            >
+                                <AsciiWipeItem
+                                    text={asciiLiveMode ? "[A: ASCII]" : "[A: VIDEO]"}
+                                    progress={wipeProgress}
+                                    startIndex={62}
+                                    totalLength={110}
+                                />
+                            </button>
+                        )}
+
                         {/* Audio Toggle: [M: MUTED] / [M: AUDIO ON] */}
                         {isLive && (
                             <button
@@ -690,7 +870,7 @@ export default function TuiLive({ onNavigate }) {
                                 <AsciiWipeItem
                                     text={isMuted ? "[M: MUTED]" : "[M: AUDIO ON]"}
                                     progress={wipeProgress}
-                                    startIndex={72}
+                                    startIndex={74}
                                     totalLength={110}
                                 />
                             </button>
@@ -705,7 +885,7 @@ export default function TuiLive({ onNavigate }) {
                             <AsciiWipeItem
                                 text={`[TAB: ${displayMode.toUpperCase()}]`}
                                 progress={wipeProgress}
-                                startIndex={85}
+                                startIndex={86}
                                 totalLength={110}
                             />
                         </button>
@@ -725,6 +905,16 @@ export default function TuiLive({ onNavigate }) {
                         </button>
                     </div>
                 </div>
+
+                {/* Raw ASCII character divider replacing modern CSS border */}
+                <div className="text-neutral-700 select-none overflow-hidden whitespace-nowrap leading-none pt-2 font-mono text-[11px]">
+                    <AsciiWipeItem
+                        text={ASCII_DIVIDER}
+                        progress={wipeProgress}
+                        startIndex={0}
+                        totalLength={110}
+                    />
+                </div>
             </div>
 
             {/* 3. VISUAL DISPLAY: FULL VIEWPORT (COVER OR FIT) */}
@@ -738,11 +928,19 @@ export default function TuiLive({ onNavigate }) {
                     muted={isMuted}
                     onPlaying={() => setIsLive(true)}
                     className={`select-none pointer-events-none transition-opacity duration-300 ${
-                        isLive ? "opacity-100 block" : "opacity-0 hidden"
+                        isLive && !asciiLiveMode ? "opacity-100 block" : "opacity-0 pointer-events-none absolute"
                     } ${
                         displayMode === "cover"
                             ? "w-full h-full object-cover"
                             : "w-full h-full object-contain max-w-[1280px] max-h-[1280px]"
+                    }`}
+                />
+
+                {/* Full-Page Real-time 60 FPS ASCII Stream Canvas */}
+                <canvas
+                    ref={canvasRef}
+                    className={`select-none pointer-events-none transition-opacity duration-300 absolute inset-0 w-full h-full ${
+                        isLive && asciiLiveMode ? "opacity-100 block" : "opacity-0 pointer-events-none hidden"
                     }`}
                 />
 
@@ -768,8 +966,8 @@ export default function TuiLive({ onNavigate }) {
             {/* 4. TAB MODE SWITCH TOAST (Minimal Center Notification) */}
             {modeToast && (
                 <div className="fixed inset-0 pointer-events-none flex items-center justify-center z-50">
-                    <div className="bg-black/90 border border-white/20 text-[#ff0080] font-bold px-4 py-2 uppercase tracking-widest text-xs animate-fadeIn shadow-2xl">
-                        {modeToast}
+                    <div className="bg-black/95 text-[#ff0080] font-bold px-4 py-2 uppercase tracking-widest text-xs animate-fadeIn shadow-2xl font-mono">
+                        [ {modeToast} ]
                     </div>
                 </div>
             )}

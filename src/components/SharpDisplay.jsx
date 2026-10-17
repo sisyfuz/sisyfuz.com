@@ -22,7 +22,7 @@ const SECTIONS = [
 export default function SharpDisplay() {
     const navigate = useNavigate();
     const location = useLocation();
-    const { discoMode, setDiscoMode, setSearchQuery } = useDisco();
+    const { discoMode, setDiscoMode, setSearchQuery, setAsciiLiveMode } = useDisco();
 
     const [activeSection, setActiveSection] = useState("home");
     const [selectedWorkId, setSelectedWorkId] = useState(null);
@@ -69,6 +69,14 @@ export default function SharpDisplay() {
 
         if (val.endsWith("disco")) {
             setDiscoMode(prev => !prev);
+            setBuffer("");
+            bufferRef.current = "";
+            setSearchQuery("");
+            inputRef.current?.blur();
+        } else if (val.endsWith("ascii")) {
+            setAsciiLiveMode(prev => (location.pathname === "/live" ? !prev : true));
+            setActiveSection("live");
+            navigate("/live");
             setBuffer("");
             bufferRef.current = "";
             setSearchQuery("");

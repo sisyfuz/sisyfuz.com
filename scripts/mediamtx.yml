@@ -1,24 +1,26 @@
 # scripts/mediamtx.yml
-# High-Performance Low-Latency Media Configuration for sisyfuz.com Live Stream
+# Ultra-Low Latency Media Engine for sisyfuz.com Live Stream
+
+rtsp: no
 
 # RTMP Ingest from OBS Studio (localhost:1935)
 rtmp: yes
 rtmpAddress: :1935
 
-# WebRTC (Direct sub-second WebRTC streaming and WHIP/WHEP)
+# WebRTC Engine (WHIP Ingest & WHEP Sub-Second Playback ~150ms)
 webrtc: yes
 webrtcAddress: :8889
 webrtcAllowOrigins:
   - '*'
 
-# HLS / Low-Latency HLS for Browser Video Playback
+# Low-Latency HLS (Aggressive 500ms segments, 100ms parts)
 hls: yes
 hlsAddress: :8888
 hlsAlwaysRemux: yes
 hlsVariant: lowLatency
 hlsSegmentCount: 7
-hlsSegmentDuration: 1s
-hlsPartDuration: 200ms
+hlsSegmentDuration: 500ms
+hlsPartDuration: 100ms
 hlsAllowOrigins:
   - '*'
 

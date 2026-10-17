@@ -115,9 +115,16 @@ async function main() {
         }
     });
 
+    const MEDIAMTX_WEBRTC_PORT = 8889;
+
     proxyServer = http.createServer((req, res) => {
-        // Forward HTTP requests (HLS stream files) to MediaMTX
-        proxy.web(req, res, { target: `http://127.0.0.1:${MEDIAMTX_HLS_PORT}` });
+        // Forward WebRTC WHEP/WHIP requests to MediaMTX WebRTC port 8889
+        if (req.url && (req.url.includes("/whep") || req.url.includes("/whip"))) {
+            proxy.web(req, res, { target: `http://127.0.0.1:${MEDIAMTX_WEBRTC_PORT}` });
+        } else {
+            // Forward HTTP requests (HLS stream files) to MediaMTX HLS port 8888
+            proxy.web(req, res, { target: `http://127.0.0.1:${MEDIAMTX_HLS_PORT}` });
+        }
     });
 
     proxyServer.on("upgrade", (req, socket, head) => {

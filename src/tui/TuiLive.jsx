@@ -61,6 +61,7 @@ export default function TuiLive({ onNavigate }) {
 
     const [isLive, setIsLive] = useState(false);
     const [fps, setFps] = useState(0);
+    const [streamProtocol, setStreamProtocol] = useState("");
     const [displayMode, setDisplayMode] = useState("cover"); // "cover" | "fit"
     const [modeToast, setModeToast] = useState("");
     const [animFrame, setAnimFrame] = useState(0);
@@ -74,6 +75,7 @@ export default function TuiLive({ onNavigate }) {
     const containerRef = useRef(null);
     const wsRef = useRef(null);
     const hlsRef = useRef(null);
+    const pcRef = useRef(null);
     const progressRef = useRef(0);
 
     // Smooth animation loop for top-bar ASCII cellular wipe
@@ -116,6 +118,7 @@ export default function TuiLive({ onNavigate }) {
                     } else if (!isLocalhost) {
                         setStreamUrl("");
                         setIsLive(false);
+                        setStreamProtocol("");
                     }
                 }
             } catch {
@@ -169,78 +172,172 @@ export default function TuiLive({ onNavigate }) {
         return () => clearTimeout(timer);
     }, [modeToast]);
 
-    // 1. Video Player Engine (HLS 60 FPS Hardware-Accelerated)
+    // 1. Video Player Engine (Ultra-Low Latency: WebRTC WHEP first, then Low-Latency HLS fallback)
     useEffect(() => {
         let isMounted = true;
-        const isHls = streamUrl && (streamUrl.startsWith("http://") || streamUrl.startsWith("https://"));
+        const isHttp = streamUrl && (streamUrl.startsWith("http://") || streamUrl.startsWith("https://"));
 
-        if (!isHls) return;
+        if (!isHttp) return;
 
         const video = videoRef.current;
         if (!video) return;
 
-        const hlsUrl = streamUrl.includes(".m3u8")
-            ? streamUrl
-            : `${streamUrl.replace(/\/+$/, "")}/live/index.m3u8`;
+        const cleanUrl = streamUrl.replace(/\/+$/, "");
+        const whepUrl = cleanUrl.includes(".m3u8")
+            ? cleanUrl.replace(/index\.m3u8.*$/, "whep")
+            : `${cleanUrl}/live/whep`;
+        const hlsUrl = cleanUrl.includes(".m3u8")
+            ? cleanUrl
+            : `${cleanUrl}/live/index.m3u8`;
 
-        let hls = null;
+        let hlsInstance = null;
+        let pc = null;
+        let whepTimeout = null;
+        let fallbackTriggered = false;
 
-        if (Hls.isSupported()) {
-            hls = new Hls({
-                lowLatencyMode: true,
-                liveSyncDurationCount: 1,
-                maxLiveSyncPlaybackRate: 1.15,
-                enableWorker: true,
-                backBufferLength: 0,
-            });
-            hlsRef.current = hls;
+        const startHls = () => {
+            if (!isMounted || fallbackTriggered) return;
+            fallbackTriggered = true;
 
-            hls.loadSource(hlsUrl);
-            hls.attachMedia(video);
+            if (pc) {
+                try { pc.close(); } catch {}
+                pc = null;
+                pcRef.current = null;
+            }
 
-            hls.on(Hls.Events.MANIFEST_PARSED, () => {
-                if (isMounted) {
-                    video.play().catch(() => {});
-                    setIsLive(true);
-                }
-            });
+            if (Hls.isSupported()) {
+                const hls = new Hls({
+                    lowLatencyMode: true,
+                    liveSyncDuration: 0.5,
+                    liveMaxLatencyDuration: 1.2,
+                    maxLiveSyncPlaybackRate: 1.25,
+                    enableWorker: true,
+                    backBufferLength: 0,
+                });
+                hlsRef.current = hls;
+                hlsInstance = hls;
 
-            hls.on(Hls.Events.ERROR, (event, data) => {
-                if (data.fatal) {
-                    switch (data.type) {
-                        case Hls.ErrorTypes.NETWORK_ERROR:
-                            hls.startLoad();
-                            break;
-                        case Hls.ErrorTypes.MEDIA_ERROR:
-                            hls.recoverMediaError();
-                            break;
-                        default:
-                            if (isMounted) setIsLive(false);
-                            break;
+                hls.loadSource(hlsUrl);
+                hls.attachMedia(video);
+
+                hls.on(Hls.Events.MANIFEST_PARSED, () => {
+                    if (isMounted) {
+                        video.play().catch(() => {});
+                        setIsLive(true);
+                        setStreamProtocol("LL-HLS");
                     }
-                }
-            });
-        } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
-            // Native Safari HLS
-            video.src = hlsUrl;
-            const onLoaded = () => {
-                if (isMounted) {
+                });
+
+                hls.on(Hls.Events.ERROR, (event, data) => {
+                    if (data.fatal) {
+                        switch (data.type) {
+                            case Hls.ErrorTypes.NETWORK_ERROR:
+                                hls.startLoad();
+                                break;
+                            case Hls.ErrorTypes.MEDIA_ERROR:
+                                hls.recoverMediaError();
+                                break;
+                            default:
+                                if (isMounted) {
+                                    setIsLive(false);
+                                    setStreamProtocol("");
+                                }
+                                break;
+                        }
+                    }
+                });
+            } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
+                video.src = hlsUrl;
+                const onLoaded = () => {
+                    if (isMounted) {
+                        video.play().catch(() => {});
+                        setIsLive(true);
+                        setStreamProtocol("LL-HLS");
+                    }
+                };
+                const onError = () => {
+                    if (isMounted) {
+                        setIsLive(false);
+                        setStreamProtocol("");
+                    }
+                };
+                video.addEventListener("loadedmetadata", onLoaded);
+                video.addEventListener("error", onError);
+            }
+        };
+
+        const startWhep = async () => {
+            try {
+                pc = new RTCPeerConnection({
+                    iceServers: [
+                        { urls: "stun:stun.l.google.com:19302" },
+                        { urls: "stun:global.stun.twilio.com:3478" }
+                    ]
+                });
+                pcRef.current = pc;
+
+                pc.addTransceiver("video", { direction: "recvonly" });
+
+                pc.ontrack = (event) => {
+                    if (!isMounted) return;
+                    clearTimeout(whepTimeout);
+                    video.srcObject = event.streams[0];
                     video.play().catch(() => {});
                     setIsLive(true);
+                    setStreamProtocol("WEBRTC ~150MS");
+                };
+
+                pc.oniceconnectionstatechange = () => {
+                    if (pc.iceConnectionState === "failed" || pc.iceConnectionState === "disconnected") {
+                        startHls();
+                    }
+                };
+
+                const offer = await pc.createOffer();
+                await pc.setLocalDescription(offer);
+
+                const res = await fetch(whepUrl, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/sdp" },
+                    body: offer.sdp,
+                });
+
+                if (!res.ok) {
+                    throw new Error(`WHEP status ${res.status}`);
                 }
-            };
-            const onError = () => {
-                if (isMounted) setIsLive(false);
-            };
-            video.addEventListener("loadedmetadata", onLoaded);
-            video.addEventListener("error", onError);
-        }
+
+                const answerSdp = await res.text();
+                if (!isMounted) return;
+                await pc.setRemoteDescription({ type: "answer", sdp: answerSdp });
+
+                // If no video arrives within 2.5s, fall back cleanly to Low-Latency HLS
+                whepTimeout = setTimeout(() => {
+                    if (!video.srcObject && isMounted) {
+                        startHls();
+                    }
+                }, 2500);
+            } catch {
+                startHls();
+            }
+        };
+
+        // Try ultra-low-latency WebRTC first, fallback to LL-HLS
+        startWhep();
 
         return () => {
             isMounted = false;
-            if (hls) {
-                hls.destroy();
+            clearTimeout(whepTimeout);
+            if (pc) {
+                try { pc.close(); } catch {}
+                pcRef.current = null;
+            }
+            if (hlsInstance) {
+                hlsInstance.destroy();
                 hlsRef.current = null;
+            }
+            if (video) {
+                video.srcObject = null;
+                video.src = "";
             }
         };
     }, [streamUrl]);
@@ -482,10 +579,10 @@ export default function TuiLive({ onNavigate }) {
                             }`} />
                             <span className={isLive ? "text-white font-bold" : "text-neutral-500"}>
                                 <AsciiWipeItem
-                                    text={isLive ? `LIVE ${fps > 0 ? `// ${fps} FPS` : ""}` : "OFFLINE"}
+                                    text={isLive ? `LIVE ${fps > 0 ? `// ${fps} FPS` : ""}${streamProtocol ? ` // ${streamProtocol}` : ""}` : "OFFLINE"}
                                     progress={wipeProgress}
-                                    startIndex={50}
-                                    totalLength={85}
+                                    startIndex={45}
+                                    totalLength={90}
                                 />
                             </span>
                         </div>
@@ -499,7 +596,7 @@ export default function TuiLive({ onNavigate }) {
                                 text={`[TAB: ${displayMode.toUpperCase()}]`}
                                 progress={wipeProgress}
                                 startIndex={65}
-                                totalLength={85}
+                                totalLength={90}
                             />
                         </button>
 
@@ -510,8 +607,8 @@ export default function TuiLive({ onNavigate }) {
                             <AsciiWipeItem
                                 text="[FULLSCREEN]"
                                 progress={wipeProgress}
-                                startIndex={75}
-                                totalLength={85}
+                                startIndex={78}
+                                totalLength={90}
                             />
                         </button>
                     </div>
@@ -521,7 +618,7 @@ export default function TuiLive({ onNavigate }) {
             {/* 3. VISUAL DISPLAY: FULL VIEWPORT (COVER OR FIT) */}
             <div className="relative w-full h-full flex items-center justify-center bg-black overflow-hidden">
                 
-                {/* Hardware-Accelerated 60 FPS Video Feed */}
+                {/* Ultra-Low Latency Hardware Video Feed */}
                 <video
                     ref={videoRef}
                     autoPlay

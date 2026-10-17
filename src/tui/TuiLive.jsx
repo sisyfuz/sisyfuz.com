@@ -306,14 +306,17 @@ export default function TuiLive({ onNavigate }) {
 
         if (Hls.isSupported()) {
             const hls = new Hls({
-                lowLatencyMode: false,
-                liveSyncDuration: 1.2,
-                liveMaxLatencyDuration: 2.5,
-                maxLiveSyncPlaybackRate: 1.05,
+                lowLatencyMode: true,
+                liveSyncDurationCount: 3,
+                liveMaxLatencyDurationCount: 6,
+                maxLiveSyncPlaybackRate: 1.02,
+                backBufferLength: 0,
                 enableWorker: true,
-                backBufferLength: 2,
                 maxBufferLength: 4,
                 maxMaxBufferLength: 8,
+                highBufferWatchdogPeriod: 1,
+                nudgeOffset: 0.1,
+                nudgeMaxRetry: 5,
             });
             hlsRef.current = hls;
             hlsInstance = hls;
@@ -410,7 +413,7 @@ export default function TuiLive({ onNavigate }) {
         const canvas = canvasRef.current;
         if (!video || !canvas) return;
 
-        const ctx = canvas.getContext("2d", { alpha: false });
+        const ctx = canvas.getContext("2d");
         if (!ctx) return;
 
         const offscreen = document.createElement("canvas");
@@ -439,7 +442,12 @@ export default function TuiLive({ onNavigate }) {
             }
 
             const isMobile = width < 640;
-            const cellW = isMobile ? 6 : 8;
+            const fontSize = isMobile ? 10 : 13;
+            ctx.font = `${fontSize}px monospace`;
+            ctx.textBaseline = "top";
+
+            const charW = ctx.measureText("M").width || (isMobile ? 6 : 8);
+            const cellW = charW;
             const cellH = Math.round(cellW / 0.55);
             const cols = Math.floor(width / cellW);
             const rows = Math.floor(height / cellH);
@@ -460,6 +468,8 @@ export default function TuiLive({ onNavigate }) {
             const targetAspect = width / height;
 
             let sX = 0, sY = 0, sW = vW, sH = vH;
+            let dX = 0, dY = 0, dW = cols, dH = rows;
+
             if (displayMode === "cover") {
                 if (vAspect > targetAspect) {
                     sW = vH * targetAspect;
@@ -472,7 +482,6 @@ export default function TuiLive({ onNavigate }) {
             } else {
                 offCtx.fillStyle = "#000000";
                 offCtx.fillRect(0, 0, cols, rows);
-                let dX = 0, dY = 0, dW = cols, dH = rows;
                 if (vAspect > targetAspect) {
                     dH = cols / vAspect;
                     dY = (rows - dH) / 2;
@@ -486,42 +495,68 @@ export default function TuiLive({ onNavigate }) {
             const imgData = offCtx.getImageData(0, 0, cols, rows);
             const data = imgData.data;
 
-            ctx.fillStyle = "#050505";
-            ctx.fillRect(0, 0, width, height);
+            // Step 1: Clear canvas
+            ctx.clearRect(0, 0, width, height);
 
-            ctx.font = `${cellH - 1}px monospace`;
-            ctx.textBaseline = "top";
-
+            // Step 2: Draw text rows in white (only rows draw calls, ~0.3ms)
+            ctx.fillStyle = "#ffffff";
             const ramp = ASCII_RAMP;
             const rampLen = ramp.length;
             const now = performance.now();
 
             for (let y = 0; y < rows; y++) {
-                const yPos = y * cellH;
+                let rowStr = "";
                 const rowOffset = y * cols * 4;
                 for (let x = 0; x < cols; x++) {
                     const idx = rowOffset + x * 4;
-                    const r = data[idx];
-                    const g = data[idx + 1];
-                    const b = data[idx + 2];
-
-                    const lum = 0.299 * r + 0.587 * g + 0.114 * b;
-                    if (lum < 16) continue;
-
-                    const charIdx = Math.min(rampLen - 1, Math.floor((1 - lum / 255) * rampLen));
-                    const char = ramp[charIdx];
-                    if (!char || char === " ") continue;
-
-                    if (discoMode) {
-                        const hue = (x * 4 + y * 6 + now * 0.1) % 360;
-                        ctx.fillStyle = `hsl(${hue}, 100%, 65%)`;
+                    const lum = 0.299 * data[idx] + 0.587 * data[idx + 1] + 0.114 * data[idx + 2];
+                    if (lum < 16) {
+                        rowStr += " ";
                     } else {
-                        ctx.fillStyle = `rgb(${r},${g},${b})`;
+                        const charIdx = Math.min(rampLen - 1, Math.floor((1 - lum / 255) * rampLen));
+                        rowStr += ramp[charIdx] || " ";
                     }
+                }
+                ctx.fillText(rowStr, 0, y * cellH);
+            }
 
-                    ctx.fillText(char, x * cellW, yPos);
+            // Step 3: Composite exact video colors or disco gradient onto ASCII glyphs
+            ctx.globalCompositeOperation = "source-in";
+            if (discoMode) {
+                const grad = ctx.createLinearGradient(0, 0, width, height);
+                const h1 = (now * 0.06) % 360;
+                grad.addColorStop(0, `hsl(${h1}, 100%, 65%)`);
+                grad.addColorStop(0.5, `hsl(${(h1 + 120) % 360}, 100%, 65%)`);
+                grad.addColorStop(1, `hsl(${(h1 + 240) % 360}, 100%, 65%)`);
+                ctx.fillStyle = grad;
+                ctx.fillRect(0, 0, width, height);
+            } else {
+                if (displayMode === "cover") {
+                    ctx.drawImage(video, sX, sY, sW, sH, 0, 0, width, height);
+                } else {
+                    const scaleX = width / cols;
+                    const scaleY = height / rows;
+                    ctx.drawImage(
+                        video,
+                        0,
+                        0,
+                        vW,
+                        vH,
+                        Math.round(dX * scaleX),
+                        Math.round(dY * scaleY),
+                        Math.round(dW * scaleX),
+                        Math.round(dH * scaleY)
+                    );
                 }
             }
+
+            // Step 4: Paint background behind colored glyphs
+            ctx.globalCompositeOperation = "destination-over";
+            ctx.fillStyle = "#050505";
+            ctx.fillRect(0, 0, width, height);
+
+            // Step 5: Reset composite mode
+            ctx.globalCompositeOperation = "source-over";
 
             scheduleNext();
         };
@@ -629,15 +664,11 @@ export default function TuiLive({ onNavigate }) {
         if (now - lastMouseSendRef.current < throttleMs) return;
         lastMouseSendRef.current = now;
 
-        const container = containerRef.current;
-        if (!container) return;
+        const viewportWidth = window.innerWidth;
+        const viewportHeight = window.innerHeight;
+        if (!viewportWidth || !viewportHeight) return;
 
-        const rect = container.getBoundingClientRect();
-        if (!rect.width || !rect.height) return;
-
-        const viewportWidth = rect.width;
-        const viewportHeight = rect.height;
-        const viewportAspect = viewportWidth / viewportHeight;
+        const viewportAspect = viewportWidth / Math.max(1, viewportHeight);
 
         const video = videoRef.current;
         const vW = (video && video.videoWidth > 0) ? video.videoWidth : 1920;
@@ -676,8 +707,8 @@ export default function TuiLive({ onNavigate }) {
             }
         }
 
-        const cursorX = clientX - rect.left;
-        const cursorY = clientY - rect.top;
+        const cursorX = clientX;
+        const cursorY = clientY;
 
         // Image-relative coordinates: bottom-left is (0, 0), top-right is (1, 1)
         const rawU = (cursorX - imgX) / imgW;

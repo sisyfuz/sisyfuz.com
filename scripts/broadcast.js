@@ -182,6 +182,11 @@ async function main() {
 
                         const headers = { ...followRes.headers };
                         headers["access-control-allow-origin"] = "*";
+                        if (req.url && req.url.includes(".m3u8")) {
+                            headers["cache-control"] = "no-cache, no-store, must-revalidate, max-age=0";
+                            headers["pragma"] = "no-cache";
+                            headers["expires"] = "0";
+                        }
                         delete headers["set-cookie"]; // Don't leak internal cookies
                         res.writeHead(followRes.statusCode, headers);
                         followRes.pipe(res);
@@ -198,6 +203,11 @@ async function main() {
 
             const headers = { ...proxyRes.headers };
             headers["access-control-allow-origin"] = "*";
+            if (req.url && req.url.includes(".m3u8")) {
+                headers["cache-control"] = "no-cache, no-store, must-revalidate, max-age=0";
+                headers["pragma"] = "no-cache";
+                headers["expires"] = "0";
+            }
             res.writeHead(proxyRes.statusCode, headers);
             proxyRes.pipe(res);
         });
@@ -242,13 +252,17 @@ async function main() {
             console.log(`  HLS Video Feed:     ${liveUrl}/live/index.m3u8`);
             console.log(`  Cursor Telemetry:   wss://${match[1]}/ws`);
             console.log("--------------------------------------------------------------");
-            console.log("  OBS STUDIO CONFIGURATION:");
-            console.log("  1. Add Source:      macOS Syphon -> Select TouchDesigner");
-            console.log("  2. Output Res:      1280x1280 (60 FPS)");
-            console.log("  3. Stream Service:  Custom");
-            console.log("  4. Stream Server:   rtmp://localhost:1935");
-            console.log("  5. Stream Key:      live");
-            console.log("  6. Click:           [Start Streaming] in OBS");
+            console.log("  OBS STUDIO 60 FPS ULTRA-LOW LATENCY SETTINGS:");
+            console.log("  1. Source:            macOS Syphon -> Select TouchDesigner");
+            console.log("  2. Video FPS:         60 FPS (Settings -> Video -> Common FPS: 60)");
+            console.log("  3. Stream Service:    Custom");
+            console.log("  4. Stream Server:     rtmp://localhost:1935");
+            console.log("  5. Stream Key:        live");
+            console.log("  6. Output -> Encoder: Apple VT H264 Hardware (or x264)");
+            console.log("  7. Keyframe Interval: 1s (Strictly 1 second / 60 frames)");
+            console.log("  8. B-Frames:          0 (Zero B-Frames for lowest latency)");
+            console.log("  9. Bitrate:           3500 - 5000 Kbps CBR");
+            console.log("  10. Click:            [Start Streaming] in OBS");
             console.log("==============================================================\n");
 
             console.log("  Publishing live state to sisyfuz.com...");

@@ -1,27 +1,11 @@
 import { useEffect, useState } from "react";
-import { createClient } from "@sanity/client";
+import { client } from "../sanityClient";
 
 const STORAGE_KEY = "sisyfuz_pressed";
 const COUNTER_ID = "site-button-counter";
 
-const readClient = createClient({
-    projectId: 'gt7prmxg',
-    dataset: 'production',
-    apiVersion: '2026-04-17',
-    useCdn: false,
-});
-
-function getWriteClient() {
-    const token = import.meta.env.VITE_SANITY_WRITE_TOKEN;
-    if (!token) return null;
-    return createClient({
-        projectId: 'gt7prmxg',
-        dataset: 'production',
-        apiVersion: '2026-04-17',
-        useCdn: false,
-        token,
-    });
-}
+// The Cloudflare Worker URL — update this after deploying the worker
+const WORKER_URL = "https://sisyfuz-counter.sisyfuz.workers.dev";
 
 export default function Press() {
     const [count, setCount] = useState(null);
@@ -32,7 +16,8 @@ export default function Press() {
     useEffect(() => {
         setHasPressed(!!localStorage.getItem(STORAGE_KEY));
 
-        readClient
+        // Read the count from Sanity CDN (public, no token needed)
+        client
             .fetch(`*[_id == "${COUNTER_ID}"][0].count`)
             .then((c) => setCount(c ?? 0))
             .catch(() => setCount(0));
@@ -41,28 +26,19 @@ export default function Press() {
     const handlePress = async () => {
         if (hasPressed || pressing) return;
 
-        const writeClient = getWriteClient();
-        if (!writeClient) {
-            setError("Counter not configured.");
-            return;
-        }
-
         setPressing(true);
         setError(null);
 
         try {
-            await writeClient.createIfNotExists({
-                _id: COUNTER_ID,
-                _type: "buttonCounter",
-                count: 0,
+            const res = await fetch(WORKER_URL, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
             });
 
-            const result = await writeClient
-                .patch(COUNTER_ID)
-                .inc({ count: 1 })
-                .commit();
+            if (!res.ok) throw new Error("Worker error");
 
-            setCount(result.count);
+            const data = await res.json();
+            setCount(data.count);
             localStorage.setItem(STORAGE_KEY, "1");
             setHasPressed(true);
         } catch (err) {

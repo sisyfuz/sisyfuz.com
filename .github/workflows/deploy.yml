@@ -27,8 +27,6 @@ jobs:
 
       - name: Build project
         run: npm run build
-        env:
-          VITE_SANITY_WRITE_TOKEN: ${{ secrets.VITE_SANITY_WRITE_TOKEN }}
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3

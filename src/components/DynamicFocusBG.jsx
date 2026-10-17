@@ -4,23 +4,52 @@ export default function DynamicFocusBg({
                                            imageUrl = "https://file.garden/ackh8bl_82C_S778/test.jpeg",
                                            children
                                        }) {
-    const targetMousePos = useRef({ x: window.innerWidth / 2, y: window.innerHeight / 2 });
-    const [currentLensPos, setCurrentLensPos] = useState({ x: window.innerWidth / 2, y: window.innerHeight / 2 });
+    const targetMousePos = useRef({ x: 0, y: 0 });
+    const currentPos = useRef({ x: 0, y: 0 });
+    const lensRef = useRef(null);
+    const [imageLoaded, setImageLoaded] = useState(false);
+
+    // Initialise positions once we know the window size (safe for SSR)
+    useEffect(() => {
+        const cx = window.innerWidth / 2;
+        const cy = window.innerHeight / 2;
+        targetMousePos.current = { x: cx, y: cy };
+        currentPos.current = { x: cx, y: cy };
+    }, []);
 
     const handleMouseMove = (e) => {
         targetMousePos.current = { x: e.clientX, y: e.clientY };
     };
 
+    // Preload the background image
+    useEffect(() => {
+        const img = new Image();
+        img.onload = () => setImageLoaded(true);
+        img.onerror = () => setImageLoaded(true); // show content anyway on error
+        img.src = imageUrl;
+    }, [imageUrl]);
+
+    // Pure rAF loop – updates the DOM directly via ref, no React re-renders
     useEffect(() => {
         let animationFrameId;
         const renderLoop = () => {
-            setCurrentLensPos((prevPos) => {
-                const easing = 0.12;
-                const dx = targetMousePos.current.x - prevPos.x;
-                const dy = targetMousePos.current.y - prevPos.y;
-                if (Math.abs(dx) < 0.1 && Math.abs(dy) < 0.1) return targetMousePos.current;
-                return { x: prevPos.x + dx * easing, y: prevPos.y + dy * easing };
-            });
+            const easing = 0.12;
+            const prev = currentPos.current;
+            const target = targetMousePos.current;
+            const dx = target.x - prev.x;
+            const dy = target.y - prev.y;
+
+            if (Math.abs(dx) > 0.1 || Math.abs(dy) > 0.1) {
+                const nx = prev.x + dx * easing;
+                const ny = prev.y + dy * easing;
+                currentPos.current = { x: nx, y: ny };
+
+                if (lensRef.current) {
+                    const mask = `radial-gradient(circle 220px at calc(${nx}px + 10vw) calc(${ny}px + 10vh), black 15%, rgba(0,0,0,0.5) 55%, transparent 100%)`;
+                    lensRef.current.style.WebkitMaskImage = mask;
+                    lensRef.current.style.maskImage = mask;
+                }
+            }
             animationFrameId = requestAnimationFrame(renderLoop);
         };
         renderLoop();
@@ -42,8 +71,20 @@ export default function DynamicFocusBg({
                 </filter>
             </svg>
 
+            {/* Loading state */}
+            {!imageLoaded && (
+                <div className="fixed inset-0 z-0 flex items-center justify-center pointer-events-none">
+                    <span className="font-mono text-[10px] text-white/30 tracking-widest uppercase animate-pulse">
+                        loading_visual_data...
+                    </span>
+                </div>
+            )}
+
             {/* LAAG 1: Achtergrond Blur + Noise */}
-            <div className="fixed top-[-10vh] left-[-10vw] w-[120vw] h-[120vh] z-0 pointer-events-none overflow-hidden">
+            <div
+                className="fixed top-[-10vh] left-[-10vw] w-[120vw] h-[120vh] z-0 pointer-events-none overflow-hidden transition-opacity duration-700"
+                style={{ opacity: imageLoaded ? 1 : 0 }}
+            >
                 <div
                     className="absolute inset-0 bg-cover bg-center"
                     style={{
@@ -58,14 +99,16 @@ export default function DynamicFocusBg({
             </div>
 
             {/* LAAG 2: De Lens */}
-            <div className="fixed top-[-10vh] left-[-10vw] w-[120vw] h-[120vh] z-10 pointer-events-none overflow-hidden">
+            <div
+                className="fixed top-[-10vh] left-[-10vw] w-[120vw] h-[120vh] z-10 pointer-events-none overflow-hidden transition-opacity duration-700"
+                style={{ opacity: imageLoaded ? 1 : 0 }}
+            >
                 <div
+                    ref={lensRef}
                     className="absolute inset-0 bg-cover bg-center"
                     style={{
                         backgroundImage: `url(${imageUrl})`,
                         filter: 'brightness(0.7)',
-                        WebkitMaskImage: `radial-gradient(circle 220px at calc(${currentLensPos.x}px + 10vw) calc(${currentLensPos.y}px + 10vh), black 15%, rgba(0,0,0,0.5) 55%, transparent 100%)`,
-                        maskImage: `radial-gradient(circle 220px at calc(${currentLensPos.x}px + 10vw) calc(${currentLensPos.y}px + 10vh), black 15%, rgba(0,0,0,0.5) 55%, transparent 100%)`,
                         ...gpuStyles
                     }}
                 />

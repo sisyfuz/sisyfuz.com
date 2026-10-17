@@ -1,6 +1,6 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { useTypography } from "./hooks/useTypography";
-import { HashRouter as Router, Routes, Route, Link, useLocation, useNavigate } from "react-router-dom";
+import { BrowserRouter as Router, Routes, Route, Link, useLocation, useNavigate } from "react-router-dom";
 import { DiscoProvider, useDisco } from "./context/DiscoContext";
 import Home from "./pages/Home";
 import Work from "./pages/Work";
@@ -56,15 +56,21 @@ function Layout() {
     const [buffer, setBuffer] = useState("");
 
     const inputRef = useRef(null);
+    const bufferRef = useRef(buffer);
 
-    const processCommand = (val) => {
+    // Keep ref in sync with state
+    useEffect(() => { bufferRef.current = buffer; }, [buffer]);
+
+    const processCommand = useCallback((val) => {
         setBuffer(val);
+        bufferRef.current = val;
 
         const routes = ["work", "archive", "about", "contact", "home"];
 
         if (val.endsWith("disco")) {
             setDiscoMode(prev => !prev);
             setBuffer("");
+            bufferRef.current = "";
             setSearchQuery("");
             inputRef.current?.blur();
         }
@@ -72,36 +78,38 @@ function Layout() {
             const matchedRoute = routes.find(r => val.endsWith(r));
             navigate(matchedRoute === "home" ? "/" : `/${matchedRoute}`);
             setBuffer("");
+            bufferRef.current = "";
             setSearchQuery("");
             inputRef.current?.blur();
         }
         else {
             setSearchQuery(val.trim());
         }
-    };
+    }, [navigate, setDiscoMode, setSearchQuery]);
 
     useEffect(() => {
         const handleKeyDown = (e) => {
             if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") return;
             if (e.key === "Enter" || e.key === "Escape") {
                 setBuffer("");
+                bufferRef.current = "";
                 setSearchQuery("");
                 return;
             }
             if (e.key === "Backspace") {
-                processCommand(buffer.slice(0, -1));
+                processCommand(bufferRef.current.slice(0, -1));
                 return;
             }
 
             const key = e.key.toLowerCase();
             if (key.length === 1 && /[a-z0-9 ]/.test(key)) {
-                processCommand((buffer + key).slice(-25));
+                processCommand((bufferRef.current + key).slice(-25));
             }
         };
 
         window.addEventListener("keydown", handleKeyDown);
         return () => window.removeEventListener("keydown", handleKeyDown);
-    }, [buffer, location.pathname, navigate, setDiscoMode, setSearchQuery]);
+    }, [processCommand, setSearchQuery]);
 
     useEffect(() => {
         if (!isHome) return;

@@ -194,6 +194,36 @@ async function main() {
         keepAliveMsecs: 5000,
     });
 
+    let activeStreamPath = "live";
+
+    // Periodically query MediaMTX API to auto-detect whether stream is published to 'live' or 'live/live'
+    async function detectActiveStreamPath() {
+        try {
+            const res = await fetch("http://127.0.0.1:9997/v3/paths/list");
+            if (res.ok) {
+                const data = await res.json();
+                const active = data.items?.find((item) => item.ready && item.online);
+                if (active && active.name && active.name !== activeStreamPath) {
+                    activeStreamPath = active.name;
+                    console.log(`      [STREAM ROUTED] Client traffic automatically routed to active stream: '${activeStreamPath}'`);
+                }
+            }
+        } catch {}
+    }
+    const pathDetectorInterval = setInterval(detectActiveStreamPath, 1500);
+
+    function mapStreamUrl(url) {
+        if (activeStreamPath && activeStreamPath !== "live") {
+            if (url === "/live/whep" || url.startsWith("/live/whep/")) {
+                return url.replace(/^\/live\/whep/, `/${activeStreamPath}/whep`);
+            }
+            if (url.startsWith("/live/") && !url.startsWith(`/${activeStreamPath}/`)) {
+                return url.replace(/^\/live\//, `/${activeStreamPath}/`);
+            }
+        }
+        return url;
+    }
+
     proxyServer = http.createServer((req, res) => {
         // Universal CORS headers for web browsers (extended for WHEP PATCH/DELETE)
         res.setHeader("Access-Control-Allow-Origin", "*");
@@ -227,15 +257,16 @@ async function main() {
         }
 
         // --- WHEP proxy: Forward WebRTC signaling to MediaMTX (POST/PATCH/DELETE /live/whep*) ---
-        if (req.url.startsWith("/live/whep")) {
+        if (req.url.startsWith("/live/whep") || (activeStreamPath !== "live" && req.url.startsWith(`/${activeStreamPath}/whep`))) {
             const chunks = [];
             req.on("data", (chunk) => chunks.push(chunk));
             req.on("end", () => {
                 const body = Buffer.concat(chunks);
+                const targetPath = mapStreamUrl(req.url);
                 const whepReq = http.request({
                     hostname: "127.0.0.1",
                     port: MEDIAMTX_WEBRTC_PORT,
-                    path: req.url,
+                    path: targetPath,
                     method: req.method,
                     headers: {
                         "content-type": req.headers["content-type"] || "application/sdp",
@@ -247,7 +278,13 @@ async function main() {
                         "access-control-expose-headers": "Location, Link",
                     };
                     if (whepRes.headers["content-type"]) fwdHeaders["content-type"] = whepRes.headers["content-type"];
-                    if (whepRes.headers["location"]) fwdHeaders["location"] = whepRes.headers["location"];
+                    if (whepRes.headers["location"]) {
+                        let loc = whepRes.headers["location"];
+                        if (activeStreamPath !== "live" && loc.includes(`/${activeStreamPath}/whep`)) {
+                            loc = loc.replace(`/${activeStreamPath}/whep`, "/live/whep");
+                        }
+                        fwdHeaders["location"] = loc;
+                    }
                     if (whepRes.headers["link"]) fwdHeaders["link"] = whepRes.headers["link"];
 
                     res.writeHead(whepRes.statusCode, fwdHeaders);
@@ -267,12 +304,13 @@ async function main() {
         // --- HLS proxy: Transparent cookie-handling proxy to MediaMTX ---
         const clientKey = req.headers["x-forwarded-for"] || req.socket.remoteAddress || "client";
         const sessionCookie = activeCookies.get(clientKey) || "cookieCheck=1";
+        const targetPath = mapStreamUrl(req.url);
 
         const proxyReq = http.request({
             agent: httpAgent,
             hostname: "127.0.0.1",
             port: MEDIAMTX_HLS_PORT,
-            path: req.url,
+            path: targetPath,
             method: req.method,
             headers: {
                 ...req.headers,
@@ -405,7 +443,7 @@ async function main() {
             console.log("  2. Video FPS:         60 FPS (Settings -> Video -> Common FPS: 60)");
             console.log("  3. Stream Service:    Custom");
             console.log("  4. Stream Server:     rtmp://localhost:1935");
-            console.log("  5. Stream Key:        live");
+            console.log("  5. Stream Key:        live  (or Server: rtmp://localhost:1935/live + Key: live)");
             console.log("  6. Output -> Encoder: Apple VT H264 Hardware (or x264)");
             console.log("  7. Keyframe Interval: 1s (Strictly 1 second / 60 frames)");
             console.log("  8. B-Frames:          0 (Zero B-Frames for lowest latency)");
@@ -430,6 +468,7 @@ async function main() {
         if (isShuttingDown) return;
         isShuttingDown = true;
         console.log("\n[!] Stopping broadcast...");
+        try { clearInterval(pathDetectorInterval); } catch {}
 
         try {
             if (cfProc) cfProc.kill("SIGINT");

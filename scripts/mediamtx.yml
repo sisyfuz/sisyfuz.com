@@ -1,6 +1,10 @@
 # scripts/mediamtx.yml
 # High-Stability Smooth 60 FPS Video Engine for sisyfuz.com
 
+# Control API for diagnostics
+api: yes
+apiAddress: :9997
+
 rtsp: no
 
 # RTMP Ingest from OBS Studio (localhost:1935)
@@ -30,5 +34,7 @@ hlsAllowOrigins:
 # Stream Paths
 paths:
   live:
+    source: publisher
+  live/live:
     source: publisher
   all_others:

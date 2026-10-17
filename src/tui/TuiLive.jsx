@@ -629,20 +629,65 @@ export default function TuiLive({ onNavigate }) {
         if (now - lastMouseSendRef.current < throttleMs) return;
         lastMouseSendRef.current = now;
 
-        const targetEl = videoRef.current || canvasRef.current || containerRef.current;
-        if (!targetEl) return;
+        const container = containerRef.current;
+        if (!container) return;
 
-        const rect = targetEl.getBoundingClientRect();
+        const rect = container.getBoundingClientRect();
         if (!rect.width || !rect.height) return;
 
-        const rawU = (clientX - rect.left) / rect.width;
-        const rawV = 1.0 - (clientY - rect.top) / rect.height;
+        const viewportWidth = rect.width;
+        const viewportHeight = rect.height;
+        const viewportAspect = viewportWidth / viewportHeight;
 
-        const inside = rawU >= 0 && rawU <= 1 && rawV >= 0 && rawV <= 1 ? 1 : 0;
+        const video = videoRef.current;
+        const vW = (video && video.videoWidth > 0) ? video.videoWidth : 1920;
+        const vH = (video && video.videoHeight > 0) ? video.videoHeight : 1080;
+        const vAspect = vW / vH;
+
+        let imgX = 0;
+        let imgY = 0;
+        let imgW = viewportWidth;
+        let imgH = viewportHeight;
+
+        if (displayMode === "cover") {
+            if (vAspect > viewportAspect) {
+                imgH = viewportHeight;
+                imgW = viewportHeight * vAspect;
+                imgX = (viewportWidth - imgW) / 2;
+                imgY = 0;
+            } else {
+                imgW = viewportWidth;
+                imgH = viewportWidth / vAspect;
+                imgX = 0;
+                imgY = (viewportHeight - imgH) / 2;
+            }
+        } else {
+            // displayMode === "fit" (object-contain)
+            if (vAspect > viewportAspect) {
+                imgW = viewportWidth;
+                imgH = viewportWidth / vAspect;
+                imgX = 0;
+                imgY = (viewportHeight - imgH) / 2;
+            } else {
+                imgH = viewportHeight;
+                imgW = viewportHeight * vAspect;
+                imgX = (viewportWidth - imgW) / 2;
+                imgY = 0;
+            }
+        }
+
+        const cursorX = clientX - rect.left;
+        const cursorY = clientY - rect.top;
+
+        // Image-relative coordinates: bottom-left is (0, 0), top-right is (1, 1)
+        const rawU = (cursorX - imgX) / imgW;
+        const rawV = 1.0 - ((cursorY - imgY) / imgH);
+
+        const inside = (rawU >= 0 && rawU <= 1 && rawV >= 0 && rawV <= 1) ? 1 : 0;
         const u = Math.max(0, Math.min(1, rawU));
         const v = Math.max(0, Math.min(1, rawV));
 
-        // Kinetic Velocity Calculation
+        // Kinetic Velocity Calculation based on image UVs
         const dt = Math.max(0.001, (now - prevCoordRef.current.time) / 1000);
         const du = u - prevCoordRef.current.u;
         const dv = v - prevCoordRef.current.v;
@@ -671,6 +716,8 @@ export default function TuiLive({ onNavigate }) {
             id: sessionIdRef.current,
             u: Number(u.toFixed(4)),
             v: Number(v.toFixed(4)),
+            raw_u: Number(rawU.toFixed(4)),
+            raw_v: Number(rawV.toFixed(4)),
             vx,
             vy,
             speed,
@@ -679,7 +726,8 @@ export default function TuiLive({ onNavigate }) {
             clicks: totalClicksRef.current,
             inside,
             is_touch: isTouchRef.current ? 1 : 0,
-            aspect: Number((window.innerWidth / Math.max(1, window.innerHeight)).toFixed(2)),
+            aspect: Number(viewportAspect.toFixed(2)),
+            img_aspect: Number(vAspect.toFixed(2)),
             hour: localHour,
             tz: tzOffset,
             dark: window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? 1 : 0,
@@ -716,6 +764,16 @@ export default function TuiLive({ onNavigate }) {
         sendTelemetry(e.clientX, e.clientY, false);
     };
 
+    const handleTouchStart = (e) => {
+        isMouseDownRef.current = true;
+        isTouchRef.current = true;
+        totalClicksRef.current++;
+        clickStartRef.current = performance.now();
+        if (e.touches && e.touches[0]) {
+            sendTelemetry(e.touches[0].clientX, e.touches[0].clientY, true);
+        }
+    };
+
     const handleTouchMove = (e) => {
         if (!e.touches || !e.touches[0]) return;
         isTouchRef.current = true;
@@ -744,7 +802,7 @@ export default function TuiLive({ onNavigate }) {
             onMouseDown={handleMouseDown}
             onMouseUp={handleMouseUp}
             onTouchMove={handleTouchMove}
-            onTouchStart={handleMouseDown}
+            onTouchStart={handleTouchStart}
             onTouchEnd={handleMouseUp}
             onMouseLeave={() => {
                 setIsHoverTop(false);
@@ -932,7 +990,7 @@ export default function TuiLive({ onNavigate }) {
                     } ${
                         displayMode === "cover"
                             ? "w-full h-full object-cover"
-                            : "w-full h-full object-contain max-w-[1280px] max-h-[1280px]"
+                            : "w-full h-full object-contain"
                     }`}
                 />
 

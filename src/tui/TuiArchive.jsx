@@ -55,12 +55,12 @@ export default function TuiArchive({ onSelectWork }) {
                             </td>
                         </tr>
                         {items.map((item, idx) => {
-                            const isExternal = Boolean(item.externalLink && item.externalLink.startsWith("http"));
+                            const isExternal = Boolean(item.externalLink && (item.externalLink.startsWith("https://") || item.externalLink.startsWith("http://")));
                             const isWork = item.category === "work";
 
                             const handleClick = () => {
                                 if (isExternal) {
-                                    window.open(item.externalLink, "_blank");
+                                    window.open(item.externalLink, "_blank", "noopener,noreferrer");
                                 } else if (isWork && onSelectWork) {
                                     onSelectWork(item.id);
                                 }

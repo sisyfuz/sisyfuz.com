@@ -33,17 +33,25 @@ function getFormat(url) {
 }
 
 function injectCustomFontFace(familyName, url) {
+    if (!url || typeof url !== 'string') return;
+    // Strip characters that could break CSS syntax or inject rules
+    const cleanUrl = url.replace(/["'\r\n\\]/g, '').trim();
+    if (!cleanUrl.startsWith('https://') && !cleanUrl.startsWith('/')) return;
+
+    const cleanFamily = String(familyName).replace(/["';\r\n\\]/g, '').trim();
+    if (!cleanFamily) return;
+
     // Don't remove/re-inject if already present — avoids re-download on re-renders
-    const existing = document.getElementById(`sanity-custom-font-${familyName}`);
+    const existing = document.getElementById(`sanity-custom-font-${cleanFamily}`);
     if (existing) return;
 
-    const format = getFormat(url);
+    const format = getFormat(cleanUrl);
 
     const style = document.createElement('style');
-    style.id = `sanity-custom-font-${familyName}`;
+    style.id = `sanity-custom-font-${cleanFamily}`;
     style.textContent = `@font-face {
-        font-family: "${familyName}";
-        src: url("${url}") format("${format}");
+        font-family: "${cleanFamily}";
+        src: url("${cleanUrl}") format("${format}");
         font-display: swap;
     }`;
     document.head.appendChild(style);
@@ -82,8 +90,9 @@ export function useTypography() {
                         injectCustomFontFace(name, fileUrl);
                         root.style.setProperty(cssVar, `"${name}", ${fallback}`);
                     } else if (preset) {
-                        if (FONT_MAP[preset]) googleFamilies.push(FONT_MAP[preset]);
-                        root.style.setProperty(cssVar, `"${preset}", ${fallback}`);
+                        const cleanPreset = String(preset).replace(/["';\r\n\\]/g, '').trim();
+                        if (FONT_MAP[cleanPreset]) googleFamilies.push(FONT_MAP[cleanPreset]);
+                        root.style.setProperty(cssVar, `"${cleanPreset}", ${fallback}`);
                     }
                 }
 

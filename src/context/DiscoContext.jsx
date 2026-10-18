@@ -30,17 +30,13 @@ export function DiscoProvider({ children }) {
         // Zoek of het getypte woord exact overeenkomt met een command in de database
         const foundEgg = easterEggs.find(egg => egg.command === typedWord);
 
-        if (foundEgg && foundEgg.url) {
-            // BOOM! Easter egg getriggerd.
-
-            // Maak de zoekbalk snel weer leeg voor de netheid
-            setSearchQuery("");
-
-            // Open de link in een nieuw tabblad (zodat ze je portfolio niet kwijtraken)
-            window.open(foundEgg.url, '_blank');
-
-            // TIP: Wil je dat het in HETZELFDE tabblad opent? 
-            // Verander de regel hierboven dan in: window.location.href = foundEgg.url;
+        if (foundEgg && typeof foundEgg.url === "string") {
+            const rawUrl = foundEgg.url.trim();
+            // Strictly allow only valid secure HTTP/HTTPS URLs (prevents javascript: XSS)
+            if (rawUrl.startsWith("https://") || rawUrl.startsWith("http://")) {
+                setSearchQuery("");
+                window.open(rawUrl, "_blank", "noopener,noreferrer");
+            }
         }
     }, [searchQuery, easterEggs]);
 

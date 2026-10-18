@@ -1,0 +1,330 @@
+/* ==========================================================================
+   SISYFUZ // BRUTALIST TUI DESIGN SYSTEM STYLESHEET
+   Version: 1.0.0
+   Author: Dorus Kleijne (sisyfuz.com)
+   Description: Standalone drop-in cyber-brutalist & ASCII design stylesheet.
+   Usage: <link rel="stylesheet" href="sisyfuz-design-tokens.css">
+   ========================================================================== */
+
+@import url('https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400;1,700&display=swap');
+
+/* --- 1. CORE TOKENS & CSS VARIABLES --- */
+:root {
+    /* Color Primitives */
+    --tui-black: #000000;
+    --tui-surface-0: #050505;
+    --tui-surface-1: #0a0a0a;
+    --tui-surface-2: #141414;
+    --tui-border-dim: #262626;
+    --tui-border-med: #333333;
+    --tui-border-bright: #444444;
+    --tui-white: #ffffff;
+    --tui-text-bright: #f0f0f0;
+    --tui-text-med: #aaaaaa;
+    --tui-text-dim: #666666;
+
+    /* Theme Accents (Default: SISYFUZ_PINK) */
+    --tui-accent: #ff0080;
+    --tui-accent-light: #ff3399;
+    --tui-accent-muted: #800040;
+    --tui-accent-surface: #2a0014;
+    --tui-accent-glow: 0 0 10px rgba(255, 0, 128, 0.35);
+
+    /* Telemetry & Status */
+    --tui-live: #ff0080;
+    --tui-standby: #666666;
+    --tui-success: #00ff66;
+    --tui-warning: #ffb000;
+    --tui-error: #ff0055;
+    --tui-info: #00e5ff;
+
+    /* Typography */
+    --tui-font-mono: "Space Mono", "Courier New", "Menlo", monospace;
+    --tui-font-size-2xs: 9px;
+    --tui-font-size-xs: 10px;
+    --tui-font-size-sm: 11px;
+    --tui-font-size-base: 12px;
+    --tui-font-size-md: 14px;
+    --tui-font-size-lg: 18px;
+    --tui-font-size-xl: 24px;
+    --tui-line-height: 1.4;
+
+    /* Transition (RULE: 0s instant snap for brutalist feel) */
+    --tui-transition-snap: none;
+}
+
+/* --- THEME VARIATIONS --- */
+[data-theme="green"] {
+    --tui-surface-0: #030d05;
+    --tui-accent: #00ff66;
+    --tui-accent-light: #33ff88;
+    --tui-accent-muted: #008033;
+    --tui-accent-surface: #061f0c;
+    --tui-accent-glow: 0 0 10px rgba(0, 255, 102, 0.35);
+    --tui-border-dim: #0c3314;
+    --tui-border-med: #145923;
+}
+
+[data-theme="amber"] {
+    --tui-surface-0: #0d0700;
+    --tui-accent: #ffb000;
+    --tui-accent-light: #ffc84d;
+    --tui-accent-muted: #805800;
+    --tui-accent-surface: #1f1100;
+    --tui-accent-glow: 0 0 10px rgba(255, 176, 0, 0.35);
+    --tui-border-dim: #331a00;
+    --tui-border-med: #592e00;
+}
+
+[data-theme="mono"] {
+    --tui-surface-0: #000000;
+    --tui-accent: #ffffff;
+    --tui-accent-light: #ffffff;
+    --tui-accent-muted: #888888;
+    --tui-accent-surface: #111111;
+    --tui-accent-glow: 0 0 10px rgba(255, 255, 255, 0.25);
+    --tui-border-dim: #262626;
+    --tui-border-med: #444444;
+}
+
+[data-theme="disco"] {
+    animation: tuiDiscoHue 3s linear infinite;
+}
+
+/* --- 2. INVIOLATE BASE RESETS --- */
+*, *::before, *::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    border-radius: 0 !important; /* STRICT INVIOLATE BRUTALIST RULE */
+}
+
+html, body {
+    background-color: var(--tui-black);
+    color: var(--tui-text-bright);
+    font-family: var(--tui-font-mono);
+    font-size: var(--tui-font-size-sm);
+    line-height: var(--tui-line-height);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+/* Raw brutalist scrollbar */
+::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+::-webkit-scrollbar-track {
+    background: var(--tui-surface-0);
+    border-left: 1px solid var(--tui-border-dim);
+}
+::-webkit-scrollbar-thumb {
+    background: var(--tui-border-bright);
+}
+::-webkit-scrollbar-thumb:hover {
+    background: var(--tui-accent);
+}
+
+/* --- 3. CORE UI COMPONENTS --- */
+
+/* Buttons (Reverse Video Hover) */
+.tui-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    background: transparent;
+    color: var(--tui-white);
+    border: 1px solid var(--tui-border-med);
+    font-family: var(--tui-font-mono);
+    font-size: var(--tui-font-size-xs);
+    font-weight: 700;
+    padding: 3px 8px;
+    cursor: pointer;
+    text-transform: uppercase;
+    text-decoration: none;
+    letter-spacing: 0.05em;
+    user-select: none;
+    transition: var(--tui-transition-snap);
+}
+
+.tui-btn:hover {
+    background: var(--tui-white);
+    color: var(--tui-black);
+    border-color: var(--tui-white);
+}
+
+.tui-btn-accent {
+    border-color: var(--tui-accent);
+    color: var(--tui-accent);
+}
+
+.tui-btn-accent:hover {
+    background: var(--tui-accent);
+    color: var(--tui-black);
+    border-color: var(--tui-accent);
+}
+
+.tui-btn-danger {
+    border-color: var(--tui-error);
+    color: var(--tui-error);
+}
+
+.tui-btn-danger:hover {
+    background: var(--tui-error);
+    color: var(--tui-white);
+    border-color: var(--tui-error);
+}
+
+.tui-btn:disabled, .tui-btn[disabled] {
+    opacity: 0.35;
+    cursor: not-allowed;
+    background: transparent !important;
+    color: var(--tui-text-dim) !important;
+    border-color: var(--tui-border-dim) !important;
+}
+
+/* Panels & Windows */
+.tui-box {
+    background: var(--tui-surface-0);
+    border: 1px solid var(--tui-border-dim);
+    position: relative;
+}
+
+.tui-box-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 10px;
+    background: var(--tui-black);
+    border-bottom: 1px solid var(--tui-border-dim);
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    font-size: var(--tui-font-size-sm);
+    text-transform: uppercase;
+}
+
+.tui-box-content {
+    padding: 10px;
+}
+
+/* Status Badges */
+.tui-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: var(--tui-font-size-xs);
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.tui-badge.live {
+    color: var(--tui-live);
+}
+
+.tui-badge.standby {
+    color: var(--tui-standby);
+}
+
+/* Live Pulsing Dot */
+.tui-dot {
+    width: 7px;
+    height: 7px;
+    display: inline-block;
+}
+
+.tui-dot.live {
+    background: var(--tui-live);
+    box-shadow: 0 0 6px var(--tui-live);
+    animation: tuiBlink 1.2s infinite;
+}
+
+.tui-dot.standby {
+    background: var(--tui-standby);
+}
+
+/* Terminal Command Prompt */
+.tui-prompt-line {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: var(--tui-font-mono);
+}
+
+.tui-prompt-symbol {
+    color: var(--tui-accent);
+    font-weight: 700;
+}
+
+.tui-cursor {
+    display: inline-block;
+    color: var(--tui-accent);
+    animation: tuiBlink 1s infinite steps(1);
+}
+
+/* Form Inputs */
+.tui-input {
+    width: 100%;
+    background: var(--tui-black);
+    border: 1px solid var(--tui-border-dim);
+    color: var(--tui-white);
+    font-family: var(--tui-font-mono);
+    font-size: var(--tui-font-size-sm);
+    padding: 6px 10px;
+    outline: none;
+}
+
+.tui-input:focus {
+    border-color: var(--tui-accent);
+}
+
+.tui-input::placeholder {
+    color: var(--tui-text-dim);
+}
+
+/* Data Tables */
+.tui-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: var(--tui-font-mono);
+    font-size: var(--tui-font-size-xs);
+}
+
+.tui-table th {
+    text-align: left;
+    padding: 6px 10px;
+    background: var(--tui-surface-1);
+    border-bottom: 1px solid var(--tui-border-med);
+    color: var(--tui-text-med);
+    text-transform: uppercase;
+    font-weight: 700;
+}
+
+.tui-table td {
+    padding: 6px 10px;
+    border-bottom: 1px solid var(--tui-border-dim);
+}
+
+.tui-table tr:hover td {
+    background: var(--tui-surface-2);
+}
+
+/* --- 4. ANIMATIONS --- */
+@keyframes tuiBlink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.15; }
+}
+
+@keyframes tuiDiscoHue {
+    from { filter: hue-rotate(0deg); }
+    to { filter: hue-rotate(360deg); }
+}
+
+.animate-blink {
+    animation: tuiBlink 1s infinite;
+}
+
+.animate-disco {
+    animation: tuiDiscoHue 2s linear infinite;
+}

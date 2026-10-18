@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="pink">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SISYFUZ // ART STYLE & DESIGN SYSTEM LIVING SPECIMEN</title>
+    <link rel="stylesheet" href="sisyfuz-design-tokens.css">
+    <style>
+        body {
+            padding: 24px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .hero-banner {
+            border: 1px solid var(--tui-border-med);
+            background: var(--tui-surface-0);
+            padding: 16px 20px;
+            margin-bottom: 24px;
+        }
+
+        .ascii-art {
+            font-family: var(--tui-font-mono);
+            font-size: 11px;
+            line-height: 1.15;
+            color: var(--tui-accent);
+            white-space: pre;
+            overflow-x: auto;
+            margin-bottom: 12px;
+        }
+
+        .section-title {
+            font-size: 13px;
+            font-weight: 700;
+            color: var(--tui-accent);
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin: 28px 0 12px 0;
+            padding-bottom: 4px;
+            border-bottom: 1px solid var(--tui-border-dim);
+        }
+
+        .grid-2 {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 16px;
+        }
+
+        .grid-4 {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+            gap: 12px;
+        }
+
+        .swatch-card {
+            background: var(--tui-surface-1);
+            border: 1px solid var(--tui-border-dim);
+            padding: 10px;
+            cursor: pointer;
+            transition: border-color 0.15s;
+        }
+
+        .swatch-card:hover {
+            border-color: var(--tui-white);
+        }
+
+        .swatch-preview {
+            height: 48px;
+            width: 100%;
+            border: 1px solid var(--tui-border-dim);
+            margin-bottom: 8px;
+        }
+
+        .swatch-label {
+            font-size: 10px;
+            font-weight: 700;
+            text-transform: uppercase;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .swatch-hex {
+            color: var(--tui-text-med);
+            font-size: 10px;
+        }
+
+        .component-row {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 12px;
+        }
+
+        .code-box {
+            background: var(--tui-black);
+            border: 1px solid var(--tui-border-dim);
+            padding: 12px;
+            font-family: var(--tui-font-mono);
+            font-size: 10.5px;
+            color: var(--tui-text-bright);
+            overflow-x: auto;
+            white-space: pre;
+            position: relative;
+        }
+
+        .btn-copy {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            font-size: 9px;
+            padding: 2px 6px;
+        }
+
+        .theme-bar {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+            background: var(--tui-surface-1);
+            border: 1px solid var(--tui-border-dim);
+            padding: 8px 12px;
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- THEME SELECTOR BAR -->
+    <div class="theme-bar">
+        <span style="font-weight:700; color:var(--tui-text-med); font-size:10px;">ACTIVE THEME:</span>
+        <button class="tui-btn tui-btn-accent" onclick="setTheme('pink')">[01: SISYFUZ_PINK]</button>
+        <button class="tui-btn" onclick="setTheme('green')">[02: MATRIX_GREEN]</button>
+        <button class="tui-btn" onclick="setTheme('amber')">[03: VT220_AMBER]</button>
+        <button class="tui-btn" onclick="setTheme('mono')">[04: PURE_MONOLITH]</button>
+        <button class="tui-btn" onclick="setTheme('disco')">[05: DISCO_CYCLE]</button>
+    </div>
+
+    <!-- HERO BANNER -->
+    <div class="hero-banner">
+        <div class="ascii-art">
+   ____ ___ ______   _______ _   _ _____ 
+  / ___|_ _/ ___\ \ / /  ___| | | |__  / 
+  \___ \| |\___ \\ V /| |_  | | | | / /  
+   ___) | | ___) || | |  _| | |_| |/ /_  
+  |____/___|____/ |_| |_|    \___//____| 
+        </div>
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+            <div>
+                <h1 style="font-size:14px; letter-spacing:0.08em; text-transform:uppercase;">Brutalist TUI Art Style & Design System</h1>
+                <p style="color:var(--tui-text-med); font-size:11px; margin-top:2px;">Design Tokens, Monospace Grid, ASCII Blueprints & Component Library</p>
+            </div>
+            <div class="tui-badge live">
+                <span class="tui-dot live"></span>
+                <span>SYSTEM_STATUS: [NOMINAL • 60 FPS]</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- 1. COLOR TOKENS -->
+    <div class="section-title">> 01_COLOR_TOKENS_&_PALETTES (CLICK TO COPY HEX)</div>
+    <div class="grid-4" id="colorSwatches"></div>
+
+    <!-- 2. TYPOGRAPHY & ASCII RAMPS -->
+    <div class="section-title">> 02_TYPOGRAPHY_&_ASCII_RAMPS</div>
+    <div class="grid-2">
+        <div class="tui-box">
+            <div class="tui-box-header">Space Mono Specimen (Primary)</div>
+            <div class="tui-box-content" style="space-y-2;">
+                <p style="font-size:18px; font-weight:700; color:var(--tui-accent); margin-bottom:8px;">ABCDEFGHIJKLMNOPQRSTUVWXYZ 1234567890</p>
+                <p style="font-size:12px; margin-bottom:8px;">The quick brown fox jumps over the lazy dog. In raw brutalist design, typography is not decoration — it is the architectural skeleton.</p>
+                <p style="font-size:10px; color:var(--tui-text-dim);">Font-Family: "Space Mono", monospace | Weights: 400 (Regular), 700 (Bold) | Character Aspect Ratio: 0.52</p>
+            </div>
+        </div>
+        <div class="tui-box">
+            <div class="tui-box-header">ASCII Density Ramps</div>
+            <div class="tui-box-content">
+                <div style="font-size:10px; color:var(--tui-text-med); margin-bottom:4px;">10-STEP STANDARD RAMP (LUMINANCE 0 -> 255):</div>
+                <div class="code-box" style="margin-bottom:10px; color:var(--tui-accent);">@ % # * + = - : . [SPACE]</div>
+                <div style="font-size:10px; color:var(--tui-text-med); margin-bottom:4px;">UNICODE CP437 SHADE BLOCKS:</div>
+                <div class="code-box">█ ▓ ▒ ░ [SPACE]</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 3. COMPONENT GALLERY -->
+    <div class="section-title">> 03_INTERACTIVE_UI_COMPONENTS</div>
+
+    <!-- Buttons -->
+    <div class="tui-box" style="margin-bottom:16px;">
+        <div class="tui-box-header">Buttons (Instant Reverse-Video Snapping)</div>
+        <div class="tui-box-content">
+            <div class="component-row">
+                <button class="tui-btn">[▶ START_BROADCAST]</button>
+                <button class="tui-btn tui-btn-accent">[TOGGLE_STUDIO_HUD] (⌘K)</button>
+                <button class="tui-btn tui-btn-danger">[■ TERMINATE_PROCESS]</button>
+                <button class="tui-btn" disabled>[DISABLED_ACTION]</button>
+            </div>
+            <p style="font-size:10px; color:var(--tui-text-dim); margin-top:6px;">Rule: Hover states invert instantly (`background: #ffffff; color: #000000;`). No smooth transitions.</p>
+        </div>
+    </div>
+
+    <!-- Badges & Telemetry -->
+    <div class="tui-box" style="margin-bottom:16px;">
+        <div class="tui-box-header">Badges, Telemetry & Status Indicators</div>
+        <div class="tui-box-content">
+            <div class="component-row">
+                <div class="tui-badge live"><span class="tui-dot live"></span> [● LIVE • 60 FPS]</div>
+                <div class="tui-badge standby"><span class="tui-dot standby"></span> [○ STANDBY / IDLE]</div>
+                <span class="tui-btn" style="cursor:default;">UPTIME: [00:14:22]</span>
+                <span class="tui-btn" style="cursor:default;">VIEWERS: [03]</span>
+                <span class="tui-btn" style="cursor:default;">FPS: [59.98]</span>
+                <span class="tui-btn" style="cursor:default;">TRANSPORT: [WEBRTC/WHEP]</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Form Inputs & Terminal Prompt -->
+    <div class="grid-2" style="margin-bottom:16px;">
+        <div class="tui-box">
+            <div class="tui-box-header">Interactive Terminal Prompt</div>
+            <div class="tui-box-content">
+                <div class="tui-prompt-line" style="margin-bottom:10px;">
+                    <span class="tui-prompt-symbol">></span>
+                    <input type="text" class="tui-input" id="termInput" placeholder="Type command (try 'help', 'theme green', 'beep')..." onkeydown="handleTerminal(event)">
+                </div>
+                <div id="termOutput" style="font-size:10.5px; color:var(--tui-text-med); max-height:80px; overflow-y:auto; font-family:var(--tui-font-mono);">
+                    Ready. Type a command and press Enter.
+                </div>
+            </div>
+        </div>
+        <div class="tui-box">
+            <div class="tui-box-header">Sound Synthesis (Web Audio API)</div>
+            <div class="tui-box-content">
+                <p style="font-size:11px; margin-bottom:10px;">Zero-dependency retro dual-tone sine chirp (880Hz -> 587Hz) for message and event notifications.</p>
+                <button class="tui-btn tui-btn-accent" onclick="playChime()">[🔊 PLAY_SYNTH_CHIRP]</button>
+                <span id="chimeFeedback" style="font-size:10px; color:var(--tui-accent); margin-left:8px;"></span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Data Tables -->
+    <div class="tui-box" style="margin-bottom:24px;">
+        <div class="tui-box-header">Dossier / Data Grid Table</div>
+        <div class="tui-box-content" style="padding:0;">
+            <table class="tui-table">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>MODULE / ASSET</th>
+                        <th>PROTOCOL</th>
+                        <th>LATENCY</th>
+                        <th>STATUS</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>01</td>
+                        <td>SISYFUZ_LIVE_TRANSMITTER</td>
+                        <td>WHEP / WebRTC</td>
+                        <td>120 ms</td>
+                        <td style="color:var(--tui-live); font-weight:700;">● ACTIVE</td>
+                    </tr>
+                    <tr>
+                        <td>02</td>
+                        <td>TOUCHDESIGNER_NDI_BRIDGE</td>
+                        <td>Syphon / NDI</td>
+                        <td>16 ms</td>
+                        <td style="color:var(--tui-live); font-weight:700;">● 60 FPS</td>
+                    </tr>
+                    <tr>
+                        <td>03</td>
+                        <td>CLOUDFLARE_TUNNEL_PROXY</td>
+                        <td>TLS 1.3 / HTTP2</td>
+                        <td>42 ms</td>
+                        <td style="color:var(--tui-success); font-weight:700;">● SECURE</td>
+                    </tr>
+                    <tr>
+                        <td>04</td>
+                        <td>COMPANION_STUDIO_HUD</td>
+                        <td>Native AppKit</td>
+                        <td>0.0% CPU</td>
+                        <td style="color:var(--tui-text-bright); font-weight:700;">○ READY</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- 4. CODE BOILERPLATES -->
+    <div class="section-title">> 04_DROP-IN_CODE_BOILERPLATE</div>
+    <div class="code-box">
+        <button class="tui-btn btn-copy" onclick="copyCode(this)">[COPY]</button>
+&lt;!-- 1. Include the SISYFUZ Design System --&gt;
+&lt;link rel="stylesheet" href="sisyfuz-design-tokens.css"&gt;
+
+&lt;!-- 2. Brutalist Box --&gt;
+&lt;div class="tui-box"&gt;
+    &lt;div class="tui-box-header"&gt;PROJECT_DOSSIER // 01&lt;/div&gt;
+    &lt;div class="tui-box-content"&gt;
+        &lt;p&gt;High-density theatrical telepresence engine.&lt;/p&gt;
+        &lt;button class="tui-btn tui-btn-accent"&gt;[EXECUTE]&lt;/button&gt;
+    &lt;/div&gt;
+&lt;/div&gt;</div>
+
+    <!-- JAVASCRIPT LOGIC -->
+    <script>
+        // Swatches definition
+        const swatches = [
+            { name: "Void Black", token: "--tui-black", hex: "#000000" },
+            { name: "Surface 0", token: "--tui-surface-0", hex: "#050505" },
+            { name: "Surface 1", token: "--tui-surface-1", hex: "#0a0a0a" },
+            { name: "Border Dim", token: "--tui-border-dim", hex: "#262626" },
+            { name: "Border Med", token: "--tui-border-med", hex: "#333333" },
+            { name: "Sisyfuz Pink", token: "--tui-accent", hex: "#ff0080" },
+            { name: "Matrix Green", token: "--tui-success", hex: "#00ff66" },
+            { name: "VT220 Amber", token: "--tui-warning", hex: "#ffb000" },
+            { name: "High White", token: "--tui-white", hex: "#ffffff" },
+            { name: "Text Dim", token: "--tui-text-dim", hex: "#666666" },
+            { name: "Error Red", token: "--tui-error", hex: "#ff0055" },
+            { name: "Cyan Info", token: "--tui-info", hex: "#00e5ff" }
+        ];
+
+        const container = document.getElementById("colorSwatches");
+        swatches.forEach(s => {
+            const card = document.createElement("div");
+            card.className = "swatch-card";
+            card.innerHTML = `
+                <div class="swatch-preview" style="background:${s.hex};"></div>
+                <div class="swatch-label"><span>${s.name}</span><span class="swatch-hex">${s.hex}</span></div>
+                <div style="font-size:9px; color:var(--tui-text-dim); margin-top:3px;">${s.token}</div>
+            `;
+            card.onclick = () => {
+                navigator.clipboard.writeText(s.hex);
+                const original = card.querySelector(".swatch-hex").innerText;
+                card.querySelector(".swatch-hex").innerText = "[COPIED!]";
+                setTimeout(() => card.querySelector(".swatch-hex").innerText = original, 1200);
+            };
+            container.appendChild(card);
+        });
+
+        // Theme Switcher
+        function setTheme(theme) {
+            document.documentElement.setAttribute("data-theme", theme);
+        }
+
+        // Web Audio Synth Chime
+        let audioCtx = null;
+        function playChime() {
+            try {
+                if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                if (audioCtx.state === 'suspended') audioCtx.resume();
+                const now = audioCtx.currentTime;
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(880, now);
+                osc.frequency.exponentialRampToValueAtTime(587.33, now + 0.08);
+                gain.gain.setValueAtTime(0.001, now);
+                gain.gain.linearRampToValueAtTime(0.12, now + 0.01);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start(now);
+                osc.stop(now + 0.085);
+                const fb = document.getElementById("chimeFeedback");
+                fb.innerText = "[PLAYED: 880Hz -> 587Hz]";
+                setTimeout(() => fb.innerText = "", 1500);
+            } catch(e) {
+                console.error(e);
+            }
+        }
+
+        // Terminal Interactive Demo
+        function handleTerminal(e) {
+            if (e.key === "Enter") {
+                const val = e.target.value.trim().toLowerCase();
+                const out = document.getElementById("termOutput");
+                if (!val) return;
+                let reply = `Command not recognized: '${val}'. Try 'help'.`;
+                if (val === "help") {
+                    reply = "AVAILABLE: 'help', 'theme pink|green|amber|mono|disco', 'beep', 'clear'";
+                } else if (val.startsWith("theme ")) {
+                    const t = val.split(" ")[1];
+                    setTheme(t);
+                    reply = `Theme set to: [${t.toUpperCase()}]`;
+                } else if (val === "beep") {
+                    playChime();
+                    reply = "Synthesized dual-tone sine chirp.";
+                } else if (val === "clear") {
+                    out.innerHTML = "";
+                    e.target.value = "";
+                    return;
+                }
+                out.innerHTML = `<div>&gt; ${e.target.value}</div><div style="color:var(--tui-accent); margin-bottom:6px;">${reply}</div>` + out.innerHTML;
+                e.target.value = "";
+            }
+        }
+
+        // Copy Code Helper
+        function copyCode(btn) {
+            const code = btn.parentElement.innerText.replace("[COPY]\n", "").trim();
+            navigator.clipboard.writeText(code);
+            btn.innerText = "[COPIED!]";
+            setTimeout(() => btn.innerText = "[COPY]", 1200);
+        }
+    </script>
+</body>
+</html>

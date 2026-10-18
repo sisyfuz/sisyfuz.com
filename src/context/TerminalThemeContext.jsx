@@ -57,17 +57,21 @@ export function TerminalThemeProvider({ children }) {
         const lower = String(key).toLowerCase().trim();
         if (THEMES[lower]) {
             setThemeKey(lower);
-            localStorage.setItem("sisyfuz_theme", lower);
+            try {
+                localStorage.setItem("sisyfuz_theme", lower);
+            } catch {}
             return true;
         }
         return false;
     };
 
     useEffect(() => {
-        const saved = localStorage.getItem("sisyfuz_theme");
-        if (saved && THEMES[saved]) {
-            setThemeKey(saved);
-        }
+        try {
+            const saved = localStorage.getItem("sisyfuz_theme");
+            if (saved && THEMES[saved]) {
+                setThemeKey(saved);
+            }
+        } catch {}
     }, []);
 
     const theme = THEMES[themeKey] || THEMES.pink;
@@ -79,4 +83,15 @@ export function TerminalThemeProvider({ children }) {
     );
 }
 
-export const useTerminalTheme = () => useContext(TerminalThemeContext);
+export const useTerminalTheme = () => {
+    const ctx = useContext(TerminalThemeContext);
+    if (!ctx) {
+        return {
+            theme: THEMES.pink,
+            themeKey: "pink",
+            setTheme: () => {},
+            availableThemes: Object.keys(THEMES),
+        };
+    }
+    return ctx;
+};

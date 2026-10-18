@@ -155,7 +155,12 @@ export default function AsciiMedia({
             state.height = height;
         }
 
-        if (width === 0 || height === 0) return;
+        if (width <= 0 || height <= 0) return;
+
+        const numCols = state.cols;
+        const numRows = state.rows;
+        if (!numCols || !numRows || numCols <= 0 || numRows <= 0) return;
+        if (!isFinite(numCols) || !isFinite(numRows)) return;
 
         const targetCanvasW = Math.round(width * dpr);
         const targetCanvasH = Math.round(height * dpr);
@@ -167,87 +172,108 @@ export default function AsciiMedia({
         const ctx = canvas.getContext("2d");
         if (!ctx) return;
 
-        ctx.save();
-        ctx.scale(dpr, dpr);
+        try {
+            ctx.save();
+            ctx.scale(dpr, dpr);
 
-        const progress = state.progress;
-        const img = state.img;
-        const srcW = img.naturalWidth || img.width;
-        const srcH = img.naturalHeight || img.height;
+            const progress = state.progress;
+            const img = state.img;
+            const srcW = img.naturalWidth || img.width;
+            const srcH = img.naturalHeight || img.height;
+            if (!srcW || !srcH) {
+                ctx.restore();
+                return;
+            }
 
-        setCoverCrop(srcW, srcH, width, height, state.crop);
-        const { cropX, cropY, cropW, cropH } = state.crop;
+            setCoverCrop(srcW, srcH, width, height, state.crop);
+            const { cropX, cropY, cropW, cropH } = state.crop;
+            if (cropW <= 0 || cropH <= 0) {
+                ctx.restore();
+                return;
+            }
 
-        // When fully revealed: Draw full image with object-fit: cover
-        if (progress >= 0.999) {
-            ctx.drawImage(img, cropX, cropY, cropW, cropH, 0, 0, width, height);
-            ctx.restore();
-            return;
-        }
+            // When fully revealed: Draw full image with object-fit: cover
+            if (progress >= 0.999) {
+                ctx.drawImage(img, cropX, cropY, cropW, cropH, 0, 0, width, height);
+                ctx.restore();
+                return;
+            }
 
-        const numCols = state.cols;
-        const numRows = state.rows;
-        const cellW = width / numCols;
-        const cellH = height / numRows;
+            const cellW = width / numCols;
+            const cellH = height / numRows;
 
-        ctx.fillStyle = "#050505";
-        ctx.fillRect(0, 0, width, height);
+            ctx.fillStyle = "#050505";
+            ctx.fillRect(0, 0, width, height);
 
-        const fontSize = Math.max(8, Math.floor(cellH * 0.95));
-        ctx.font = `${fontSize}px "Space Mono", "Courier New", monospace`;
-        ctx.textBaseline = "middle";
-        ctx.textAlign = "center";
+            const fontSize = Math.max(8, Math.floor(cellH * 0.95));
+            ctx.font = `${fontSize}px "Space Mono", "Courier New", monospace`;
+            ctx.textBaseline = "middle";
+            ctx.textAlign = "center";
 
-        const ramp = ASCII_RAMP;
-        const rampIndices = state.rampIndices;
-        const thresholds = state.thresholds;
+            const ramp = ASCII_RAMP;
+            const rampIndices = state.rampIndices;
+            const thresholds = state.thresholds;
+            if (!rampIndices || !thresholds) {
+                ctx.restore();
+                return;
+            }
 
-        // Source slice dimensions per cell (based on cropped area)
-        const srcCellW = cropW / numCols;
-        const srcCellH = cropH / numRows;
-        const dw = Math.ceil(cellW);
-        const dh = Math.ceil(cellH);
+            // Source slice dimensions per cell (based on cropped area)
+            const srcCellW = cropW / numCols;
+            const srcCellH = cropH / numRows;
+            if (srcCellW <= 0 || srcCellH <= 0) {
+                ctx.restore();
+                return;
+            }
+            const dw = Math.ceil(cellW);
+            const dh = Math.ceil(cellH);
 
-        let activeColor = "";
+            let activeColor = "";
 
-        for (let y = 0; y < numRows; y++) {
-            const rowY = y * cellH + cellH / 2;
-            const rowOffset = y * numCols;
-            const sy = cropY + y * srcCellH;
-            const dy = Math.floor(y * cellH);
+            for (let y = 0; y < numRows; y++) {
+                const rowY = y * cellH + cellH / 2;
+                const rowOffset = y * numCols;
+                const sy = cropY + y * srcCellH;
+                const dy = Math.floor(y * cellH);
 
-            for (let x = 0; x < numCols; x++) {
-                const cellIdx = rowOffset + x;
-                const delta = progress - thresholds[cellIdx];
+                for (let x = 0; x < numCols; x++) {
+                    const cellIdx = rowOffset + x;
+                    const delta = progress - thresholds[cellIdx];
 
-                if (delta > 0.04) {
-                    // CELL REVEALED: Draw exact unstretched slice from cropped source
-                    const sx = cropX + x * srcCellW;
-                    const dx = Math.floor(x * cellW);
-                    ctx.drawImage(img, sx, sy, srcCellW, srcCellH, dx, dy, dw, dh);
-                } else {
-                    const char = ramp[rampIndices[cellIdx]];
-                    const cellX = x * cellW + cellW / 2;
-
-                    if (delta >= -0.02 && delta <= 0.04) {
-                        // ACTIVE TRANSITION FLASH: Hot pink
-                        if (activeColor !== "#ff0080") {
-                            ctx.fillStyle = "#ff0080";
-                            activeColor = "#ff0080";
-                        }
+                    if (delta > 0.04) {
+                        // CELL REVEALED: Draw exact unstretched slice from cropped source
+                        const sx = cropX + x * srcCellW;
+                        const dx = Math.floor(x * cellW);
+                        ctx.drawImage(img, sx, sy, srcCellW, srcCellH, dx, dy, dw, dh);
                     } else {
-                        // STILL ASCII
-                        if (activeColor !== "#f0f0f0") {
-                            ctx.fillStyle = "#f0f0f0";
-                            activeColor = "#f0f0f0";
+                        const char = ramp[rampIndices[cellIdx]];
+                        const cellX = x * cellW + cellW / 2;
+
+                        if (delta >= -0.02 && delta <= 0.04) {
+                            // ACTIVE TRANSITION FLASH: Hot pink
+                            if (activeColor !== "#ff0080") {
+                                ctx.fillStyle = "#ff0080";
+                                activeColor = "#ff0080";
+                            }
+                        } else {
+                            // STILL ASCII
+                            if (activeColor !== "#f0f0f0") {
+                                ctx.fillStyle = "#f0f0f0";
+                                activeColor = "#f0f0f0";
+                            }
                         }
+                        ctx.fillText(char, cellX, rowY);
                     }
-                    ctx.fillText(char, cellX, rowY);
                 }
             }
-        }
 
-        ctx.restore();
+            ctx.restore();
+        } catch (err) {
+            console.warn("AsciiMedia renderFrame failed gracefully:", err);
+            try {
+                ctx.restore();
+            } catch {}
+        }
     }, []);
 
     // Load image

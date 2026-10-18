@@ -54,4 +54,17 @@ export function DiscoProvider({ children }) {
     );
 }
 
-export const useDisco = () => useContext(DiscoContext);
+export const useDisco = () => {
+    const context = useContext(DiscoContext);
+    if (!context) {
+        return {
+            discoMode: false,
+            setDiscoMode: () => {},
+            searchQuery: "",
+            setSearchQuery: () => {},
+            asciiLiveMode: false,
+            setAsciiLiveMode: () => {},
+        };
+    }
+    return context;
+};

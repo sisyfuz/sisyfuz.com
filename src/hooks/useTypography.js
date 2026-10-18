@@ -107,6 +107,9 @@ export function useTypography() {
                     link.href = `https://fonts.googleapis.com/css2?${[...new Set(googleFamilies)].map(f => `family=${f}`).join('&')}&display=swap`;
                     document.head.appendChild(link);
                 }
+            })
+            .catch((err) => {
+                console.warn("Failed to fetch typography settings:", err);
             });
     }, []);
 }

@@ -303,12 +303,13 @@ async function main() {
         return url;
     }
 
-    // In-memory chat history and client hub
+    // In-memory chat history, active mode and client hub
     const chatHistory = [];
     const activeWsClients = new Set();
     let tdSocket = null;
     let tdConnected = false;
     let liveUrl = null;
+    let activeMode = "AUTO";
 
     function getStatusPacket() {
         return JSON.stringify({
@@ -318,6 +319,7 @@ async function main() {
             viewers: Math.max(0, activeWsClients.size),
             tdConnected,
             chatCount: chatHistory.length,
+            mode: activeMode,
         });
     }
 
@@ -516,6 +518,40 @@ async function main() {
                 cleanup();
             }, 300);
             return;
+        }
+
+        // --- /api/mode: Query or trigger active show mode (Localhost or Host Client) ---
+        if (req.url === "/api/mode") {
+            if (req.method === "GET") {
+                res.writeHead(200, { "Content-Type": "application/json" });
+                res.end(JSON.stringify({ mode: activeMode }));
+                return;
+            }
+            if (req.method === "POST") {
+                const chunks = [];
+                req.on("data", (chunk) => chunks.push(chunk));
+                req.on("end", () => {
+                    try {
+                        const body = JSON.parse(Buffer.concat(chunks).toString() || "{}");
+                        if (body.mode) {
+                            activeMode = String(body.mode);
+                            const modePacket = JSON.stringify({ type: "mode", mode: activeMode });
+                            for (const client of activeWsClients) {
+                                if (client.readyState === WebSocket.OPEN) client.send(modePacket);
+                            }
+                            if (tdSocket && tdSocket.readyState === WebSocket.OPEN) {
+                                tdSocket.send(modePacket);
+                            }
+                        }
+                        res.writeHead(200, { "Content-Type": "application/json" });
+                        res.end(JSON.stringify({ success: true, mode: activeMode }));
+                    } catch (e) {
+                        res.writeHead(400, { "Content-Type": "application/json" });
+                        res.end(JSON.stringify({ error: e.message }));
+                    }
+                });
+                return;
+            }
         }
 
         // --- WebRTC signaling proxy (WHEP playback & WHIP ingestion) ---
@@ -798,6 +834,40 @@ async function main() {
                 if (msg.type === "mouse" || msg.type === "telemetry") {
                     if (tdSocket && tdSocket.readyState === WebSocket.OPEN) {
                         tdSocket.send(rawStr);
+                    }
+                    return;
+                }
+
+                // Handle Mode Synchronization between Companion, TouchDesigner, and Web clients
+                if (msg.type === "mode" || msg.type === "set_mode") {
+                    if (msg.mode) {
+                        activeMode = String(msg.mode);
+                        const modePacket = JSON.stringify({ type: "mode", mode: activeMode });
+                        for (const c of activeWsClients) {
+                            if (c !== clientWs && c.readyState === WebSocket.OPEN) c.send(modePacket);
+                        }
+                        if (tdSocket && tdSocket.readyState === WebSocket.OPEN) {
+                            tdSocket.send(modePacket);
+                        }
+                    }
+                    return;
+                }
+
+                // Handle Storage Guardian Telemetry routing to TouchDesigner & Web clients
+                if (msg.type === "storage_telemetry") {
+                    for (const c of activeWsClients) {
+                        if (c !== clientWs && c.readyState === WebSocket.OPEN) c.send(rawStr);
+                    }
+                    if (tdSocket && tdSocket.readyState === WebSocket.OPEN) {
+                        tdSocket.send(rawStr);
+                    }
+                    return;
+                }
+
+                // Handle Storage Guardian Action triggers
+                if (msg.type === "storage_action") {
+                    for (const c of activeWsClients) {
+                        if (c !== clientWs && c.readyState === WebSocket.OPEN) c.send(rawStr);
                     }
                     return;
                 }

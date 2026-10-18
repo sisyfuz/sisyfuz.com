@@ -36,7 +36,7 @@ const SECTIONS = [
 export default function SharpDisplay() {
     const navigate = useNavigate();
     const location = useLocation();
-    const { discoMode, setDiscoMode, setSearchQuery, setAsciiLiveMode } = useDisco();
+    const { discoMode, setDiscoMode, searchQuery, setSearchQuery, setAsciiLiveMode } = useDisco();
     const { isA11yToolbarOpen, toggleA11yToolbar } = useA11y();
 
     const [activeSection, setActiveSection] = useState("home");
@@ -72,6 +72,9 @@ export default function SharpDisplay() {
             } else {
                 setSelectedWorkId(null);
             }
+        } else {
+            setActiveSection("home");
+            setSelectedWorkId(null);
         }
     }, [location.pathname, location.hash]);
 

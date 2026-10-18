@@ -28,7 +28,9 @@ export default function A11yToolbar() {
         if (isA11yToolbarOpen) {
             triggerRef.current = document.activeElement;
         } else if (triggerRef.current && typeof triggerRef.current.focus === "function") {
-            triggerRef.current.focus();
+            try {
+                triggerRef.current.focus();
+            } catch {}
             triggerRef.current = null;
         }
     }, [isA11yToolbarOpen]);
@@ -38,7 +40,9 @@ export default function A11yToolbar() {
         if (!isA11yToolbarOpen) return;
 
         // Autofocus close button on modal open
-        closeBtnRef.current?.focus();
+        try {
+            closeBtnRef.current?.focus();
+        } catch {}
 
         const handleKeyDown = (e) => {
             if (e.key === "Escape") {

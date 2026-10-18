@@ -10,12 +10,11 @@
 .font-body  { font-family: var(--font-body); }
 .font-mono  { font-family: var(--font-mono); }
 
-/* Dynamic 100dvh Viewport & Mobile Touch Stability */
+/* Dynamic 100dvh Viewport & Container Heights */
 html, body, #root {
+    min-height: 100%;
     min-height: 100vh;
-    min-height: -webkit-fill-available;
     min-height: 100dvh;
-    touch-action: manipulation;
 }
 
 @layer base {

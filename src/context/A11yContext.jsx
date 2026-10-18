@@ -113,23 +113,26 @@ export function A11yProvider({ children }) {
     // Listen to system prefers-reduced-motion media query changes
     useEffect(() => {
         if (typeof window === "undefined" || !window.matchMedia) return;
-        const mediaQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+        try {
+            const mediaQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+            if (!mediaQuery) return;
 
-        const handler = (e) => {
-            const currentSaved = loadSavedPreferences();
-            // Only update if user hasn't explicitly set in localStorage
-            if (currentSaved.reducedMotion === undefined) {
-                setReducedMotionState(e.matches);
+            const handler = (e) => {
+                const currentSaved = loadSavedPreferences();
+                // Only update if user hasn't explicitly set in localStorage
+                if (currentSaved.reducedMotion === undefined) {
+                    setReducedMotionState(Boolean(e.matches));
+                }
+            };
+
+            if (mediaQuery.addEventListener) {
+                mediaQuery.addEventListener("change", handler);
+                return () => mediaQuery.removeEventListener("change", handler);
+            } else if (mediaQuery.addListener) {
+                mediaQuery.addListener(handler);
+                return () => mediaQuery.removeListener(handler);
             }
-        };
-
-        if (mediaQuery.addEventListener) {
-            mediaQuery.addEventListener("change", handler);
-            return () => mediaQuery.removeEventListener("change", handler);
-        } else if (mediaQuery.addListener) {
-            mediaQuery.addListener(handler);
-            return () => mediaQuery.removeListener(handler);
-        }
+        } catch {}
     }, []);
 
     const toggleReducedMotion = useCallback(() => {

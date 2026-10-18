@@ -9,7 +9,7 @@
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "test": "node --test test/sanitize.test.js",
+    "test": "node --test test/*.test.js",
     "live": "node scripts/broadcast.js",
     "companion": "open scripts/companion/SisyfuzCompanion.app",
     "build:companion": "./scripts/companion/build.sh"

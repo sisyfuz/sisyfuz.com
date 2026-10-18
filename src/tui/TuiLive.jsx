@@ -108,6 +108,7 @@ export default function TuiLive({ onNavigate }) {
     const [modeToast, setModeToast] = useState("");
     const [animFrame, setAnimFrame] = useState(0);
     const [transport, setTransport] = useState(""); // "WEBRTC" | "HLS" | ""
+    const [showMode, setShowMode] = useState("AUTO");
 
     // Live Chat State
     const [isChatOpen, setIsChatOpen] = useState(false);
@@ -1026,6 +1027,14 @@ export default function TuiLive({ onNavigate }) {
                             if (!isChatOpenRef.current) {
                                 setUnreadChatCount((prev) => prev + 1);
                             }
+                        } else if (msg.type === "mode") {
+                            if (msg.mode) {
+                                setShowMode(msg.mode);
+                            }
+                        } else if (msg.type === "status") {
+                            if (msg.mode) {
+                                setShowMode(msg.mode);
+                            }
                         }
                     } catch {}
                 };
@@ -1367,7 +1376,7 @@ export default function TuiLive({ onNavigate }) {
                                 <AsciiWipeItem
                                     text={
                                         isLive
-                                            ? `LIVE ${transport ? `// ${transport}` : ""} ${fps > 0 ? `// ${fps} FPS` : ""} // ${viewerCount} ${viewerCount === 1 ? "VIEWER" : "VIEWERS"}`
+                                            ? `LIVE ${transport ? `// ${transport}` : ""} ${fps > 0 ? `// ${fps} FPS` : ""} // [${String(showMode || "AUTO").toUpperCase()}] // ${viewerCount} ${viewerCount === 1 ? "VIEWER" : "VIEWERS"}`
                                             : "OFFLINE"
                                     }
                                     progress={wipeProgress}

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SISYFUZ // HOST CHAT HUD</title>
+    <title>SISYFUZ // HOST CHAT &amp; TELEMETRY HUD</title>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400;1,700&display=swap');
 
@@ -27,6 +27,7 @@
             user-select: none;
             -webkit-user-select: none;
             border: 1px solid #262626;
+            position: relative;
         }
 
         /* Draggable Window Header */
@@ -53,7 +54,7 @@
             align-items: center;
             gap: 6px;
             color: #ffffff;
-            font-size: 11px;
+            font-size: 10.5px;
             text-transform: uppercase;
         }
 
@@ -95,22 +96,51 @@
             border-color: #ff0055;
         }
 
-        /* Studio Control Deck */
+        /* Toast Feedback Banner */
+        .hud-toast {
+            position: absolute;
+            top: 29px;
+            left: 10px;
+            right: 10px;
+            background: #000000;
+            border: 1px solid #00ff66;
+            color: #00ff66;
+            padding: 3px 8px;
+            font-weight: 700;
+            font-size: 10px;
+            text-align: center;
+            z-index: 100;
+            display: none;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        /* Studio Control Decks */
         .deck {
             background: #0a0a0a;
             border-bottom: 1px solid #262626;
-            padding: 8px 10px;
+            padding: 6px 10px;
             display: flex;
             flex-direction: column;
-            gap: 6px;
-            font-size: 10.5px;
+            gap: 5px;
+            font-size: 10px;
+        }
+
+        .deck-header {
+            color: #777777;
+            font-weight: 700;
+            text-transform: uppercase;
+            font-size: 9.5px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
         }
 
         .deck-row {
             display: flex;
             align-items: center;
             justify-content: space-between;
-            gap: 8px;
+            gap: 6px;
             overflow: hidden;
         }
 
@@ -156,9 +186,9 @@
             border: 1px solid #444444;
             color: #ffffff;
             font-family: inherit;
-            font-size: 10px;
+            font-size: 9.5px;
             font-weight: 700;
-            padding: 3px 8px;
+            padding: 2px 6px;
             cursor: pointer;
             text-transform: uppercase;
             transition: none;
@@ -192,6 +222,83 @@
             color: #000000;
         }
 
+        /* Mode Switcher Buttons */
+        .mode-btn {
+            flex: 1;
+            padding: 3px 2px;
+            font-size: 9.5px;
+            font-weight: 700;
+            text-align: center;
+            background: transparent;
+            border: 1px solid #333333;
+            color: #888888;
+            cursor: pointer;
+            font-family: inherit;
+        }
+
+        .mode-btn:hover {
+            background: #ffffff;
+            color: #000000;
+            border-color: #ffffff;
+        }
+
+        .mode-btn.active-mode {
+            background: #00ff66;
+            color: #000000;
+            border-color: #00ff66;
+        }
+
+        .mode-btn.active-live {
+            background: #ff0080;
+            color: #000000;
+            border-color: #ff0080;
+        }
+
+        /* Telemetry & Badges */
+        .telemetry-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-size: 10px;
+        }
+
+        .disk-meter {
+            color: #00e5ff;
+            font-weight: 700;
+            letter-spacing: -0.2px;
+        }
+
+        .badge-online {
+            color: #00ff66;
+            font-weight: 700;
+        }
+
+        .badge-offline {
+            color: #ffb000;
+            font-weight: 700;
+        }
+
+        .badge-rec {
+            color: #ff0080;
+            font-weight: 700;
+            animation: blink 0.8s infinite;
+        }
+
+        .badge-cyan {
+            color: #00e5ff;
+            font-weight: 700;
+        }
+
+        .result-drawer {
+            display: none;
+            background: #000000;
+            border: 1px solid #333333;
+            padding: 4px 6px;
+            font-size: 9.5px;
+            color: #d4d4d4;
+            line-height: 1.3;
+        }
+
         .stream-url-display {
             color: #a3a3a3;
             font-family: inherit;
@@ -221,10 +328,10 @@
         .messages {
             flex: 1;
             overflow-y: auto;
-            padding: 10px;
+            padding: 8px 10px;
             display: flex;
             flex-direction: column;
-            gap: 6px;
+            gap: 5px;
             user-select: text;
             -webkit-user-select: text;
             background: #050505;
@@ -243,15 +350,15 @@
         }
 
         .message-row {
-            line-height: 1.4;
+            line-height: 1.35;
             word-break: break-word;
-            font-size: 11px;
+            font-size: 10.5px;
         }
 
         .msg-time {
             color: #555555;
-            font-size: 10px;
-            margin-right: 6px;
+            font-size: 9.5px;
+            margin-right: 5px;
             user-select: none;
         }
 
@@ -259,17 +366,17 @@
             background: #ff0080;
             color: #000000;
             font-weight: 700;
-            padding: 0 4px;
-            margin-right: 6px;
+            padding: 0 3px;
+            margin-right: 5px;
             text-transform: uppercase;
-            font-size: 10px;
+            font-size: 9.5px;
             display: inline-block;
         }
 
         .author-viewer {
             color: #d4d4d4;
             font-weight: 700;
-            margin-right: 6px;
+            margin-right: 5px;
         }
 
         .msg-content {
@@ -285,14 +392,14 @@
             margin: auto;
             color: #444444;
             text-align: center;
-            font-size: 11px;
+            font-size: 10.5px;
             text-transform: uppercase;
             letter-spacing: 0.05em;
         }
 
         /* Terminal Input Row */
         .terminal-bar {
-            padding: 6px 10px;
+            padding: 5px 10px;
             background: #000000;
             border-top: 1px solid #262626;
             display: flex;
@@ -312,9 +419,9 @@
             border: none;
             color: #ffffff;
             font-family: inherit;
-            font-size: 11px;
+            font-size: 10.5px;
             outline: none;
-            padding: 4px 0;
+            padding: 3px 0;
             text-transform: none;
         }
 
@@ -339,10 +446,10 @@
             background: #ff0080;
             color: #000000;
             border: 1px solid #ff0080;
-            padding: 3px 8px;
+            padding: 2px 7px;
             font-weight: 700;
             font-family: inherit;
-            font-size: 10px;
+            font-size: 9.5px;
             cursor: pointer;
             text-transform: uppercase;
             transition: none;
@@ -369,7 +476,7 @@
     <div id="windowBar" class="window-bar">
         <div class="window-title">
             <span id="headerDot" class="dot standby"></span>
-            <span>+--[ &gt; SISYFUZ // HOST CHAT HUD ]</span>
+            <span>+--[ &gt; SISYFUZ // STUDIO ENGINE &amp; BRIDGE ]</span>
         </div>
         <div class="window-actions">
             <button id="btnSfxToggle" class="btn-ctrl" title="Toggle audio alert chime">[SFX: ON]</button>
@@ -377,16 +484,19 @@
         </div>
     </div>
 
+    <!-- Feedback Toast -->
+    <div id="hudToast" class="hud-toast">[ ACTION COMPLETED ]</div>
+
     <!-- Integrated Studio Control Deck -->
     <div class="deck">
         <div class="deck-row">
             <div id="statusBadge" class="status-badge standby">
                 [○ STANDBY / IDLE]
             </div>
-            <div id="uptimeDisplay" class="text-neutral-400 font-mono text-[10.5px]">
+            <div id="uptimeDisplay" class="text-neutral-400 font-mono text-[10px]">
                 UPTIME: [--:--:--]
             </div>
-            <div id="viewersBadge" class="text-neutral-400 font-mono text-[10.5px]">
+            <div id="viewersBadge" class="text-neutral-400 font-mono text-[10px]">
                 VIEWERS: [00]
             </div>
         </div>
@@ -399,12 +509,60 @@
             </div>
         </div>
 
-        <div class="deck-row" style="margin-top: 2px;">
+        <div class="deck-row" style="margin-top: 1px;">
             <button id="btnToggleBroadcast" class="deck-btn btn-broadcast-start" style="flex: 1; text-align: center;">
                 [▶ START BROADCAST]
             </button>
             <button id="btnLaunchObs" class="deck-btn" title="Open OBS Studio">[OBS]</button>
             <button id="btnLaunchTd" class="deck-btn" title="Open TouchDesigner">[TD]</button>
+        </div>
+    </div>
+
+    <!-- Mode Synchronization Deck -->
+    <div class="deck">
+        <div class="deck-header">
+            <span>+--[ MODE SYNCHRONIZATION ]--+</span>
+            <span id="activeModeLabel" style="color: #00ff66;">[AUTO]</span>
+        </div>
+        <div class="deck-row" style="margin-top: 1px;">
+            <button class="mode-btn" data-mode="School">[SCHOOL]</button>
+            <button class="mode-btn" data-mode="Work">[WORK]</button>
+            <button class="mode-btn" data-mode="Personal">[PERSONAL]</button>
+            <button class="mode-btn" data-mode="Live">[LIVE]</button>
+            <button class="mode-btn" data-mode="AUTO">[AUTO]</button>
+        </div>
+    </div>
+
+    <!-- Storage Guardian & Stage Telemetry Deck -->
+    <div class="deck">
+        <div class="deck-header">
+            <span>+--[ STORAGE GUARDIAN // TELEMETRY ]--+</span>
+            <span id="sorterStatusBadge" class="badge-offline">[SORTER: OFFLINE]</span>
+        </div>
+
+        <!-- ASCII Disk Bar Meter -->
+        <div class="deck-row">
+            <span id="diskMeterText" class="disk-meter">DISK: [░░░░░░░░░░░░░░░░] --% (--/-- GB)</span>
+            <span id="frontmostAppText" style="color: #888888; font-size: 9.5px;">APP: [Finder]</span>
+        </div>
+
+        <!-- Bridge & Recording Indicators -->
+        <div class="deck-row">
+            <span id="tdRecBadge" class="text-neutral-400 font-mono text-[9.5px]">TD REC: [○ IDLE]</span>
+            <span id="oscPortsBadge" class="badge-cyan text-[9.5px]">[OSC: 7000/7001]</span>
+        </div>
+
+        <!-- Storage Guardian Actions -->
+        <div class="deck-row" style="margin-top: 1px;">
+            <button id="btnSortRenders" class="deck-btn" style="flex: 1;" title="Sort ~/Downloads into mode folders">[SORT RENDERS]</button>
+            <button id="btnScanDisk" class="deck-btn" style="flex: 1;" title="Scan for disposable ephemeral installers">[SCAN DISK]</button>
+            <button id="btnCleanTrash" class="deck-btn" style="flex: 1;" title="Purge disposable files to Trash">[CLEAN TRASH]</button>
+            <button id="btnUndoLast" class="deck-btn" title="Undo last file operation">[UNDO]</button>
+        </div>
+
+        <!-- Expandable Results Drawer -->
+        <div id="resultsDrawer" class="result-drawer">
+            <div id="drawerContent"></div>
         </div>
     </div>
 
@@ -462,6 +620,23 @@
         const btnLaunchTd = document.getElementById("btnLaunchTd");
         const btnSfxToggle = document.getElementById("btnSfxToggle");
         const btnClose = document.getElementById("btnClose");
+        const hudToast = document.getElementById("hudToast");
+
+        // Mode & Storage elements
+        const activeModeLabel = document.getElementById("activeModeLabel");
+        const modeButtons = document.querySelectorAll(".mode-btn");
+        const sorterStatusBadge = document.getElementById("sorterStatusBadge");
+        const diskMeterText = document.getElementById("diskMeterText");
+        const frontmostAppText = document.getElementById("frontmostAppText");
+        const tdRecBadge = document.getElementById("tdRecBadge");
+        const oscPortsBadge = document.getElementById("oscPortsBadge");
+        const btnSortRenders = document.getElementById("btnSortRenders");
+        const btnScanDisk = document.getElementById("btnScanDisk");
+        const btnCleanTrash = document.getElementById("btnCleanTrash");
+        const btnUndoLast = document.getElementById("btnUndoLast");
+        const resultsDrawer = document.getElementById("resultsDrawer");
+        const drawerContent = document.getElementById("drawerContent");
+
         const messagesContainer = document.getElementById("messagesContainer");
         const chatForm = document.getElementById("chatForm");
         const chatInput = document.getElementById("chatInput");
@@ -521,7 +696,53 @@
             callNative("copyUrl");
         });
 
-        // Retro Web Audio Synthesizer (No external audio files needed)
+        // Mode Switch Handlers
+        modeButtons.forEach(btn => {
+            btn.addEventListener("click", () => {
+                const targetMode = btn.getAttribute("data-mode");
+                callNative("setMode", { mode: targetMode });
+                playChime();
+            });
+        });
+
+        // Storage Guardian Action Handlers
+        btnSortRenders.addEventListener("click", () => {
+            callNative("triggerSort");
+            playChime();
+            showToast("SORT TRIGGERED ON DOWNLOADS");
+        });
+
+        btnScanDisk.addEventListener("click", () => {
+            callNative("triggerScan");
+            playChime();
+            showToast("SCANNING FOR DISPOSABLE FILES...");
+        });
+
+        btnCleanTrash.addEventListener("click", () => {
+            callNative("triggerClean", { category: "all" });
+            playChime();
+            showToast("PURGING DISPOSABLE TO TRASH...");
+        });
+
+        btnUndoLast.addEventListener("click", () => {
+            callNative("triggerUndo");
+            playChime();
+            showToast("REVERTING LAST OPERATION...");
+        });
+
+        // Toast Helper
+        let toastTimeout = null;
+        function showToast(text) {
+            hudToast.textContent = `[ ${text} ]`;
+            hudToast.style.display = "block";
+            if (toastTimeout) clearTimeout(toastTimeout);
+            toastTimeout = setTimeout(() => {
+                hudToast.style.display = "none";
+            }, 2400);
+        }
+        window.showHudToast = showToast;
+
+        // Retro Web Audio Synthesizer (880 Hz -> 587.33 Hz)
         let audioCtx = null;
         function playChime() {
             if (!sfxEnabled) return;
@@ -557,6 +778,13 @@
             setTimeout(() => {
                 windowBar.classList.remove("flash-alert");
             }, 600);
+        }
+
+        // ASCII Progress Meter Generator
+        function makeAsciiBar(percent, totalBlocks = 14) {
+            const filled = Math.min(totalBlocks, Math.max(0, Math.round((percent / 100) * totalBlocks)));
+            const empty = totalBlocks - filled;
+            return "█".repeat(filled) + "░".repeat(empty);
         }
 
         // Uptime counter
@@ -619,12 +847,74 @@
                 liveUrl = state.url;
             }
             updateDeckUI();
+
+            // Mode synchronization
+            if (state.currentMode) {
+                activeModeLabel.textContent = `[${state.currentMode.toUpperCase()}]`;
+                modeButtons.forEach(btn => {
+                    const m = btn.getAttribute("data-mode");
+                    const isCurrent = (m.toLowerCase() === state.currentMode.toLowerCase());
+                    if (isCurrent) {
+                        btn.className = (m === "Live") ? "mode-btn active-live" : "mode-btn active-mode";
+                    } else {
+                        btn.className = "mode-btn";
+                    }
+                });
+            }
+
+            // Sorter status
+            if (typeof state.sorterOnline === "boolean") {
+                if (state.sorterOnline) {
+                    sorterStatusBadge.className = "badge-online";
+                    sorterStatusBadge.textContent = "[SORTER: ONLINE]";
+                } else {
+                    sorterStatusBadge.className = "badge-offline";
+                    sorterStatusBadge.textContent = "[SORTER: OFFLINE]";
+                }
+            }
+
+            // Disk gauge
+            if (typeof state.diskPercent === "number") {
+                const pct = Math.round(state.diskPercent);
+                const used = Math.round(state.diskUsedGB || 0);
+                const total = Math.round(state.diskTotalGB || 0);
+                const bar = makeAsciiBar(pct, 14);
+                diskMeterText.textContent = `DISK: [${bar}] ${pct}% (${used}/${total} GB)`;
+            }
+
+            // Frontmost App
+            if (state.frontmostApp) {
+                frontmostAppText.textContent = `APP: [${state.frontmostApp}]`;
+            }
+
+            // TouchDesigner Record state
+            if (typeof state.isTdRecording === "boolean") {
+                if (state.isTdRecording) {
+                    tdRecBadge.className = "badge-rec font-mono text-[9.5px]";
+                    tdRecBadge.textContent = "TD REC: [● RECORDING]";
+                } else {
+                    tdRecBadge.className = "text-neutral-400 font-mono text-[9.5px]";
+                    tdRecBadge.textContent = "TD REC: [○ IDLE]";
+                }
+            }
+
+            // Scan Results Drawer
+            if (state.scanResult) {
+                const cnt = state.scanResult.count || (state.scanResult.items && state.scanResult.items.length) || 0;
+                const mb = Math.round(state.scanResult.size_mb || state.scanResult.reclaimable_mb || 0);
+                drawerContent.innerHTML = `SCAN RESULT: [${cnt} FILES FOUND // ${mb} MB RECLAIMABLE]`;
+                resultsDrawer.style.display = "block";
+            } else if (state.cleanResult) {
+                const cnt = state.cleanResult.purged_count || state.cleanResult.count || 0;
+                const mb = Math.round(state.cleanResult.freed_mb || 0);
+                drawerContent.innerHTML = `PURGE RESULT: [${cnt} ITEMS REMOVED // ${mb} MB RECLAIMED TO TRASH]`;
+                resultsDrawer.style.display = "block";
+            }
         };
 
         // Window visibility change from Swift (throttles when hidden)
         window.onHUDVisibilityChange = function(active) {
             if (!active) {
-                // Background throttling
                 if (audioCtx && audioCtx.state === "running") {
                     audioCtx.suspend();
                 }
@@ -636,7 +926,6 @@
             }
         };
 
-        // Escape HTML
         function escapeHtml(text) {
             const div = document.createElement("div");
             div.textContent = text;
@@ -687,7 +976,6 @@
 
                 ws.onopen = () => {
                     isConnected = true;
-                    // Authenticate as host to receive stats and send verified host messages
                     ws.send(JSON.stringify({ type: "host_auth" }));
                     messagesContainer.innerHTML = "";
                 };

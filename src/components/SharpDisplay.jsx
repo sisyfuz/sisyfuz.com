@@ -2,7 +2,11 @@
 import { useState, useEffect, useRef, useCallback, lazy, Suspense } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useDisco } from "../context/DiscoContext";
+import { useA11y } from "../context/A11yContext";
 import { SISYFUZ_BANNER, ASCII_DIVIDER } from "../utils/ascii";
+import { sanitizeUrlParam, sanitizeCommand } from "../utils/sanitize";
+import A11yToolbar from "./A11yToolbar";
+import MobileCommandBar from "./MobileCommandBar";
 
 const TuiWork = lazy(() => import("../tui/TuiWork"));
 const TuiArchive = lazy(() => import("../tui/TuiArchive"));
@@ -20,7 +24,6 @@ function AsciiSectionLoader() {
     );
 }
 
-
 const SECTIONS = [
     { key: "work", label: "work" },
     { key: "archive", label: "archive" },
@@ -34,6 +37,7 @@ export default function SharpDisplay() {
     const navigate = useNavigate();
     const location = useLocation();
     const { discoMode, setDiscoMode, setSearchQuery, setAsciiLiveMode } = useDisco();
+    const { isA11yToolbarOpen, toggleA11yToolbar } = useA11y();
 
     const [activeSection, setActiveSection] = useState("home");
     const [selectedWorkId, setSelectedWorkId] = useState(null);
@@ -59,7 +63,12 @@ export default function SharpDisplay() {
         } else if (SECTIONS.some(s => s.key === path)) {
             setActiveSection(path);
             if (location.hash) {
-                setSelectedWorkId(location.hash.replace("#", ""));
+                const cleanId = sanitizeUrlParam(location.hash);
+                if (cleanId && cleanId !== "main-content" && cleanId !== "terminal-main-content") {
+                    setSelectedWorkId(cleanId);
+                } else {
+                    setSelectedWorkId(null);
+                }
             } else {
                 setSelectedWorkId(null);
             }
@@ -72,22 +81,30 @@ export default function SharpDisplay() {
         setBuffer("");
         bufferRef.current = "";
         setSearchQuery("");
+        window.scrollTo({ top: 0, behavior: 'instant' });
         navigate(sectionKey === "home" ? "/" : `/${sectionKey}`);
     };
 
     const processCommand = useCallback((val) => {
-        setBuffer(val);
-        bufferRef.current = val;
+        const clean = sanitizeCommand(val, 25);
+        setBuffer(clean);
+        bufferRef.current = clean;
 
         const routes = ["work", "archive", "about", "contact", "press", "live", "home", "privacy", "legal"];
 
-        if (val.endsWith("disco")) {
+        if (clean.endsWith("a11y")) {
+            toggleA11yToolbar();
+            setBuffer("");
+            bufferRef.current = "";
+            setSearchQuery("");
+            inputRef.current?.blur();
+        } else if (clean.endsWith("disco")) {
             setDiscoMode(prev => !prev);
             setBuffer("");
             bufferRef.current = "";
             setSearchQuery("");
             inputRef.current?.blur();
-        } else if (val.endsWith("ascii")) {
+        } else if (clean.endsWith("ascii")) {
             setAsciiLiveMode(prev => (location.pathname === "/live" ? !prev : true));
             setActiveSection("live");
             navigate("/live");
@@ -95,8 +112,8 @@ export default function SharpDisplay() {
             bufferRef.current = "";
             setSearchQuery("");
             inputRef.current?.blur();
-        } else if (routes.some(r => val.endsWith(r))) {
-            const matchedRoute = routes.find(r => val.endsWith(r));
+        } else if (routes.some(r => clean.endsWith(r))) {
+            const matchedRoute = routes.find(r => clean.endsWith(r));
             const targetSection = matchedRoute === "legal" ? "privacy" : matchedRoute;
             setActiveSection(targetSection);
             navigate(targetSection === "home" ? "/" : `/${targetSection}`);
@@ -105,14 +122,14 @@ export default function SharpDisplay() {
             setSearchQuery("");
             inputRef.current?.blur();
         } else {
-            const q = val.trim();
+            const q = clean.trim();
             setSearchQuery(q);
             if (q.length > 0 && activeSection !== "work") {
                 setActiveSection("work");
                 navigate("/work");
             }
         }
-    }, [activeSection, navigate, setDiscoMode, setSearchQuery]);
+    }, [activeSection, navigate, setDiscoMode, setSearchQuery, toggleA11yToolbar]);
 
     // Clear search on global Escape key
     useEffect(() => {
@@ -133,10 +150,25 @@ export default function SharpDisplay() {
         <div className={`min-h-screen w-full bg-[#050505] text-[#f0f0f0] font-mono text-xs sm:text-[13px] leading-relaxed px-4 sm:px-8 md:px-16 lg:px-24 py-6 sm:py-8 md:py-12 flex flex-col justify-between select-text relative ${
             discoMode ? "animate-disco" : ""
         }`}>
+            {/* Keyboard Skip to Content */}
+            <a
+                href="#main-content"
+                onClick={(e) => {
+                    e.preventDefault();
+                    const main = document.getElementById("main-content");
+                    if (main) {
+                        main.focus();
+                        main.scrollIntoView({ behavior: "smooth" });
+                    }
+                }}
+                className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-[9999] focus:bg-[#ff0080] focus:text-black focus:font-mono focus:font-bold focus:px-3 focus:py-2 focus:outline-none"
+            >
+                [SKIP_TO_CONTENT]
+            </a>
             
             {/* Top Raw Header */}
             <div className="space-y-4 pb-8 sm:pb-10 z-10">
-                <header className="flex flex-wrap items-center justify-between gap-y-3 gap-x-4 uppercase">
+                <header role="banner" className="flex flex-wrap items-center justify-between gap-y-3 gap-x-4 uppercase">
                     <button
                         onClick={() => handleSwitchSection("home")}
                         className="font-bold cursor-pointer hover:bg-white hover:text-black px-1 -mx-1"
@@ -144,7 +176,7 @@ export default function SharpDisplay() {
                         sisyfuz
                     </button>
 
-                    <nav className="flex flex-wrap items-center gap-x-3 sm:gap-x-6 gap-y-1.5">
+                    <nav role="navigation" aria-label="Main Navigation" className="flex flex-wrap items-center gap-x-3 sm:gap-x-6 gap-y-1.5">
                         {SECTIONS.map((sec) => {
                             const isActive = activeSection === sec.key;
                             return (
@@ -161,20 +193,41 @@ export default function SharpDisplay() {
                                 </button>
                             );
                         })}
+
+                        {/* Accessibility Settings Toggle */}
+                        <button
+                            type="button"
+                            onClick={toggleA11yToolbar}
+                            className={`cursor-pointer px-1 -mx-1 font-mono uppercase transition-colors ${
+                                isA11yToolbarOpen
+                                    ? "bg-[#ff0080] text-black font-bold"
+                                    : "text-[#ff0080] hover:bg-[#ff0080] hover:text-black"
+                            }`}
+                            aria-label="Open Accessibility & Performance Toolbar"
+                            aria-expanded={isA11yToolbarOpen}
+                        >
+                            [A11Y]
+                        </button>
                     </nav>
                 </header>
 
-                <div className="text-neutral-600 select-none overflow-hidden whitespace-nowrap">
+                <div aria-hidden="true" className="text-neutral-600 select-none overflow-hidden whitespace-nowrap">
                     {ASCII_DIVIDER}
                 </div>
             </div>
 
+            {/* Dedicated screen-reader live announcements for search and filter updates */}
+            <div className="sr-only" aria-live="polite" aria-atomic="true">
+                {searchQuery ? `Active filter: ${searchQuery}` : ""}
+            </div>
+
             {/* Main Content Body */}
-            <main className="flex-1 pb-16 z-10">
+            <main id="main-content" tabIndex="-1" role="main" className="flex-1 pb-28 md:pb-16 z-10 outline-none">
                 {activeSection === "home" && (
                     <div className="space-y-10 animate-fadeIn max-w-3xl">
                         {/* ASCII Banner */}
-                        <pre className="text-[9px] xs:text-[10px] sm:text-xs leading-none font-bold text-neutral-300 select-none overflow-x-auto whitespace-pre no-scrollbar">
+                        <h1 className="sr-only">SISYFUZ - Dorus Kleijne Portfolio</h1>
+                        <pre aria-hidden="true" className="text-[9px] xs:text-[10px] sm:text-xs leading-none font-bold text-neutral-300 select-none overflow-x-auto whitespace-pre no-scrollbar">
                             {SISYFUZ_BANNER}
                         </pre>
 
@@ -257,7 +310,7 @@ export default function SharpDisplay() {
             </main>
 
             {/* Subtle Minimal Footer with Privacy & Legal Notice */}
-            <footer className="pt-8 pb-16 text-neutral-600 flex flex-wrap items-center justify-between gap-y-2 gap-x-4 uppercase z-10 text-[11px] sm:text-xs">
+            <footer role="contentinfo" className="pt-8 pb-28 md:pb-16 text-neutral-600 flex flex-wrap items-center justify-between gap-y-2 gap-x-4 uppercase z-10 text-[11px] sm:text-xs">
                 <div className="flex items-center gap-3">
                     <span>SISYFUZ // DORUS KLEIJNE</span>
                     <span>UTRECHT, NL</span>
@@ -277,12 +330,7 @@ export default function SharpDisplay() {
 
             {/* RAW ASCII FLOATING SEARCH BOX */}
             <div
-                className="fixed z-50 select-none cursor-pointer"
-                style={{
-                    bottom: 'calc(1.5rem + env(safe-area-inset-bottom))',
-                    left: '50%',
-                    transform: 'translateX(-50%)'
-                }}
+                className="fixed z-30 select-none cursor-pointer bottom-[calc(3.75rem+env(safe-area-inset-bottom))] md:bottom-[calc(1.5rem+env(safe-area-inset-bottom))] left-1/2 -translate-x-1/2"
                 onClick={() => inputRef.current?.focus()}
             >
                 <div
@@ -405,6 +453,16 @@ export default function SharpDisplay() {
                     </div>
                 </div>
             </div>
+
+            {/* Mobile TUI Command Dock (<768px) */}
+            <MobileCommandBar
+                activeSection={activeSection}
+                onNavigate={handleSwitchSection}
+                isSearchFocused={isSearchFocused}
+            />
+
+            {/* Accessibility Settings Toolbar Modal */}
+            <A11yToolbar />
 
         </div>
     );

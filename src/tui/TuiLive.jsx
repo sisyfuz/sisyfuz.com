@@ -2,6 +2,8 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import { client } from "../sanityClient";
 import { ASCII_DIVIDER, ASCII_RAMP } from "../utils/ascii";
 import { useDisco } from "../context/DiscoContext";
+import { useA11y } from "../context/A11yContext";
+import { sanitizeUrlParam, sanitizeChat, sanitizeStreamUrl } from "../utils/sanitize";
 
 const isLocalhost = typeof window !== "undefined" && (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
 const WORKER_LIVE_URL = "https://sisyfuz-counter.sisyfuz.workers.dev/live";
@@ -77,13 +79,17 @@ function AsciiWipeItem({ text, progress, startIndex = 0, totalLength = 110 }) {
 
 export default function TuiLive({ onNavigate }) {
     const { asciiLiveMode, setAsciiLiveMode, discoMode } = useDisco();
+    const { lowPowerMode, reducedMotion } = useA11y();
+    const scheduleNextAsciiRef = useRef(null);
+    const checkLiveStatusRef = useRef(null);
+
     const [streamUrl, setStreamUrl] = useState(() => {
         if (typeof window !== "undefined") {
             const params = new URLSearchParams(window.location.search);
             const queryUrl = params.get("stream") || params.get("s");
-            if (queryUrl) return queryUrl;
+            if (queryUrl) return sanitizeStreamUrl(queryUrl) || DEFAULT_STREAM_URL;
             const saved = localStorage.getItem("sisyfuz_td_url");
-            if (saved && isLocalhost) return saved;
+            if (saved && isLocalhost) return sanitizeStreamUrl(saved) || DEFAULT_STREAM_URL;
         }
         return DEFAULT_STREAM_URL;
     });
@@ -238,6 +244,7 @@ export default function TuiLive({ onNavigate }) {
 
             // Try Sanity fallback
             try {
+                if (typeof document !== "undefined" && document.hidden) return;
                 const doc = await client.fetch(`*[_id == "site-live-stream"][0]`);
                 if (doc?.active && doc?.url) {
                     consecutiveFails = 0;
@@ -254,21 +261,29 @@ export default function TuiLive({ onNavigate }) {
             }
         };
 
+        checkLiveStatusRef.current = checkLiveStatus;
         checkLiveStatus();
-        const poll = setInterval(checkLiveStatus, 4000);
-        return () => clearInterval(poll);
+        const poll = setInterval(() => {
+            if (typeof document !== "undefined" && document.hidden) return;
+            checkLiveStatus();
+        }, 4000);
+        return () => {
+            checkLiveStatusRef.current = null;
+            clearInterval(poll);
+        };
     }, []);
 
-    // Procedural ASCII oscilloscope for standby state
+    // Procedural ASCII oscilloscope for standby state (halt on background or reduced motion)
     useEffect(() => {
-        if (isLive) return;
+        if (isLive || reducedMotion) return;
         const interval = setInterval(() => {
+            if (typeof document !== "undefined" && document.hidden) return;
             setAnimFrame(prev => (prev + 1) % 100);
         }, 120);
         return () => clearInterval(interval);
-    }, [isLive]);
+    }, [isLive, reducedMotion]);
 
-    // Page Visibility API Optimization (Re-sync playback on tab return)
+    // Page Visibility API Optimization (Re-sync playback and live status on tab return)
     useEffect(() => {
         const handleVisibilityChange = () => {
             const visible = !document.hidden;
@@ -277,11 +292,17 @@ export default function TuiLive({ onNavigate }) {
             if (video && visible && isLive && video.paused) {
                 video.play().catch(() => {});
             }
+            if (visible && isLive && asciiLiveMode) {
+                scheduleNextAsciiRef.current?.();
+            }
+            if (visible) {
+                checkLiveStatusRef.current?.();
+            }
         };
 
         document.addEventListener("visibilitychange", handleVisibilityChange);
         return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
-    }, [isLive]);
+    }, [isLive, asciiLiveMode]);
 
     // Audio Mute / Unmute Toggle
     const toggleAudio = () => {
@@ -778,15 +799,17 @@ export default function TuiLive({ onNavigate }) {
         let rowChars = [];
 
         const updateGridMetrics = (width, height) => {
-            const isMobile = width < 640;
-            const fontSize = isMobile ? 10 : 13;
+            const isMobile = width < 768;
+            const fontSize = isMobile ? (lowPowerMode ? 14 : 11) : 13;
             ctx.font = `${fontSize}px monospace`;
             ctx.textBaseline = "top";
 
-            const charW = ctx.measureText("M").width || (isMobile ? 6 : 8);
+            const charW = ctx.measureText("M").width || (isMobile ? 7 : 8);
             cellW = charW;
             cellH = Math.round(cellW / 0.55);
-            cols = Math.floor(width / cellW);
+            const calculatedCols = Math.floor(width / cellW);
+            // Adaptive resolution scaling: clamp sampling grid to ~38 cols on phone / low-power
+            cols = (isMobile || lowPowerMode) ? Math.min(calculatedCols, 38) : calculatedCols;
             rows = Math.floor(height / cellH);
 
             if (cols > 0 && (!rowChars || rowChars.length !== cols)) {
@@ -798,7 +821,7 @@ export default function TuiLive({ onNavigate }) {
 
         const renderAscii = () => {
             if (!isVisibleRef.current) {
-                scheduleNext();
+                // Pause completely when tab is backgrounded / screen is locked (0% CPU)
                 return;
             }
 
@@ -919,6 +942,7 @@ export default function TuiLive({ onNavigate }) {
         };
 
         const scheduleNext = () => {
+            if (!isVisibleRef.current) return;
             if (video.requestVideoFrameCallback && !video.paused && !video.ended && video.readyState >= 2) {
                 callbackId = video.requestVideoFrameCallback(renderAscii);
             } else {
@@ -926,9 +950,11 @@ export default function TuiLive({ onNavigate }) {
             }
         };
 
+        scheduleNextAsciiRef.current = scheduleNext;
         scheduleNext();
 
         return () => {
+            scheduleNextAsciiRef.current = null;
             if (callbackId && video.cancelVideoFrameCallback) {
                 video.cancelVideoFrameCallback(callbackId);
             }
@@ -938,7 +964,7 @@ export default function TuiLive({ onNavigate }) {
             offscreen.width = 0;
             offscreen.height = 0;
         };
-    }, [isLive, asciiLiveMode, displayMode, discoMode]);
+    }, [isLive, asciiLiveMode, lowPowerMode, displayMode, discoMode]);
 
     // Canvas buffer memory cleanup on unmount
     useEffect(() => {
@@ -1028,13 +1054,15 @@ export default function TuiLive({ onNavigate }) {
     // Send a real-time audience chat message
     const sendChatMessage = (e) => {
         if (e) e.preventDefault();
-        const text = chatInputText.trim();
+        const text = sanitizeChat(chatInputText);
         if (!text) return;
+
+        const user = sanitizeChat(chatUsername, 24) || "anon";
 
         if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
             const packet = {
                 type: "chat",
-                user: chatUsername || "anon",
+                user,
                 text,
             };
             wsRef.current.send(JSON.stringify(packet));
@@ -1045,7 +1073,7 @@ export default function TuiLive({ onNavigate }) {
                 fetch(`${cleanUrl}/chat/send`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ user: chatUsername || "anon", text }),
+                    body: JSON.stringify({ user, text }),
                 }).catch(() => {});
                 setChatInputText("");
             }
@@ -1061,11 +1089,12 @@ export default function TuiLive({ onNavigate }) {
     const totalClicksRef = useRef(0);
 
     const sendTelemetry = (clientX, clientY, isDown = isMouseDownRef.current) => {
+        // Halt all telemetry parsing and network transmission when backgrounded / hidden
+        if (!isVisibleRef.current) return;
         if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
 
         const now = performance.now();
-        // If tab is in background, throttle to 500ms
-        const throttleMs = isVisibleRef.current ? 16 : 500;
+        const throttleMs = 16;
         if (now - lastMouseSendRef.current < throttleMs) return;
         lastMouseSendRef.current = now;
 
@@ -1540,7 +1569,7 @@ export default function TuiLive({ onNavigate }) {
                                     autoFocus
                                     onKeyDown={(e) => {
                                         if (e.key === "Enter") {
-                                            const val = e.target.value.trim();
+                                            const val = sanitizeChat(e.target.value, 20);
                                             if (val) {
                                                 setChatUsername(val);
                                                 localStorage.setItem("sisyfuz_chat_user", val);
@@ -1551,7 +1580,7 @@ export default function TuiLive({ onNavigate }) {
                                         }
                                     }}
                                     onBlur={(e) => {
-                                        const val = e.target.value.trim();
+                                        const val = sanitizeChat(e.target.value, 20);
                                         if (val) {
                                             setChatUsername(val);
                                             localStorage.setItem("sisyfuz_chat_user", val);

@@ -1,6 +1,7 @@
 // src/components/AsciiMedia.jsx
 import { useEffect, useState, useRef, useCallback } from "react";
 import { ASCII_RAMP } from "../utils/ascii";
+import { useA11y } from "../context/A11yContext";
 
 function setCoverCrop(srcW, srcH, destW, destH, out) {
     if (!srcW || !srcH || !destW || !destH) {
@@ -35,6 +36,7 @@ export default function AsciiMedia({
     aspectRatio = "aspect-[3/2]",
     className = "",
 }) {
+    const { reducedMotion, lowPowerMode, asciiAltMode } = useA11y();
     const containerRef = useRef(null);
     const canvasRef = useRef(null);
     const offscreenRef = useRef(null);
@@ -271,13 +273,39 @@ export default function AsciiMedia({
         };
     }, [src, cols, recomputeMatrix, renderFrame]);
 
-    // Animate progress on hover
+    const startAnimationRef = useRef(null);
+
+    // Animate progress on hover with FPS throttling, visibility sleep, and reduced-motion bypass
     useEffect(() => {
         const target = isHovered ? 1 : 0;
         stateRef.current.targetProgress = target;
 
+        // WCAG Reduced Motion: bypass continuous frame loop completely
+        if (reducedMotion) {
+            stateRef.current.progress = target;
+            renderFrame();
+            return;
+        }
+
         let frameId;
-        const animate = () => {
+        let lastFrameTime = performance.now();
+        // Throttle to 30 FPS on mobile (<768px) or low-power mode, 60 FPS otherwise
+        const isMobileDevice = typeof window !== "undefined" && (window.innerWidth < 768 || (typeof navigator !== "undefined" && /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent)));
+        const fpsInterval = (lowPowerMode || isMobileDevice) ? (1000 / 30) : (1000 / 60);
+
+        const animate = (timestamp) => {
+            // Immediate pause when tab is backgrounded / screen is locked (0.0% CPU)
+            if (typeof document !== "undefined" && document.hidden) {
+                return;
+            }
+
+            const elapsed = timestamp - lastFrameTime;
+            if (elapsed < fpsInterval) {
+                frameId = requestAnimationFrame(animate);
+                return;
+            }
+            lastFrameTime = timestamp - (elapsed % fpsInterval);
+
             const current = stateRef.current.progress;
             const diff = target - current;
 
@@ -292,9 +320,39 @@ export default function AsciiMedia({
             frameId = requestAnimationFrame(animate);
         };
 
-        frameId = requestAnimationFrame(animate);
-        return () => cancelAnimationFrame(frameId);
-    }, [isHovered, renderFrame]);
+        const startAnimation = () => {
+            if (frameId) cancelAnimationFrame(frameId);
+            lastFrameTime = performance.now();
+            frameId = requestAnimationFrame(animate);
+        };
+
+        startAnimationRef.current = startAnimation;
+        startAnimation();
+
+        return () => {
+            startAnimationRef.current = null;
+            if (frameId) cancelAnimationFrame(frameId);
+        };
+    }, [isHovered, renderFrame, reducedMotion, lowPowerMode, asciiAltMode]);
+
+    // Visibility change listener: wake up and resume animation or repaint when tab regains focus
+    useEffect(() => {
+        const handleVisibilityChange = () => {
+            if (typeof document === "undefined" || document.hidden) return;
+
+            if (stateRef.current.img) {
+                const diff = Math.abs(stateRef.current.targetProgress - stateRef.current.progress);
+                if (diff >= 0.01 && !reducedMotion && startAnimationRef.current) {
+                    startAnimationRef.current();
+                } else {
+                    renderFrame();
+                }
+            }
+        };
+
+        document.addEventListener("visibilitychange", handleVisibilityChange);
+        return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
+    }, [renderFrame, reducedMotion]);
 
     // Resize listener to adapt matrix and dimensions without layout thrashing
     useEffect(() => {
@@ -311,12 +369,14 @@ export default function AsciiMedia({
             if (stateRef.current.img) {
                 recomputeMatrix(stateRef.current.img, width, height);
             }
-            renderFrame();
+            if (!asciiAltMode) {
+                renderFrame();
+            }
         });
         ro.observe(container);
 
         return () => ro.disconnect();
-    }, [cols, recomputeMatrix, renderFrame]);
+    }, [cols, recomputeMatrix, renderFrame, asciiAltMode]);
 
     // Canvas buffer memory cleanup on unmount
     useEffect(() => {
@@ -333,22 +393,50 @@ export default function AsciiMedia({
         };
     }, []);
 
+    // When toggling plain-media mode off, trigger immediate canvas re-render
+    useEffect(() => {
+        if (!asciiAltMode && stateRef.current.img && containerRef.current) {
+            const rect = containerRef.current.getBoundingClientRect();
+            if (rect.width > 0 && rect.height > 0) {
+                recomputeMatrix(stateRef.current.img, Math.floor(rect.width), Math.floor(rect.height));
+                renderFrame();
+            }
+        }
+    }, [asciiAltMode, recomputeMatrix, renderFrame]);
+
     return (
-        <div
+        <figure
             ref={containerRef}
-            className={`relative overflow-hidden cursor-crosshair select-none bg-black ${aspectRatio} ${className}`}
+            className={`relative overflow-hidden ${asciiAltMode ? "" : "cursor-crosshair"} select-none bg-black ${aspectRatio} ${className}`}
             onMouseEnter={() => setIsHovered(true)}
             onMouseLeave={() => setIsHovered(false)}
             onClick={() => setIsHovered(prev => !prev)}
-            role="img"
-            aria-label={alt}
         >
-            <canvas ref={canvasRef} className="w-full h-full block" />
-            {!imageLoaded && (
-                <div className="absolute inset-0 flex items-center justify-center font-mono text-[10px] text-neutral-600 uppercase tracking-widest animate-pulse">
-                    [loading ascii matrix...]
-                </div>
+            {asciiAltMode && src ? (
+                <>
+                    <img
+                        src={src}
+                        alt={alt}
+                        loading="lazy"
+                        decoding="async"
+                        className="w-full h-full object-cover block"
+                    />
+                    <figcaption className="sr-only">{alt}</figcaption>
+                </>
+            ) : (
+                <>
+                    <canvas ref={canvasRef} aria-hidden="true" className="w-full h-full block" />
+                    <figcaption className="sr-only">{alt}</figcaption>
+                    {!imageLoaded && (
+                        <div
+                            aria-hidden="true"
+                            className="absolute inset-0 flex items-center justify-center font-mono text-[10px] text-neutral-600 uppercase tracking-widest animate-pulse"
+                        >
+                            [loading ascii matrix...]
+                        </div>
+                    )}
+                </>
             )}
-        </div>
+        </figure>
     );
 }

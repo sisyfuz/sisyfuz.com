@@ -7,7 +7,8 @@ cd "$DIR"
 echo "=== Building Sisyfuz Companion Menu Bar App ==="
 
 # Compile Swift file to ARM64 native binary
-swiftc -O -target arm64-apple-macos14.0 SisyfuzCompanion.swift -o SisyfuzCompanion
+mkdir -p /tmp/clang-cache
+swiftc -O -module-cache-path /tmp/clang-cache -target arm64-apple-macos14.0 SisyfuzCompanion.swift -o SisyfuzCompanion
 
 # Create macOS .app bundle directory structure
 APP_NAME="SisyfuzCompanion.app"

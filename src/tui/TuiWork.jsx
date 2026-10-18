@@ -52,6 +52,8 @@ export default function TuiWork({ selectedId = null }) {
         if (selectedId && projects.length > 0) {
             const found = projects.find(p => p.id === selectedId);
             if (found) setActiveProject(found);
+        } else if (!selectedId) {
+            setActiveProject(null);
         }
     }, [selectedId, projects]);
 
@@ -169,7 +171,12 @@ export default function TuiWork({ selectedId = null }) {
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
                             {activeProject.media.map((item, idx) => (
                                 <div key={idx}>
-                                    <AsciiMedia src={getOptimizedImageUrl(item.asset || item.src, 800)} cols={44} aspectRatio="aspect-video" />
+                                    <AsciiMedia
+                                        src={getOptimizedImageUrl(item.asset || item.src, 800)}
+                                        alt={item.caption || item.alt || `${activeProject.title} media attachment ${idx + 1}`}
+                                        cols={44}
+                                        aspectRatio="aspect-video"
+                                    />
                                 </div>
                             ))}
                         </div>

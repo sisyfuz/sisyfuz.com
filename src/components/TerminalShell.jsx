@@ -2,7 +2,10 @@
 import { useState, useEffect, useRef } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useTerminalTheme } from "../context/TerminalThemeContext";
+import { useA11y } from "../context/A11yContext";
 import { SISYFUZ_BANNER } from "../utils/ascii";
+import { sanitizeUrlParam, sanitizeCommand } from "../utils/sanitize";
+import A11yToolbar from "./A11yToolbar";
 import TuiWork from "../tui/TuiWork";
 import TuiArchive from "../tui/TuiArchive";
 import TuiAbout from "../tui/TuiAbout";
@@ -17,6 +20,7 @@ const VALID_COMMANDS = [
     "about",
     "contact",
     "press",
+    "a11y",
     "clear",
     "theme",
     "disco",
@@ -29,6 +33,7 @@ export default function TerminalShell() {
     const navigate = useNavigate();
     const location = useLocation();
     const { theme, themeKey, setTheme, availableThemes } = useTerminalTheme();
+    const { isA11yToolbarOpen, toggleA11yToolbar } = useA11y();
 
     const [activeView, setActiveView] = useState("home");
     const [selectedWorkId, setSelectedWorkId] = useState(null);
@@ -58,10 +63,18 @@ export default function TerminalShell() {
         const path = location.pathname.replace(/^\//, "").toLowerCase();
         if (path === "" || path === "home") {
             setActiveView("home");
+            setSelectedWorkId(null);
         } else if (path === "work") {
             setActiveView("work");
             if (location.hash) {
-                setSelectedWorkId(location.hash.replace("#", ""));
+                const cleanId = sanitizeUrlParam(location.hash);
+                if (cleanId && cleanId !== "main-content" && cleanId !== "terminal-main-content") {
+                    setSelectedWorkId(cleanId);
+                } else {
+                    setSelectedWorkId(null);
+                }
+            } else {
+                setSelectedWorkId(null);
             }
         } else if (path === "archive") {
             setActiveView("archive");
@@ -75,8 +88,9 @@ export default function TerminalShell() {
     }, [location.pathname, location.hash]);
 
     const executeCommand = (cmdStr) => {
-        const trimmed = cmdStr.trim();
-        if (!trimmed) return;
+        const clean = sanitizeCommand(cmdStr);
+        if (!clean) return;
+        const trimmed = clean;
 
         // Push to history
         setCommandHistory(prev => [trimmed, ...prev.filter(c => c !== trimmed)]);
@@ -101,6 +115,7 @@ export default function TerminalShell() {
                             <div><b className="text-current">[ls]</b> — List filesystem contents</div>
                             <div><b className="text-current">[clear]</b> — Clear terminal screen</div>
                             <div><b className="text-current">[disco]</b> — Toggle color-cycling mode</div>
+                            <div><b className="text-current">[a11y]</b> — Accessibility & performance toolbar</div>
                             <div><b className="text-current">[whoami]</b> — Print entity identification</div>
                         </div>
                     </div>
@@ -166,11 +181,15 @@ export default function TerminalShell() {
 
             case "view":
                 if (args.length > 0) {
-                    const id = args[0];
-                    setSelectedWorkId(id);
-                    setActiveView("work");
-                    navigate(`/work#${id}`);
-                    addLog(trimmed, `LOADING_PROJECT_DOSSIER: ${id}`);
+                    const id = sanitizeUrlParam(args[0]);
+                    if (id) {
+                        setSelectedWorkId(id);
+                        setActiveView("work");
+                        navigate(`/work#${id}`);
+                        addLog(trimmed, `LOADING_PROJECT_DOSSIER: ${id}`);
+                    } else {
+                        addLog(trimmed, "ERROR: INVALID_PROJECT_ID");
+                    }
                 } else {
                     addLog(trimmed, "USAGE: view <project_id> (e.g. 'work' to list IDs)");
                 }
@@ -198,6 +217,11 @@ export default function TerminalShell() {
             case "disco":
                 setIsDisco(prev => !prev);
                 addLog(trimmed, !isDisco ? "DISCO_PROTOCOL: ACTIVE" : "DISCO_PROTOCOL: TERMINATED");
+                break;
+
+            case "a11y":
+                toggleA11yToolbar();
+                addLog(trimmed, "ACCESSIBILITY_TOOLBAR: TOGGLED");
                 break;
 
             case "whoami":
@@ -262,11 +286,30 @@ export default function TerminalShell() {
                 isDisco ? "animate-disco" : ""
             }`}
         >
+            {/* Keyboard Skip to Content */}
+            <a
+                href="#terminal-main-content"
+                onClick={(e) => {
+                    e.preventDefault();
+                    const main = document.getElementById("terminal-main-content");
+                    if (main) {
+                        main.focus();
+                        main.scrollIntoView({ behavior: "smooth" });
+                    }
+                }}
+                className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-[9999] focus:bg-[#ff0080] focus:text-black focus:font-mono focus:font-bold focus:px-3 focus:py-2 focus:outline-none"
+            >
+                [SKIP_TO_CONTENT]
+            </a>
+
             {/* Terminal Main Window Frame */}
             <div className={`flex-1 border ${theme.border} flex flex-col bg-black/60 shadow-2xl relative overflow-hidden backdrop-blur-sm`}>
                 
                 {/* Header Title Bar */}
-                <header className={`border-b ${theme.border} px-3 py-2 flex items-center justify-between text-[11px] sm:text-xs uppercase bg-black/40 select-none`}>
+                <header
+                    role="banner"
+                    className={`border-b ${theme.border} px-3 py-2 flex items-center justify-between text-[11px] sm:text-xs uppercase bg-black/40 select-none`}
+                >
                     <div className="flex items-center gap-2 sm:gap-3">
                         <span className="w-2.5 h-2.5 bg-red-500 rounded-full inline-block cursor-pointer" onClick={() => executeCommand("clear")}></span>
                         <span className="w-2.5 h-2.5 bg-yellow-500 rounded-full inline-block cursor-pointer" onClick={() => executeCommand("help")}></span>
@@ -277,6 +320,19 @@ export default function TerminalShell() {
                     </div>
 
                     <div className="flex items-center gap-3">
+                        <button
+                            type="button"
+                            onClick={toggleA11yToolbar}
+                            className={`border px-2 py-0.5 text-[10px] tracking-widest cursor-pointer transition-colors ${
+                                isA11yToolbarOpen
+                                    ? "bg-[#ff0080] text-black font-bold border-[#ff0080]"
+                                    : "border-[#ff0080]/60 text-[#ff0080] hover:bg-[#ff0080] hover:text-black"
+                            }`}
+                            aria-label="Open Accessibility & Performance Toolbar"
+                            aria-expanded={isA11yToolbarOpen}
+                        >
+                            [A11Y]
+                        </button>
                         <button
                             onClick={cycleTheme}
                             className="border border-current px-2 py-0.5 text-[10px] tracking-widest hover:bg-current hover:text-black transition-colors"
@@ -290,13 +346,17 @@ export default function TerminalShell() {
                 </header>
 
                 {/* Quick Interactive Command Bar */}
-                <div className={`border-b ${theme.border} px-3 py-2 flex items-center gap-2 flex-wrap text-xs bg-black/20 select-none overflow-x-auto`}>
+                <nav
+                    role="navigation"
+                    aria-label="Quick Commands"
+                    className={`border-b ${theme.border} px-3 py-2 flex items-center gap-2 flex-wrap text-xs bg-black/20 select-none overflow-x-auto`}
+                >
                     <span className="opacity-50 text-[10px] uppercase tracking-widest mr-1">EXECUTE:</span>
-                    {["work", "archive", "about", "contact", "press", "help", "clear"].map(cmd => (
+                    {["work", "archive", "about", "contact", "press", "help", "a11y", "clear"].map(cmd => (
                         <button
                             key={cmd}
                             onClick={() => executeCommand(cmd)}
-                            className={`border px-2.5 py-0.5 text-[11px] uppercase tracking-wider transition-all ${
+                            className={`border px-2.5 py-0.5 text-[11px] uppercase tracking-wider transition-all cursor-pointer ${
                                 activeView === cmd
                                     ? "bg-current text-black font-bold border-current"
                                     : "border-current/40 hover:border-current hover:bg-current/10"
@@ -305,18 +365,25 @@ export default function TerminalShell() {
                             [{cmd}]
                         </button>
                     ))}
-                </div>
+                </nav>
 
                 {/* Terminal Body Content */}
-                <div
+                <main
+                    id="terminal-main-content"
+                    role="main"
+                    tabIndex="-1"
                     ref={scrollContainerRef}
-                    className="flex-1 p-4 sm:p-6 md:p-8 overflow-y-auto space-y-6"
+                    className="flex-1 p-4 sm:p-6 md:p-8 overflow-y-auto space-y-6 outline-none"
                     onClick={() => inputRef.current?.focus()}
                 >
                     {/* Welcome Banner when in Home view */}
                     {activeView === "home" && (
                         <div className="space-y-6">
-                            <pre className="text-[10px] sm:text-xs md:text-sm leading-none font-bold text-current select-none overflow-x-auto">
+                            <h1 className="sr-only">SISYFUZ - Dorus Kleijne Portfolio</h1>
+                            <pre
+                                aria-hidden="true"
+                                className="text-[10px] sm:text-xs md:text-sm leading-none font-bold text-current select-none overflow-x-auto"
+                            >
                                 {SISYFUZ_BANNER}
                             </pre>
 
@@ -389,9 +456,15 @@ export default function TerminalShell() {
                         <TuiPress />
                     )}
 
-                    {/* Output History Logs */}
+                    {/* Output History Logs with ARIA Complementary Landmark & Live region */}
                     {outputLogs.length > 0 && (
-                        <div className="border-t border-current/20 pt-4 space-y-3">
+                        <aside
+                            role="complementary"
+                            aria-label="Command Execution History"
+                            aria-live="polite"
+                            aria-atomic="false"
+                            className="border-t border-current/20 pt-4 space-y-3"
+                        >
                             <div className="text-[10px] opacity-50 uppercase tracking-widest">// COMMAND_EXECUTION_LOG:</div>
                             {outputLogs.map((log, i) => (
                                 <div key={i} className="text-xs space-y-1">
@@ -403,12 +476,15 @@ export default function TerminalShell() {
                                     <div className="pl-4 opacity-90">{log.content}</div>
                                 </div>
                             ))}
-                        </div>
+                        </aside>
                     )}
-                </div>
+                </main>
 
                 {/* Command Line Input Footer */}
-                <footer className={`border-t ${theme.border} p-3 sm:p-4 bg-black/60 flex items-center gap-2 select-none`}>
+                <footer
+                    role="contentinfo"
+                    className={`border-t ${theme.border} p-3 sm:p-4 bg-black/60 flex items-center gap-2 select-none`}
+                >
                     <span className="text-xs sm:text-sm font-bold text-current flex items-center gap-1 shrink-0">
                         <span>user@sisyfuz:~$</span>
                     </span>
@@ -434,6 +510,9 @@ export default function TerminalShell() {
                 </footer>
 
             </div>
+
+            {/* Accessibility Settings Toolbar Modal */}
+            <A11yToolbar />
         </div>
     );
 }

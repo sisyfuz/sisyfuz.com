@@ -57,7 +57,7 @@ export default function TuiPrivacy({ onNavigate }) {
                         <p>
                             Deze website (<span className="text-white">sisyfuz.com</span>) is het persoonlijke portfolio en onderzoeksplatform van:
                         </p>
-                        <div className="bg-neutral-950 border border-neutral-800 p-3 space-y-1 font-mono text-[12px] text-neutral-300">
+                        <div className="bg-neutral-900/40 p-3 space-y-1 font-mono text-[12px] text-neutral-300">
                             <div><span className="text-neutral-500">NAAM:</span> Dorus Kleijne (artiestennaam: sisyfuz)</div>
                             <div><span className="text-neutral-500">HOEDANIGHEID:</span> Zelfstandig kunstenaar / student theater &amp; performance</div>
                             <div><span className="text-neutral-500">LOCATIE:</span> Utrecht, Nederland</div>
@@ -79,7 +79,7 @@ export default function TuiPrivacy({ onNavigate }) {
                             <div className="space-y-1">
                                 <span className="text-white font-bold block uppercase text-[12px]">A. Webserver- en CDN-logs (Hosting)</span>
                                 <p className="text-neutral-400">
-                                    Wanneer je deze website bezoekt, verwerken onze netwerk- en hostingproviders (GitHub Pages en Cloudflare) automatisch technische verbindingsgegevens: je IP-adres, tijdstip van opvraging, browser user-agent en opgevraagde bestanden.
+                                     Wanneer je deze website bezoekt, verwerken onze netwerk- en hostingproviders (GitHub Pages en Cloudflare) automatisch technische verbindingsgegevens: je IP-adres, tijdstip van opvraging, browser user-agent en opgevraagde bestanden.
                                 </p>
                                 <p className="text-neutral-500 text-[11px]">
                                     Grondslag: Gerechtvaardigd belang (AVG art. 6 lid 1 sub f) ter beveiliging tegen DDoS-aanvallen en veilige contentlevering. Deze logs worden niet door mij geprofileerd of gekoppeld aan identiteiten.
@@ -121,7 +121,7 @@ export default function TuiPrivacy({ onNavigate }) {
                         <h2 className="text-white font-bold uppercase tracking-wider">
                             3. COOKIES &amp; LOKALE OPSLAG (GEEN COOKIEBANNER NODIG)
                         </h2>
-                        <div className="border border-pink-500/40 bg-pink-500/5 p-3 space-y-2">
+                        <div className="bg-pink-500/10 p-3 space-y-2">
                             <p className="text-white font-bold text-[12px]">
                                 [!] DEZE WEBSITE GEBRUIKT GEEN TRACKING- OF ADVERTENTIECOOKIES.
                             </p>
@@ -152,19 +152,19 @@ export default function TuiPrivacy({ onNavigate }) {
                             Voor de technische werking werk ik samen met betrouwbare infrastructuurpartners:
                         </p>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[12px] font-mono">
-                            <div className="border border-neutral-800 p-2 bg-neutral-950">
+                            <div className="p-2 bg-neutral-900/40">
                                 <b className="text-white">CLOUDFLARE, INC. (VS/EU)</b>
                                 <div className="text-neutral-500 text-[11px]">DNS, DDoS-mitigatie, Edge Workers (Standard Contractual Clauses).</div>
                             </div>
-                            <div className="border border-neutral-800 p-2 bg-neutral-950">
+                            <div className="p-2 bg-neutral-900/40">
                                 <b className="text-white">GITHUB, INC. (VS)</b>
                                 <div className="text-neutral-500 text-[11px]">Statische hosting via GitHub Pages (Standard Contractual Clauses).</div>
                             </div>
-                            <div className="border border-neutral-800 p-2 bg-neutral-950">
+                            <div className="p-2 bg-neutral-900/40">
                                 <b className="text-white">SANITY AS (NOORWEGEN/EER)</b>
                                 <div className="text-neutral-500 text-[11px]">Headless CMS voor openbare artwork-metadata (EER-databescherming).</div>
                             </div>
-                            <div className="border border-neutral-800 p-2 bg-neutral-950">
+                            <div className="p-2 bg-neutral-900/40">
                                 <b className="text-white">METERED NETWORKS INC.</b>
                                 <div className="text-neutral-500 text-[11px]">STUN/TURN netwerkrelay voor WebRTC lage-latentie videoverbindingen.</div>
                             </div>
@@ -193,17 +193,16 @@ export default function TuiPrivacy({ onNavigate }) {
                     </section>
 
                     {/* 6. Colofon & Auteursrecht */}
-                    <section className="space-y-2 border-t border-neutral-800 pt-6">
+                    <div className="text-neutral-700 select-none overflow-hidden whitespace-nowrap pt-4">
+                        {ASCII_DIVIDER}
+                    </div>
+                    <section className="space-y-2 pt-2">
                         <h2 className="text-white font-bold uppercase tracking-wider">
                             6. COLOFON &amp; INTELLECTUEEL EIGENDOM
                         </h2>
                         <div className="space-y-2 text-neutral-400 text-[12px]">
                             <p>
                                 © {new Date().getFullYear()} Dorus Kleijne (sisyfuz). Alle rechten voorbehouden op het artistieke werk, concepten, geschreven teksten, videobeelden, TouchDesigner composities en visuele ASCII-ontwerpen, tenzij uitdrukkelijk anders vermeld.
-                            </p>
-                            <p>
-                                <span className="text-neutral-500 uppercase">TYPOGRAFIE CREDITS:</span><br />
-                                Sligoil font ontworpen door Ariel Martín Pérez, met bijdragen van Đông Trúc Nguyễn. Uitgegeven door Velvetyne Type Foundry (<a href="https://velvetyne.fr" target="_blank" rel="noopener noreferrer" className="underline hover:text-white">velvetyne.fr</a>) onder open-source licentie. Webfonts geleverd via Google Fonts.
                             </p>
                         </div>
                     </section>
@@ -221,7 +220,7 @@ export default function TuiPrivacy({ onNavigate }) {
                         <p>
                             This website (<span className="text-white">sisyfuz.com</span>) is the personal portfolio and experimental research platform of:
                         </p>
-                        <div className="bg-neutral-950 border border-neutral-800 p-3 space-y-1 font-mono text-[12px] text-neutral-300">
+                        <div className="bg-neutral-900/40 p-3 space-y-1 font-mono text-[12px] text-neutral-300">
                             <div><span className="text-neutral-500">NAME:</span> Dorus Kleijne (artist moniker: sisyfuz)</div>
                             <div><span className="text-neutral-500">CAPACITY:</span> Independent artist / theatre &amp; performance student</div>
                             <div><span className="text-neutral-500">LOCATION:</span> Utrecht, The Netherlands</div>
@@ -285,7 +284,7 @@ export default function TuiPrivacy({ onNavigate }) {
                         <h2 className="text-white font-bold uppercase tracking-wider">
                             3. COOKIES &amp; LOCAL STORAGE (NO COOKIE BANNER NEEDED)
                         </h2>
-                        <div className="border border-pink-500/40 bg-pink-500/5 p-3 space-y-2">
+                        <div className="bg-pink-500/10 p-3 space-y-2">
                             <p className="text-white font-bold text-[12px]">
                                 [!] THIS WEBSITE DOES NOT USE ANY TRACKING OR ADVERTISING COOKIES.
                             </p>
@@ -316,19 +315,19 @@ export default function TuiPrivacy({ onNavigate }) {
                             I rely on trusted technical infrastructure partners:
                         </p>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[12px] font-mono">
-                            <div className="border border-neutral-800 p-2 bg-neutral-950">
+                            <div className="p-2 bg-neutral-900/40">
                                 <b className="text-white">CLOUDFLARE, INC. (US/EU)</b>
                                 <div className="text-neutral-500 text-[11px]">DNS routing, DDoS mitigation, Edge Workers (Standard Contractual Clauses).</div>
                             </div>
-                            <div className="border border-neutral-800 p-2 bg-neutral-950">
+                            <div className="p-2 bg-neutral-900/40">
                                 <b className="text-white">GITHUB, INC. (US)</b>
                                 <div className="text-neutral-500 text-[11px]">Static website hosting via GitHub Pages (Standard Contractual Clauses).</div>
                             </div>
-                            <div className="border border-neutral-800 p-2 bg-neutral-950">
+                            <div className="p-2 bg-neutral-900/40">
                                 <b className="text-white">SANITY AS (NORWAY/EEA)</b>
                                 <div className="text-neutral-500 text-[11px]">Headless CMS hosting public portfolio metadata (EEA Data Protection).</div>
                             </div>
-                            <div className="border border-neutral-800 p-2 bg-neutral-950">
+                            <div className="p-2 bg-neutral-900/40">
                                 <b className="text-white">METERED NETWORKS INC.</b>
                                 <div className="text-neutral-500 text-[11px]">WebRTC STUN/TURN low-latency video relay service.</div>
                             </div>
@@ -357,7 +356,10 @@ export default function TuiPrivacy({ onNavigate }) {
                     </section>
 
                     {/* 6. Colophon */}
-                    <section className="space-y-2 border-t border-neutral-800 pt-6">
+                    <div className="text-neutral-700 select-none overflow-hidden whitespace-nowrap pt-4">
+                        {ASCII_DIVIDER}
+                    </div>
+                    <section className="space-y-2 pt-2">
                         <h2 className="text-white font-bold uppercase tracking-wider">
                             6. COLOPHON &amp; INTELLECTUAL PROPERTY
                         </h2>
@@ -365,17 +367,16 @@ export default function TuiPrivacy({ onNavigate }) {
                             <p>
                                 © {new Date().getFullYear()} Dorus Kleijne (sisyfuz). All rights reserved across artistic creations, concepts, texts, video recordings, TouchDesigner setups, and custom ASCII design, unless explicitly stated otherwise.
                             </p>
-                            <p>
-                                <span className="text-neutral-500 uppercase">TYPOGRAPHY ATTRIBUTION:</span><br />
-                                Sligoil typeface designed by Ariel Martín Pérez, with contributions from Đông Trúc Nguyễn. Released through Velvetyne Type Foundry (<a href="https://velvetyne.fr" target="_blank" rel="noopener noreferrer" className="underline hover:text-white">velvetyne.fr</a>) under an open-source license. Web fonts served via Google Fonts.
-                            </p>
                         </div>
                     </section>
                 </div>
             )}
 
             {/* Bottom Footer Back Button */}
-            <div className="pt-4 border-t border-neutral-800 flex justify-between items-center text-xs">
+            <div className="text-neutral-700 select-none overflow-hidden whitespace-nowrap pt-4">
+                {ASCII_DIVIDER}
+            </div>
+            <div className="pt-2 flex justify-between items-center text-xs">
                 <button
                     onClick={() => onNavigate && onNavigate("home")}
                     className="text-white hover:bg-white hover:text-black font-bold uppercase py-1 px-2 -ml-2 cursor-pointer transition-none"

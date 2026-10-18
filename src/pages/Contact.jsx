@@ -9,7 +9,6 @@ export default function Contact() {
                 <h2 className="font-title text-pink-500 mb-6 tracking-tighter">{">"} INITIALIZING_COMMUNICATION...</h2>
                 <div className="space-y-6 font-body">
                     <a href="mailto:info@sisyfuz.com" className="block hover:text-pink-500 underline">Email_Direct</a>
-                    <a href="https://instagram.com/sisyfuz" target="_blank" rel="noopener noreferrer" className="block hover:text-pink-500 underline">Instagram</a>
                 </div>
             </div>
         </div>

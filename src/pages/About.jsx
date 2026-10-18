@@ -94,12 +94,7 @@ export default function About() {
                             </div>
                         </div>
 
-                        {/* Fonts Credit Footer */}
-                        <div className="pt-8 mt-6 border-t border-white/10">
-                            <p className="font-mono text-[10px] text-white/30 tracking-widest uppercase leading-relaxed">
-                                [badabum! fonts by: Sligoil by Ariel Martín Pérez, with the contribution of Đông Trúc Nguyễn. Distributed by velvetyne.fr.]
-                            </p>
-                        </div>
+
                     </div>
 
                     {/* Right Column: Clean Artist Portrait */}

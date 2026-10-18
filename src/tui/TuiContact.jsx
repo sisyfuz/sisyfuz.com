@@ -27,17 +27,7 @@ export default function TuiContact() {
                     </a>
                 </div>
 
-                <div>
-                    <span className="text-neutral-500 uppercase block mb-1">SOCIAL:</span>
-                    <a
-                        href="https://instagram.com/sisyfuz"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-white hover:bg-white hover:text-black font-bold uppercase py-1 px-2 -ml-2 inline-block transition-colors"
-                    >
-                        [INSTAGRAM.COM/SISYFUZ]
-                    </a>
-                </div>
+
             </div>
         </div>
     );

@@ -67,14 +67,7 @@ export default function TuiAbout({ onNavigate }) {
                         </button>
                     </div>
 
-                    <div className="pt-4">
-                        <div className="text-neutral-600 select-none overflow-hidden whitespace-nowrap mb-2">
-                            {ASCII_DIVIDER}
-                        </div>
-                        <p className="text-[11px] text-neutral-500 uppercase leading-relaxed font-mono">
-                            [FONTS: SLIGOIL BY ARIEL MARTÍN PÉREZ, WITH THE CONTRIBUTION OF ĐÔNG TRÚC NGUYỄN. DISTRIBUTED BY VELVETYNE.FR]
-                        </p>
-                    </div>
+
                 </div>
 
                 {/* Right Column: ASCII Portrait with Cellular Wipe */}

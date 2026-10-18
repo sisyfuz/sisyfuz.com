@@ -3,7 +3,7 @@ import WebKit
 import Foundation
 
 // MARK: - Sisyfuz Companion Menu Bar Application
-class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
+class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKScriptMessageHandler {
     var statusItem: NSStatusItem!
     var menu: NSMenu!
     var chatWindow: NSPanel?
@@ -139,13 +139,24 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             if let toggleItem = self.menu.item(withTag: 103) {
                 toggleItem.title = self.isBroadcasting ? "Stop Broadcast" : "Start Broadcast"
             }
+
+            // Sync state with ChatHUD WebKit view
+            let stateObj: [String: Any] = [
+                "isBroadcasting": self.isBroadcasting,
+                "viewers": self.currentViewers,
+                "url": self.currentLiveUrl
+            ]
+            if let jsonData = try? JSONSerialization.data(withJSONObject: stateObj),
+               let jsonStr = String(data: jsonData, encoding: .utf8) {
+                self.webView?.evaluateJavaScript("window.onCompanionStateUpdate && window.onCompanionStateUpdate(\(jsonStr));", completionHandler: nil)
+            }
         }
     }
 
     // MARK: - Chat HUD Floating Window
     func setupChatHUD() {
-        let width: CGFloat = 360
-        let height: CGFloat = 500
+        let width: CGFloat = 400
+        let height: CGFloat = 580
 
         // Create sleek floating NSPanel
         let panel = NSPanel(
@@ -159,7 +170,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         panel.isFloatingPanel = true
         panel.level = .floating // Stays on top of OBS and TouchDesigner
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-        panel.backgroundColor = NSColor(red: 0.05, green: 0.05, blue: 0.07, alpha: 0.98)
+        panel.backgroundColor = NSColor(red: 0.02, green: 0.02, blue: 0.02, alpha: 0.98)
         panel.isMovableByWindowBackground = true
         panel.titleVisibility = .hidden
         panel.titlebarAppearsTransparent = true
@@ -167,6 +178,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         panel.center()
 
         let config = WKWebViewConfiguration()
+        let contentController = WKUserContentController()
+        contentController.add(self, name: "companion")
+        config.userContentController = contentController
+
         let wv = WKWebView(frame: panel.contentView?.bounds ?? .zero, configuration: config)
         wv.autoresizingMask = [.width, .height]
         wv.setValue(false, forKey: "drawsBackground")
@@ -207,6 +222,36 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             window.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
             setHUDActive(true)
+            updateMenuState()
+        }
+    }
+
+    // MARK: - WKScriptMessageHandler Bridge
+    func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+        guard message.name == "companion",
+              let body = message.body as? [String: Any],
+              let action = body["action"] as? String else { return }
+
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            switch action {
+            case "startBroadcast":
+                self.startBroadcast()
+            case "stopBroadcast":
+                self.stopBroadcast()
+            case "copyUrl":
+                self.copyStreamUrl()
+            case "openWebStream":
+                self.openWebStream()
+            case "openOBS":
+                self.openOBS()
+            case "openTouchDesigner":
+                self.openTouchDesigner()
+            case "closeHud":
+                self.toggleChatHUD()
+            default:
+                break
+            }
         }
     }
 

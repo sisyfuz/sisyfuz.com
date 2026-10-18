@@ -9,237 +9,428 @@
             box-sizing: border-box;
             margin: 0;
             padding: 0;
+            border-radius: 0 !important; /* Strict brutalist zero-radius */
         }
 
         body {
-            background-color: #0c0c0e;
-            color: #d1d1d6;
-            font-family: -apple-system, BlinkMacSystemFont, "SF Mono", "Menlo", monospace;
-            font-size: 12px;
+            background-color: #050505;
+            color: #f0f0f0;
+            font-family: "Space Mono", "Courier New", "Menlo", monospace;
+            font-size: 11px;
+            line-height: 1.4;
             display: flex;
             flex-direction: column;
             height: 100vh;
             overflow: hidden;
             user-select: none;
             -webkit-user-select: none;
+            border: 1px solid #262626;
         }
 
-        /* Top Bar */
-        .header {
+        /* Draggable Window Header */
+        .window-bar {
             display: flex;
             align-items: center;
             justify-content: space-between;
-            padding: 8px 12px;
-            background: #141418;
-            border-bottom: 1px solid #27272a;
+            padding: 6px 10px;
+            background: #000000;
+            border-bottom: 1px solid #262626;
             -webkit-app-region: drag;
+            font-weight: 700;
+            letter-spacing: 0.05em;
+            transition: background 0.2s, border-color 0.2s;
         }
 
-        .title {
+        .window-bar.flash-alert {
+            background: #2a0014;
+            border-bottom: 1px solid #ff0080;
+        }
+
+        .window-title {
             display: flex;
             align-items: center;
-            gap: 8px;
-            font-weight: 700;
-            font-size: 11px;
-            letter-spacing: 0.08em;
+            gap: 6px;
             color: #ffffff;
+            font-size: 11px;
+            text-transform: uppercase;
+        }
+
+        .window-actions {
+            -webkit-app-region: no-drag;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .btn-ctrl {
+            background: transparent;
+            border: 1px solid #333333;
+            color: #888888;
+            font-family: inherit;
+            font-size: 10px;
+            font-weight: 700;
+            padding: 1px 6px;
+            cursor: pointer;
+            text-transform: uppercase;
+            transition: none;
+        }
+
+        .btn-ctrl:hover {
+            background: #ffffff;
+            color: #000000;
+            border-color: #ffffff;
+        }
+
+        .btn-ctrl.active-pink {
+            background: #ff0080;
+            color: #000000;
+            border-color: #ff0080;
+        }
+
+        .btn-close:hover {
+            background: #ff0055;
+            color: #ffffff;
+            border-color: #ff0055;
+        }
+
+        /* Studio Control Deck */
+        .deck {
+            background: #0a0a0a;
+            border-bottom: 1px solid #262626;
+            padding: 8px 10px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            font-size: 10.5px;
+        }
+
+        .deck-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            overflow: hidden;
+        }
+
+        .status-badge {
+            font-weight: 700;
+            text-transform: uppercase;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .status-badge.live {
+            color: #ff0080;
+        }
+
+        .status-badge.standby {
+            color: #666666;
         }
 
         .dot {
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-            background: #71717a;
+            width: 7px;
+            height: 7px;
             display: inline-block;
         }
 
         .dot.live {
-            background: #10b981;
-            box-shadow: 0 0 8px #10b981;
-            animation: pulse 2s infinite;
+            background: #ff0080;
+            box-shadow: 0 0 6px #ff0080;
+            animation: blink 1.2s infinite;
         }
 
-        .dot.live-static {
-            background: #10b981;
+        .dot.standby {
+            background: #555555;
         }
 
-        @keyframes pulse {
+        @keyframes blink {
             0%, 100% { opacity: 1; }
-            50% { opacity: 0.4; }
+            50% { opacity: 0.2; }
         }
 
-        .stats-badge {
+        .deck-btn {
+            background: transparent;
+            border: 1px solid #444444;
+            color: #ffffff;
+            font-family: inherit;
             font-size: 10px;
-            background: #27272a;
-            color: #a1a1aa;
-            padding: 2px 6px;
-            border-radius: 4px;
+            font-weight: 700;
+            padding: 3px 8px;
+            cursor: pointer;
             text-transform: uppercase;
-        }
-
-        /* Quick Action Bar */
-        .actions-bar {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 6px 12px;
-            background: #18181b;
-            border-bottom: 1px solid #27272a;
-            font-size: 10px;
-        }
-
-        .stream-link {
-            color: #ff0080;
-            text-decoration: none;
-            max-width: 220px;
-            overflow: hidden;
-            text-overflow: ellipsis;
+            transition: none;
             white-space: nowrap;
         }
 
-        .btn-copy {
-            background: #27272a;
-            border: 1px solid #3f3f46;
-            color: #f4f4f5;
-            padding: 2px 8px;
-            border-radius: 3px;
-            cursor: pointer;
-            font-family: inherit;
-            font-size: 10px;
+        .deck-btn:hover {
+            background: #ffffff;
+            color: #000000;
+            border-color: #ffffff;
         }
 
-        .btn-copy:hover {
-            background: #3f3f46;
+        .deck-btn.btn-broadcast-start {
+            border-color: #ff0080;
+            color: #ff0080;
+        }
+
+        .deck-btn.btn-broadcast-start:hover {
+            background: #ff0080;
+            color: #000000;
+        }
+
+        .deck-btn.btn-broadcast-stop {
+            background: #2a0014;
+            border-color: #ff0080;
+            color: #ff0080;
+        }
+
+        .deck-btn.btn-broadcast-stop:hover {
+            background: #ff0080;
+            color: #000000;
+        }
+
+        .stream-url-display {
+            color: #a3a3a3;
+            font-family: inherit;
+            font-size: 10px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            max-width: 250px;
+        }
+
+        .stream-url-display.live-link {
+            color: #ff0080;
+        }
+
+        /* ASCII Divider Line */
+        .ascii-divider {
+            color: #333333;
+            white-space: nowrap;
+            overflow: hidden;
+            font-size: 10px;
+            line-height: 1;
+            user-select: none;
+            padding: 0 10px;
         }
 
         /* Message Stream */
         .messages {
             flex: 1;
             overflow-y: auto;
-            padding: 12px;
+            padding: 10px;
             display: flex;
             flex-direction: column;
-            gap: 8px;
+            gap: 6px;
             user-select: text;
             -webkit-user-select: text;
+            background: #050505;
         }
 
-        .message {
+        .messages::-webkit-scrollbar {
+            width: 4px;
+        }
+
+        .messages::-webkit-scrollbar-track {
+            background: #050505;
+        }
+
+        .messages::-webkit-scrollbar-thumb {
+            background: #262626;
+        }
+
+        .message-row {
             line-height: 1.4;
             word-break: break-word;
             font-size: 11px;
         }
 
-        .time {
-            color: #71717a;
+        .msg-time {
+            color: #555555;
             font-size: 10px;
             margin-right: 6px;
+            user-select: none;
         }
 
         .badge-host {
             background: #ff0080;
-            color: #000;
-            font-weight: 800;
-            padding: 1px 4px;
-            border-radius: 2px;
-            font-size: 9px;
+            color: #000000;
+            font-weight: 700;
+            padding: 0 4px;
             margin-right: 6px;
+            text-transform: uppercase;
+            font-size: 10px;
+            display: inline-block;
+        }
+
+        .author-viewer {
+            color: #d4d4d4;
+            font-weight: 700;
+            margin-right: 6px;
+        }
+
+        .msg-content {
+            color: #f5f5f5;
+        }
+
+        .msg-content.host-content {
+            color: #ffffff;
+            font-weight: 500;
+        }
+
+        .empty-state {
+            margin: auto;
+            color: #444444;
+            text-align: center;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        /* Terminal Input Row */
+        .terminal-bar {
+            padding: 6px 10px;
+            background: #000000;
+            border-top: 1px solid #262626;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .terminal-prompt {
+            color: #ff0080;
+            font-weight: 700;
+            user-select: none;
+        }
+
+        .terminal-input {
+            flex: 1;
+            background: transparent;
+            border: none;
+            color: #ffffff;
+            font-family: inherit;
+            font-size: 11px;
+            outline: none;
+            padding: 4px 0;
+            text-transform: none;
+        }
+
+        .terminal-input::placeholder {
+            color: #444444;
             text-transform: uppercase;
         }
 
-        .author {
-            color: #a1a1aa;
-            font-weight: 600;
-            margin-right: 6px;
+        .cursor-block {
+            color: #ff0080;
+            font-weight: 700;
+            animation: cursorBlink 1s infinite;
+            user-select: none;
         }
 
-        .text {
-            color: #f4f4f5;
-        }
-
-        .empty-placeholder {
-            margin: auto;
-            color: #52525b;
-            text-align: center;
-            font-style: italic;
-        }
-
-        /* Input Area */
-        .input-bar {
-            padding: 8px 12px;
-            background: #141418;
-            border-top: 1px solid #27272a;
-            display: flex;
-            gap: 8px;
-        }
-
-        .input-field {
-            flex: 1;
-            background: #09090b;
-            border: 1px solid #27272a;
-            color: #ffffff;
-            padding: 6px 10px;
-            font-family: inherit;
-            font-size: 11px;
-            border-radius: 4px;
-            outline: none;
-        }
-
-        .input-field:focus {
-            border-color: #ff0080;
+        @keyframes cursorBlink {
+            0%, 50% { opacity: 1; }
+            51%, 100% { opacity: 0; }
         }
 
         .btn-send {
             background: #ff0080;
             color: #000000;
-            border: none;
-            padding: 6px 12px;
+            border: 1px solid #ff0080;
+            padding: 3px 8px;
             font-weight: 700;
             font-family: inherit;
-            font-size: 11px;
-            border-radius: 4px;
+            font-size: 10px;
             cursor: pointer;
-            transition: opacity 0.15s;
+            text-transform: uppercase;
+            transition: none;
         }
 
         .btn-send:hover {
-            opacity: 0.9;
+            background: #ffffff;
+            color: #000000;
+            border-color: #ffffff;
         }
 
         .btn-send:disabled {
             opacity: 0.3;
             cursor: not-allowed;
+            background: #222222;
+            color: #555555;
+            border-color: #333333;
         }
     </style>
 </head>
 <body>
-    <div class="header">
-        <div class="title">
-            <span id="liveDot" class="dot"></span>
-            <span>SISYFUZ // CHAT HUD</span>
+
+    <!-- Draggable Brutalist Window Bar -->
+    <div id="windowBar" class="window-bar">
+        <div class="window-title">
+            <span id="headerDot" class="dot standby"></span>
+            <span>+--[ &gt; SISYFUZ // HOST CHAT HUD ]</span>
         </div>
-        <div id="statsBadge" class="stats-badge">VIEWERS: 0</div>
+        <div class="window-actions">
+            <button id="btnSfxToggle" class="btn-ctrl" title="Toggle audio alert chime">[SFX: ON]</button>
+            <button id="btnClose" class="btn-ctrl btn-close" title="Close window (Cmd+K)">[X]</button>
+        </div>
     </div>
 
-    <div class="actions-bar">
-        <span id="streamUrlText" class="stream-link">Connecting...</span>
-        <button id="btnCopy" class="btn-copy">COPY LINK</button>
+    <!-- Integrated Studio Control Deck -->
+    <div class="deck">
+        <div class="deck-row">
+            <div id="statusBadge" class="status-badge standby">
+                [○ STANDBY / IDLE]
+            </div>
+            <div id="uptimeDisplay" class="text-neutral-400 font-mono text-[10.5px]">
+                UPTIME: [--:--:--]
+            </div>
+            <div id="viewersBadge" class="text-neutral-400 font-mono text-[10.5px]">
+                VIEWERS: [00]
+            </div>
+        </div>
+
+        <div class="deck-row">
+            <span id="streamUrlText" class="stream-url-display">http://localhost:9988</span>
+            <div style="display: flex; gap: 4px;">
+                <button id="btnCopyUrl" class="deck-btn">[COPY URL]</button>
+                <button id="btnOpenWeb" class="deck-btn">[VIEW]</button>
+            </div>
+        </div>
+
+        <div class="deck-row" style="margin-top: 2px;">
+            <button id="btnToggleBroadcast" class="deck-btn btn-broadcast-start" style="flex: 1; text-align: center;">
+                [▶ START BROADCAST]
+            </button>
+            <button id="btnLaunchObs" class="deck-btn" title="Open OBS Studio">[OBS]</button>
+            <button id="btnLaunchTd" class="deck-btn" title="Open TouchDesigner">[TD]</button>
+        </div>
     </div>
 
+    <div class="ascii-divider">
+        +--------------------------------------------------------------------------------+
+    </div>
+
+    <!-- Live Audience Chat Stream -->
     <div id="messagesContainer" class="messages">
-        <div class="empty-placeholder">Connecting to stream chat hub...</div>
+        <div class="empty-state">
+            [ CONNECTING TO STREAM CHAT HUB... ]
+        </div>
     </div>
 
-    <form id="chatForm" class="input-bar">
+    <!-- Terminal Reply Input -->
+    <form id="chatForm" class="terminal-bar">
+        <span class="terminal-prompt">&gt;</span>
         <input
             id="chatInput"
             type="text"
-            class="input-field"
-            placeholder="Reply as [HOST]... (Enter)"
+            class="terminal-input"
+            placeholder="REPLY AS [HOST]... (ENTER)"
             maxlength="200"
             autocomplete="off"
+            spellcheck="false"
         />
-        <button id="btnSend" type="submit" class="btn-send">SEND</button>
+        <span class="cursor-block">█</span>
+        <button id="btnSend" type="submit" class="btn-send">[SEND]</button>
     </form>
 
     <script>
@@ -248,175 +439,325 @@
 
         let ws = null;
         let isConnected = false;
-        let isLive = false;
-        let isHUDVisible = false;
-        let hasPendingRender = false;
-        const messages = [];
+        let isBroadcasting = false;
+        let liveUrl = "";
+        let viewerCount = 0;
+        let broadcastStartTime = null;
+        let uptimeInterval = null;
+        let sfxEnabled = localStorage.getItem("sisyfuz_hud_sfx") !== "0";
 
-        const liveDot = document.getElementById("liveDot");
-        const statsBadge = document.getElementById("statsBadge");
+        // DOM elements
+        const windowBar = document.getElementById("windowBar");
+        const headerDot = document.getElementById("headerDot");
+        const statusBadge = document.getElementById("statusBadge");
+        const uptimeDisplay = document.getElementById("uptimeDisplay");
+        const viewersBadge = document.getElementById("viewersBadge");
         const streamUrlText = document.getElementById("streamUrlText");
-        const btnCopy = document.getElementById("btnCopy");
+        const btnToggleBroadcast = document.getElementById("btnToggleBroadcast");
+        const btnCopyUrl = document.getElementById("btnCopyUrl");
+        const btnOpenWeb = document.getElementById("btnOpenWeb");
+        const btnLaunchObs = document.getElementById("btnLaunchObs");
+        const btnLaunchTd = document.getElementById("btnLaunchTd");
+        const btnSfxToggle = document.getElementById("btnSfxToggle");
+        const btnClose = document.getElementById("btnClose");
         const messagesContainer = document.getElementById("messagesContainer");
         const chatForm = document.getElementById("chatForm");
         const chatInput = document.getElementById("chatInput");
+        const btnSend = document.getElementById("btnSend");
 
-        function updateIndicator() {
-            if (!isConnected) {
-                liveDot.className = "dot";
-                return;
-            }
-            if (isLive) {
-                // Throttle CSS animation to 0 CPU when HUD is hidden in menu bar
-                liveDot.className = isHUDVisible ? "dot live" : "dot live-static";
+        // Sync SFX Button State
+        function updateSfxButton() {
+            btnSfxToggle.textContent = sfxEnabled ? "[SFX: ON]" : "[SFX: OFF]";
+            if (sfxEnabled) {
+                btnSfxToggle.classList.remove("active-pink");
             } else {
-                liveDot.className = "dot";
+                btnSfxToggle.classList.add("active-pink");
+            }
+        }
+        updateSfxButton();
+
+        btnSfxToggle.addEventListener("click", () => {
+            sfxEnabled = !sfxEnabled;
+            localStorage.setItem("sisyfuz_hud_sfx", sfxEnabled ? "1" : "0");
+            updateSfxButton();
+            if (sfxEnabled) playChime();
+        });
+
+        // Native Swift Bridge invocation
+        function callNative(action, payload = {}) {
+            if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.companion) {
+                window.webkit.messageHandlers.companion.postMessage({ action, ...payload });
             }
         }
 
-        window.onHUDVisibilityChange = function(visible) {
-            isHUDVisible = Boolean(visible);
-            updateIndicator();
-            if (isHUDVisible && (hasPendingRender || messages.length > 0)) {
-                renderMessages();
-                hasPendingRender = false;
+        btnClose.addEventListener("click", () => callNative("closeHud"));
+        btnLaunchObs.addEventListener("click", () => callNative("openOBS"));
+        btnLaunchTd.addEventListener("click", () => callNative("openTouchDesigner"));
+        btnOpenWeb.addEventListener("click", () => callNative("openWebStream"));
+
+        btnToggleBroadcast.addEventListener("click", () => {
+            if (isBroadcasting) {
+                callNative("stopBroadcast");
+            } else {
+                callNative("startBroadcast");
+            }
+        });
+
+        btnCopyUrl.addEventListener("click", () => {
+            const urlToCopy = liveUrl || "https://sisyfuz.com/live";
+            navigator.clipboard.writeText(urlToCopy).then(() => {
+                const orig = btnCopyUrl.textContent;
+                btnCopyUrl.textContent = "[COPIED!]";
+                btnCopyUrl.style.background = "#ffffff";
+                btnCopyUrl.style.color = "#000000";
+                setTimeout(() => {
+                    btnCopyUrl.textContent = orig;
+                    btnCopyUrl.style.background = "";
+                    btnCopyUrl.style.color = "";
+                }, 1200);
+            });
+            callNative("copyUrl");
+        });
+
+        // Retro Web Audio Synthesizer (No external audio files needed)
+        let audioCtx = null;
+        function playChime() {
+            if (!sfxEnabled) return;
+            try {
+                if (!audioCtx) {
+                    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                }
+                if (audioCtx.state === "suspended") {
+                    audioCtx.resume();
+                }
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+
+                osc.type = "sine";
+                const now = audioCtx.currentTime;
+                osc.frequency.setValueAtTime(880, now);
+                osc.frequency.exponentialRampToValueAtTime(587.33, now + 0.08); // A5 -> D5
+
+                gain.gain.setValueAtTime(0.12, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.09);
+
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+
+                osc.start(now);
+                osc.stop(now + 0.1);
+            } catch (e) {}
+        }
+
+        // Title Flash on unread message when not focused
+        function flashWindowBar() {
+            windowBar.classList.add("flash-alert");
+            setTimeout(() => {
+                windowBar.classList.remove("flash-alert");
+            }, 600);
+        }
+
+        // Uptime counter
+        function formatUptime(seconds) {
+            const h = Math.floor(seconds / 3600).toString().padStart(2, "0");
+            const m = Math.floor((seconds % 3600) / 60).toString().padStart(2, "0");
+            const s = (seconds % 60).toString().padStart(2, "0");
+            return `${h}:${m}:${s}`;
+        }
+
+        function updateDeckUI() {
+            if (isBroadcasting) {
+                headerDot.className = "dot live";
+                statusBadge.className = "status-badge live";
+                statusBadge.textContent = "[● LIVE • 60 FPS]";
+                btnToggleBroadcast.className = "deck-btn btn-broadcast-stop";
+                btnToggleBroadcast.textContent = "[■ STOP BROADCAST]";
+
+                if (liveUrl) {
+                    streamUrlText.textContent = liveUrl;
+                    streamUrlText.className = "stream-url-display live-link";
+                }
+
+                if (!uptimeInterval) {
+                    if (!broadcastStartTime) broadcastStartTime = Date.now();
+                    uptimeInterval = setInterval(() => {
+                        const elapsed = Math.floor((Date.now() - broadcastStartTime) / 1000);
+                        uptimeDisplay.textContent = `UPTIME: [${formatUptime(elapsed)}]`;
+                    }, 1000);
+                }
+            } else {
+                headerDot.className = "dot standby";
+                statusBadge.className = "status-badge standby";
+                statusBadge.textContent = "[○ STANDBY / IDLE]";
+                btnToggleBroadcast.className = "deck-btn btn-broadcast-start";
+                btnToggleBroadcast.textContent = "[▶ START BROADCAST]";
+                streamUrlText.textContent = "http://localhost:9988";
+                streamUrlText.className = "stream-url-display";
+                uptimeDisplay.textContent = "UPTIME: [--:--:--]";
+
+                if (uptimeInterval) {
+                    clearInterval(uptimeInterval);
+                    uptimeInterval = null;
+                }
+                broadcastStartTime = null;
+            }
+
+            viewersBadge.textContent = `VIEWERS: [${String(viewerCount).padStart(2, "0")}]`;
+        }
+
+        // Native state update callback invoked from Swift
+        window.onCompanionStateUpdate = function(state) {
+            if (typeof state.isBroadcasting === "boolean") {
+                isBroadcasting = state.isBroadcasting;
+            }
+            if (typeof state.viewers === "number") {
+                viewerCount = state.viewers;
+            }
+            if (state.url) {
+                liveUrl = state.url;
+            }
+            updateDeckUI();
+        };
+
+        // Window visibility change from Swift (throttles when hidden)
+        window.onHUDVisibilityChange = function(active) {
+            if (!active) {
+                // Background throttling
+                if (audioCtx && audioCtx.state === "running") {
+                    audioCtx.suspend();
+                }
+            } else {
+                if (audioCtx && audioCtx.state === "suspended") {
+                    audioCtx.resume();
+                }
+                setTimeout(scrollToBottom, 50);
             }
         };
 
-        function renderMessages() {
-            if (messages.length === 0) {
-                messagesContainer.innerHTML = '<div class="empty-placeholder">No messages yet. Chat will appear here in real-time.</div>';
-                return;
-            }
+        // Escape HTML
+        function escapeHtml(text) {
+            const div = document.createElement("div");
+            div.textContent = text;
+            return div.innerHTML;
+        }
 
-            messagesContainer.innerHTML = messages.map(m => {
-                const timeStr = m.time ? new Date(m.time * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
-                const isHost = m.isHost || (m.user && m.user.startsWith('[HOST]'));
-                const cleanUser = isHost ? m.user.replace(/^\[HOST\]\s*/, '') : (m.user || 'anon');
-
-                return `
-                    <div class="message">
-                        <span class="time">${timeStr}</span>
-                        ${isHost ? '<span class="badge-host">HOST</span>' : `<span class="author">${escapeHtml(cleanUser)}:</span>`}
-                        <span class="text">${escapeHtml(m.text || '')}</span>
-                    </div>
-                `;
-            }).join('');
-
+        function scrollToBottom() {
             messagesContainer.scrollTop = messagesContainer.scrollHeight;
         }
 
-        function escapeHtml(str) {
-            return String(str)
-                .replace(/&/g, "&amp;")
-                .replace(/</g, "&lt;")
-                .replace(/>/g, "&gt;")
-                .replace(/"/g, "&quot;")
-                .replace(/'/g, "&#039;");
+        function renderMessage(msg, isNew = false) {
+            const isHost = msg.isHost || (msg.user && msg.user.startsWith("[HOST]"));
+            const rawUser = String(msg.user || "anon");
+            const cleanUser = isHost ? rawUser.replace(/^\[HOST\]\s*/, "") : rawUser;
+
+            const timeStr = msg.time
+                ? new Date(msg.time * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })
+                : new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+
+            const row = document.createElement("div");
+            row.className = "message-row";
+
+            let authorHtml = "";
+            if (isHost) {
+                authorHtml = `<span class="badge-host">[HOST]</span><span class="msg-content host-content">${escapeHtml(cleanUser)}:</span> `;
+            } else {
+                authorHtml = `<span class="author-viewer">${escapeHtml(cleanUser)}:</span> `;
+            }
+
+            row.innerHTML = `
+                <span class="msg-time">${timeStr}</span>
+                ${authorHtml}
+                <span class="${isHost ? "msg-content host-content" : "msg-content"}">${escapeHtml(msg.text)}</span>
+            `;
+
+            messagesContainer.appendChild(row);
+            scrollToBottom();
+
+            if (isNew && !isHost) {
+                playChime();
+                flashWindowBar();
+            }
         }
 
-        function connect() {
+        function connectWS() {
             try {
                 ws = new WebSocket(WS_URL);
 
                 ws.onopen = () => {
                     isConnected = true;
-                    updateIndicator();
-                    // Authenticate as HOST to receive status push
+                    // Authenticate as host to receive stats and send verified host messages
                     ws.send(JSON.stringify({ type: "host_auth" }));
+                    messagesContainer.innerHTML = "";
                 };
 
-                ws.onmessage = (event) => {
+                ws.onmessage = (e) => {
                     try {
-                        const msg = JSON.parse(event.data);
-                        if (msg.type === "chat_history") {
-                            messages.length = 0;
-                            if (Array.isArray(msg.messages)) {
-                                messages.push(...msg.messages);
-                            }
-                            if (isHUDVisible) {
-                                renderMessages();
+                        const data = JSON.parse(e.data);
+                        if (data.type === "chat_history") {
+                            messagesContainer.innerHTML = "";
+                            if (Array.isArray(data.messages) && data.messages.length > 0) {
+                                data.messages.forEach((m) => renderMessage(m, false));
                             } else {
-                                hasPendingRender = true;
+                                messagesContainer.innerHTML = '<div class="empty-state">[ NO MESSAGES YET // READY FOR STREAM ]</div>';
                             }
-                        } else if (msg.type === "chat") {
-                            messages.push(msg);
-                            if (messages.length > 60) messages.shift();
-                            if (isHUDVisible) {
-                                renderMessages();
-                            } else {
-                                hasPendingRender = true;
+                        } else if (data.type === "chat") {
+                            const placeholder = messagesContainer.querySelector(".empty-state");
+                            if (placeholder) placeholder.remove();
+                            renderMessage(data, true);
+                        } else if (data.type === "stats") {
+                            if (typeof data.viewers === "number") {
+                                viewerCount = data.viewers;
+                                updateDeckUI();
                             }
-                        } else if (msg.type === "stats") {
-                            if (typeof msg.viewers === "number") {
-                                statsBadge.textContent = `VIEWERS: ${msg.viewers}`;
-                            }
-                        } else if (msg.type === "status") {
-                            isLive = Boolean(msg.active);
-                            if (msg.url) {
-                                streamUrlText.textContent = msg.url;
-                                streamUrlText.href = msg.url;
-                            } else {
-                                streamUrlText.textContent = "https://sisyfuz.com/live";
-                            }
-                            if (typeof msg.viewers === "number") {
-                                statsBadge.textContent = `VIEWERS: ${msg.viewers}`;
-                            }
-                            updateIndicator();
                         }
-                    } catch (e) {
-                        console.error(e);
-                    }
+                    } catch (err) {}
                 };
 
                 ws.onclose = () => {
                     isConnected = false;
-                    updateIndicator();
-                    setTimeout(connect, 3000);
+                    setTimeout(connectWS, 2500);
                 };
 
                 ws.onerror = () => {
                     isConnected = false;
-                    updateIndicator();
                 };
-            } catch (e) {
-                setTimeout(connect, 3000);
+            } catch (err) {
+                setTimeout(connectWS, 2500);
             }
         }
 
-        chatForm.onsubmit = (e) => {
+        // Send Host Message
+        chatForm.addEventListener("submit", (e) => {
             e.preventDefault();
             const text = chatInput.value.trim();
             if (!text) return;
 
+            const payload = {
+                type: "chat",
+                user: "Dorus",
+                text: text,
+                isHost: true,
+            };
+
             if (ws && ws.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify({
-                    type: "chat",
-                    user: "Host",
-                    isHost: true,
-                    text: text
-                }));
+                ws.send(JSON.stringify(payload));
                 chatInput.value = "";
             } else {
                 fetch(`${HTTP_BASE}/chat/send`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ user: "Host", isHost: true, text: text })
-                }).then(() => {
+                    body: JSON.stringify({ user: "Dorus", text: text, isHost: true }),
+                })
+                .then(() => {
                     chatInput.value = "";
-                }).catch(console.error);
+                })
+                .catch(() => {});
             }
-        };
+        });
 
-        btnCopy.onclick = () => {
-            const url = streamUrlText.textContent || "https://sisyfuz.com/live";
-            navigator.clipboard.writeText(url).then(() => {
-                btnCopy.textContent = "COPIED!";
-                setTimeout(() => { btnCopy.textContent = "COPY LINK"; }, 1500);
-            });
-        };
-
-        connect();
+        // Initialize UI & Connections
+        updateDeckUI();
+        connectWS();
     </script>
 </body>
 </html>

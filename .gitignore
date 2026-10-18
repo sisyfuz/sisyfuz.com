@@ -26,3 +26,5 @@ dist
 *.sw?
 *.crt
 *.key
+scripts/companion/SisyfuzCompanion
+scripts/companion/*.app

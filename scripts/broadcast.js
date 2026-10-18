@@ -19,6 +19,7 @@ import http from "http";
 import httpProxy from "http-proxy";
 import path from "path";
 import { fileURLToPath } from "url";
+import { WebSocketServer, WebSocket } from "ws";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -255,12 +256,66 @@ async function main() {
         return url;
     }
 
+    // In-memory chat history and client hub
+    const chatHistory = [];
+    const activeWsClients = new Set();
+    let tdSocket = null;
+    let tdConnected = false;
+
+    // Connect to TouchDesigner receiver on port 9980 to forward telemetry & chat
+    const connectTouchDesigner = () => {
+        if (isShuttingDown) return;
+        try {
+            const ws = new WebSocket(`ws://127.0.0.1:${TD_PORT}`);
+            tdSocket = ws;
+
+            ws.on("open", () => {
+                tdConnected = true;
+                console.log(`      [OK] Connected to TouchDesigner receiver on port ${TD_PORT}`);
+                try {
+                    ws.send(JSON.stringify({ type: "stats", viewers: Math.max(1, activeWsClients.size) }));
+                } catch {}
+            });
+
+            ws.on("message", (data) => {
+                try {
+                    const msg = JSON.parse(data.toString());
+                    if (msg.type === "stats") {
+                        const statsStr = JSON.stringify(msg);
+                        for (const client of activeWsClients) {
+                            if (client.readyState === WebSocket.OPEN) client.send(statsStr);
+                        }
+                    }
+                } catch {}
+            });
+
+            ws.on("close", () => {
+                tdConnected = false;
+                tdSocket = null;
+                if (!isShuttingDown) setTimeout(connectTouchDesigner, 3000);
+            });
+
+            ws.on("error", () => {
+                tdConnected = false;
+                if (tdSocket) {
+                    try { tdSocket.close(); } catch {}
+                    tdSocket = null;
+                }
+                if (!isShuttingDown) setTimeout(connectTouchDesigner, 3000);
+            });
+        } catch {
+            if (!isShuttingDown) setTimeout(connectTouchDesigner, 3000);
+        }
+    };
+
+    connectTouchDesigner();
+
     proxyServer = http.createServer((req, res) => {
         // Universal CORS headers for web browsers (extended for WHEP PATCH/DELETE)
         res.setHeader("Access-Control-Allow-Origin", "*");
         res.setHeader("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS, HEAD");
         res.setHeader("Access-Control-Allow-Headers", "*");
-        res.setHeader("Access-Control-Expose-Headers", "Location, Link");
+        res.setHeader("Access-Control-Expose-Headers", "Location, Link, Accept-Post");
 
         if (req.method === "OPTIONS") {
             res.writeHead(204);
@@ -268,10 +323,12 @@ async function main() {
             return;
         }
 
-        // --- /turn-config: Expose ICE server configuration to the frontend ---
-        if (req.url === "/turn-config") {
+        // --- /turn-config: STUN-first to protect Metered.ca quota; LL-HLS fallback for relay ---
+        if (req.url && req.url.startsWith("/turn-config")) {
             const iceServers = [{ urls: "stun:stun.l.google.com:19302" }];
-            if (TURN_USERNAME && TURN_CREDENTIAL) {
+            const urlObj = new URL(req.url, "http://localhost");
+            const allowRelay = urlObj.searchParams.get("relay") === "1" || process.env.ENABLE_METERED_RELAY === "true";
+            if (allowRelay && TURN_USERNAME && TURN_CREDENTIAL) {
                 iceServers.push({
                     urls: [
                         `turn:${TURN_HOST}:80`,
@@ -284,6 +341,82 @@ async function main() {
             }
             res.writeHead(200, { "Content-Type": "application/json" });
             res.end(JSON.stringify({ iceServers }));
+            return;
+        }
+
+        // --- /chat/history: Fetch recent chat messages ---
+        if (req.url === "/chat/history") {
+            res.writeHead(200, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ messages: chatHistory }));
+            return;
+        }
+
+        // --- /chat/send: Send a chat message via HTTP POST ---
+        if (req.url === "/chat/send" && req.method === "POST") {
+            const chunks = [];
+            req.on("data", (chunk) => chunks.push(chunk));
+            req.on("end", () => {
+                try {
+                    const body = JSON.parse(Buffer.concat(chunks).toString() || "{}");
+                    const user = String(body.user || "anon").trim().slice(0, 24) || "anon";
+                    const text = String(body.text || "").trim().slice(0, 200);
+                    const isHost = Boolean(body.isHost);
+                    if (!text) {
+                        res.writeHead(400, { "Content-Type": "application/json" });
+                        res.end(JSON.stringify({ error: "Empty message" }));
+                        return;
+                    }
+
+                    const msgObj = {
+                        type: "chat",
+                        id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+                        user: isHost && !user.startsWith("[HOST]") ? `[HOST] ${user}` : user,
+                        text,
+                        isHost,
+                        time: Math.floor(Date.now() / 1000),
+                    };
+
+                    chatHistory.push(msgObj);
+                    if (chatHistory.length > 50) chatHistory.shift();
+
+                    const msgStr = JSON.stringify(msgObj);
+                    for (const client of activeWsClients) {
+                        if (client.readyState === WebSocket.OPEN) client.send(msgStr);
+                    }
+                    if (tdSocket && tdSocket.readyState === WebSocket.OPEN) {
+                        tdSocket.send(msgStr);
+                    }
+
+                    res.writeHead(200, { "Content-Type": "application/json" });
+                    res.end(JSON.stringify({ success: true, message: msgObj }));
+                } catch (e) {
+                    res.writeHead(400, { "Content-Type": "application/json" });
+                    res.end(JSON.stringify({ error: e.message }));
+                }
+            });
+            return;
+        }
+
+        // --- /api/status: Broadcast health & stats for Companion App ---
+        if (req.url === "/api/status") {
+            res.writeHead(200, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({
+                active: Boolean(liveUrl),
+                url: liveUrl,
+                viewers: Math.max(0, activeWsClients.size),
+                tdConnected,
+                chatCount: chatHistory.length,
+            }));
+            return;
+        }
+
+        // --- /api/broadcast/stop: Clean shutdown invoked from Companion App ---
+        if (req.url === "/api/broadcast/stop" && req.method === "POST") {
+            res.writeHead(200, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ success: true, message: "Stopping broadcast..." }));
+            setTimeout(() => {
+                cleanup();
+            }, 300);
             return;
         }
 
@@ -460,10 +593,105 @@ async function main() {
         sendHls(mapStreamUrl(req.url));
     });
 
-    // Forward WebSocket upgrades (mouse telemetry) to TouchDesigner
+    // Set up WebSocketServer for Chat & Multi-User Telemetry Hub
+    const wss = new WebSocketServer({ noServer: true });
+
+    wss.on("connection", (clientWs, req) => {
+        activeWsClients.add(clientWs);
+
+        // Send recent chat history and live stats on connect
+        try {
+            clientWs.send(JSON.stringify({ type: "chat_history", messages: chatHistory }));
+            const statsMsg = JSON.stringify({ type: "stats", viewers: Math.max(1, activeWsClients.size) });
+            clientWs.send(statsMsg);
+            if (tdSocket && tdSocket.readyState === WebSocket.OPEN) {
+                tdSocket.send(statsMsg);
+            }
+        } catch {}
+
+        let lastMessageTime = 0;
+
+        clientWs.on("message", (data) => {
+            try {
+                const rawStr = data.toString();
+                const msg = JSON.parse(rawStr);
+
+                // Handle live audience chat message
+                if (msg.type === "chat") {
+                    const now = Date.now();
+                    // Basic anti-spam cooldown (1s per message per client)
+                    if (now - lastMessageTime < 1000) return;
+                    lastMessageTime = now;
+
+                    const cleanUser = String(msg.user || "anon").trim().slice(0, 24) || "anon";
+                    const cleanText = String(msg.text || "").trim().slice(0, 200);
+                    if (!cleanText) return;
+
+                    const isHost = Boolean(msg.isHost || clientWs.isHostClient);
+                    const msgObj = {
+                        type: "chat",
+                        id: `msg-${now}-${Math.random().toString(36).slice(2, 7)}`,
+                        user: isHost && !cleanUser.startsWith("[HOST]") ? `[HOST] ${cleanUser}` : cleanUser,
+                        text: cleanText,
+                        isHost,
+                        time: Math.floor(now / 1000),
+                    };
+
+                    chatHistory.push(msgObj);
+                    if (chatHistory.length > 50) chatHistory.shift();
+
+                    const broadcastStr = JSON.stringify(msgObj);
+                    for (const c of activeWsClients) {
+                        if (c.readyState === WebSocket.OPEN) c.send(broadcastStr);
+                    }
+                    // Forward chat message to TouchDesigner receiver
+                    if (tdSocket && tdSocket.readyState === WebSocket.OPEN) {
+                        tdSocket.send(broadcastStr);
+                    }
+                    return;
+                }
+
+                // Handle cursor telemetry (forward to TouchDesigner)
+                if (msg.type === "mouse" || msg.type === "telemetry") {
+                    if (tdSocket && tdSocket.readyState === WebSocket.OPEN) {
+                        tdSocket.send(rawStr);
+                    }
+                    return;
+                }
+
+                // Handle Companion App identification
+                if (msg.type === "host_auth") {
+                    clientWs.isHostClient = true;
+                    return;
+                }
+            } catch {
+                // If message is not JSON, forward raw buffer to TouchDesigner
+                if (tdSocket && tdSocket.readyState === WebSocket.OPEN) {
+                    tdSocket.send(data);
+                }
+            }
+        });
+
+        clientWs.on("close", () => {
+            activeWsClients.delete(clientWs);
+            const statsMsg = JSON.stringify({ type: "stats", viewers: Math.max(1, activeWsClients.size) });
+            for (const c of activeWsClients) {
+                if (c.readyState === WebSocket.OPEN) c.send(statsMsg);
+            }
+            if (tdSocket && tdSocket.readyState === WebSocket.OPEN) {
+                tdSocket.send(statsMsg);
+            }
+        });
+
+        clientWs.on("error", () => {
+            activeWsClients.delete(clientWs);
+        });
+    });
+
+    // Handle WebSocket upgrades
     proxyServer.on("upgrade", (req, socket, head) => {
-        wsProxy.ws(req, socket, head, { target: `ws://127.0.0.1:${TD_PORT}` }, (err) => {
-            socket.destroy();
+        wss.handleUpgrade(req, socket, head, (ws) => {
+            wss.emit("connection", ws, req);
         });
     });
 
@@ -553,6 +781,21 @@ async function main() {
 
         try {
             if (mediamtxProc) mediamtxProc.kill("SIGINT");
+        } catch {}
+
+        try {
+            if (tdSocket) tdSocket.close();
+        } catch {}
+
+        try {
+            for (const c of activeWsClients) {
+                try { c.close(); } catch {}
+            }
+            activeWsClients.clear();
+        } catch {}
+
+        try {
+            wss.close();
         } catch {}
 
         try {

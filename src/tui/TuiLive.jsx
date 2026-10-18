@@ -89,6 +89,44 @@ export default function TuiLive({ onNavigate }) {
     const [animFrame, setAnimFrame] = useState(0);
     const [transport, setTransport] = useState(""); // "WEBRTC" | "HLS" | ""
 
+    // Live Chat State
+    const [isChatOpen, setIsChatOpen] = useState(false);
+    const [chatMessages, setChatMessages] = useState([]);
+    const [unreadChatCount, setUnreadChatCount] = useState(0);
+    const [chatInputText, setChatInputText] = useState("");
+    const [isEditingUsername, setIsEditingUsername] = useState(false);
+    const [chatUsername, setChatUsername] = useState(() => {
+        if (typeof window !== "undefined") {
+            const saved = localStorage.getItem("sisyfuz_chat_user");
+            if (saved) return saved;
+            const rand = `guest_${Math.random().toString(36).slice(2, 6)}`;
+            localStorage.setItem("sisyfuz_chat_user", rand);
+            return rand;
+        }
+        return "guest";
+    });
+    const chatScrollRef = useRef(null);
+    const isChatOpenRef = useRef(isChatOpen);
+
+    useEffect(() => {
+        isChatOpenRef.current = isChatOpen;
+        if (isChatOpen) {
+            setUnreadChatCount(0);
+            setTimeout(() => {
+                if (chatScrollRef.current) {
+                    chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight;
+                }
+            }, 50);
+        }
+    }, [isChatOpen]);
+
+    // Auto-scroll chat on new messages
+    useEffect(() => {
+        if (isChatOpen && chatScrollRef.current) {
+            chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight;
+        }
+    }, [chatMessages, isChatOpen]);
+
     // Top Header Auto-Reveal with ASCII Cellular Wipe
     const [isHoverTop, setIsHoverTop] = useState(false);
     const [wipeProgress, setWipeProgress] = useState(0);
@@ -269,10 +307,21 @@ export default function TuiLive({ onNavigate }) {
         }
     };
 
-    // Keyboard Shortcuts: Tab (Cover/Fit), M (Audio), A (ASCII), F (Fullscreen), Esc (Home)
+    // Keyboard Shortcuts: Tab (Cover/Fit), M (Audio), A (ASCII), F (Fullscreen), C (Chat), Esc (Home/Close Chat)
     useEffect(() => {
         const handleKeyDown = (e) => {
-            if (e.key === "Tab") {
+            // Never hijack typing inside input or textarea
+            if (e.target && (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA")) {
+                if (e.key === "Escape") {
+                    e.target.blur();
+                }
+                return;
+            }
+
+            if (e.key === "c" || e.key === "C") {
+                e.preventDefault();
+                setIsChatOpen(prev => !prev);
+            } else if (e.key === "Tab") {
                 e.preventDefault();
                 setDisplayMode(prev => {
                     const next = prev === "cover" ? "fit" : "cover";
@@ -294,6 +343,10 @@ export default function TuiLive({ onNavigate }) {
                 e.preventDefault();
                 toggleFullscreen();
             } else if (e.key === "Escape") {
+                if (isChatOpenRef.current) {
+                    setIsChatOpen(false);
+                    return;
+                }
                 if (onNavigate) {
                     onNavigate("home");
                 }
@@ -540,9 +593,9 @@ export default function TuiLive({ onNavigate }) {
                     }
                 }
 
-                // Wait for connection with 6-second timeout
+                // Wait for connection with 3.5-second timeout (falls back to LL-HLS to preserve TURN quota)
                 await new Promise((resolve, reject) => {
-                    const connTimeout = setTimeout(() => reject(new Error("WebRTC connection timeout")), 6000);
+                    const connTimeout = setTimeout(() => reject(new Error("WebRTC connection timeout (falling back to HLS)")), 3500);
 
                     const onStateChange = () => {
                         const state = pc.connectionState;
@@ -854,7 +907,7 @@ export default function TuiLive({ onNavigate }) {
 
         let wsUrl = "";
         if (isLocalhost) {
-            wsUrl = "ws://localhost:9980";
+            wsUrl = "ws://localhost:9988/ws";
         } else if (streamUrl) {
             try {
                 if (streamUrl.startsWith("wss://") || streamUrl.startsWith("ws://")) {
@@ -877,13 +930,22 @@ export default function TuiLive({ onNavigate }) {
                 ws = new WebSocket(wsUrl);
                 wsRef.current = ws;
 
-                // Receive real-time server stats from TouchDesigner
+                // Receive real-time server stats, chat history & live messages
                 ws.onmessage = (event) => {
                     try {
                         const msg = JSON.parse(event.data);
                         if (msg.type === "stats") {
                             if (typeof msg.viewers === "number") {
                                 setViewerCount(Math.max(1, msg.viewers));
+                            }
+                        } else if (msg.type === "chat_history") {
+                            if (Array.isArray(msg.messages)) {
+                                setChatMessages(msg.messages);
+                            }
+                        } else if (msg.type === "chat") {
+                            setChatMessages((prev) => [...prev.slice(-49), msg]);
+                            if (!isChatOpenRef.current) {
+                                setUnreadChatCount((prev) => prev + 1);
                             }
                         }
                     } catch {}
@@ -909,6 +971,33 @@ export default function TuiLive({ onNavigate }) {
             if (reconnectTimer) clearTimeout(reconnectTimer);
         };
     }, [streamUrl]);
+
+    // Send a real-time audience chat message
+    const sendChatMessage = (e) => {
+        if (e) e.preventDefault();
+        const text = chatInputText.trim();
+        if (!text) return;
+
+        if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+            const packet = {
+                type: "chat",
+                user: chatUsername || "anon",
+                text,
+            };
+            wsRef.current.send(JSON.stringify(packet));
+            setChatInputText("");
+        } else {
+            const cleanUrl = streamUrl ? streamUrl.replace(/\/+$/, "") : "";
+            if (cleanUrl) {
+                fetch(`${cleanUrl}/chat/send`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ user: chatUsername || "anon", text }),
+                }).catch(() => {});
+                setChatInputText("");
+            }
+        }
+    };
 
     // 4. Creative Kinetic & Environmental Telemetry Engine (Streams to TouchDesigner at 60 FPS)
     const lastMouseSendRef = useRef(0);
@@ -1272,6 +1361,26 @@ export default function TuiLive({ onNavigate }) {
                             />
                         </button>
 
+                        {/* Chat Toggle: [C: CHAT] */}
+                        <button
+                            onClick={() => setIsChatOpen(prev => !prev)}
+                            className={`px-1 uppercase cursor-pointer transition-colors ${
+                                isChatOpen
+                                    ? "text-[#ff0080] font-bold hover:bg-[#ff0080] hover:text-black"
+                                    : unreadChatCount > 0
+                                    ? "text-yellow-400 font-bold hover:bg-yellow-400 hover:text-black"
+                                    : "text-neutral-300 hover:bg-white hover:text-black"
+                            }`}
+                            title="Press C to toggle Live Chat"
+                        >
+                            <AsciiWipeItem
+                                text={isChatOpen ? "[C: CHAT (ON)]" : unreadChatCount > 0 ? `[C: CHAT (${unreadChatCount})]` : "[C: CHAT]"}
+                                progress={wipeProgress}
+                                startIndex={86}
+                                totalLength={120}
+                            />
+                        </button>
+
                         {/* Fullscreen Toggle */}
                         <button
                             onClick={toggleFullscreen}
@@ -1282,7 +1391,7 @@ export default function TuiLive({ onNavigate }) {
                                 text="[F: FULLSCREEN]"
                                 progress={wipeProgress}
                                 startIndex={98}
-                                totalLength={110}
+                                totalLength={120}
                             />
                         </button>
                     </div>
@@ -1344,6 +1453,125 @@ export default function TuiLive({ onNavigate }) {
                     </div>
                 )}
             </div>
+
+            {/* 4. ASCII / TUI LIVE CHAT DRAWER */}
+            {isChatOpen && (
+                <aside
+                    className="absolute top-12 bottom-4 right-3 z-40 w-80 max-w-[calc(100vw-24px)] bg-black/95 border border-neutral-700 backdrop-blur-md flex flex-col font-mono text-xs shadow-2xl select-text animate-fadeIn"
+                    onClick={(e) => e.stopPropagation()}
+                >
+                    {/* Header Bar */}
+                    <div className="flex items-center justify-between px-3 py-2 border-b border-neutral-700 bg-neutral-900/90 text-neutral-300">
+                        <span className="font-bold tracking-wider text-[#ff0080] flex items-center gap-1.5">
+                            <span className="inline-block w-2 h-2 rounded-full bg-[#ff0080] animate-pulse" />
+                            LIVE CHAT [{chatMessages.length}]
+                        </span>
+                        <button
+                            onClick={() => setIsChatOpen(false)}
+                            className="text-neutral-400 hover:text-white px-1.5 py-0.5 hover:bg-neutral-800 cursor-pointer font-bold"
+                            title="Close Chat (Esc or C)"
+                        >
+                            [X]
+                        </button>
+                    </div>
+
+                    {/* Handle Customization Bar */}
+                    <div className="px-3 py-1.5 border-b border-neutral-800 bg-neutral-950 flex items-center justify-between text-[11px] text-neutral-400">
+                        <div className="flex items-center gap-1.5 truncate">
+                            <span className="text-neutral-500">ID:</span>
+                            {isEditingUsername ? (
+                                <input
+                                    type="text"
+                                    defaultValue={chatUsername}
+                                    maxLength={20}
+                                    autoFocus
+                                    onKeyDown={(e) => {
+                                        if (e.key === "Enter") {
+                                            const val = e.target.value.trim();
+                                            if (val) {
+                                                setChatUsername(val);
+                                                localStorage.setItem("sisyfuz_chat_user", val);
+                                            }
+                                            setIsEditingUsername(false);
+                                        } else if (e.key === "Escape") {
+                                            setIsEditingUsername(false);
+                                        }
+                                    }}
+                                    onBlur={(e) => {
+                                        const val = e.target.value.trim();
+                                        if (val) {
+                                            setChatUsername(val);
+                                            localStorage.setItem("sisyfuz_chat_user", val);
+                                        }
+                                        setIsEditingUsername(false);
+                                    }}
+                                    className="bg-neutral-800 text-white px-1.5 py-0.5 outline-none border border-neutral-600 rounded text-[11px]"
+                                />
+                            ) : (
+                                <button
+                                    onClick={() => setIsEditingUsername(true)}
+                                    className="text-white hover:text-[#ff0080] cursor-pointer truncate max-w-[140px] flex items-center gap-1 underline underline-offset-2"
+                                    title="Click to change your username"
+                                >
+                                    <span>{chatUsername}</span>
+                                    <span className="text-[10px] text-neutral-500">✎</span>
+                                </button>
+                            )}
+                        </div>
+                        <span className="text-[10px] text-neutral-500 uppercase">{transport || "CONNECTED"}</span>
+                    </div>
+
+                    {/* Message Stream */}
+                    <div
+                        ref={chatScrollRef}
+                        className="flex-1 overflow-y-auto p-3 space-y-2 select-text font-mono text-[11px] leading-relaxed"
+                    >
+                        {chatMessages.length === 0 ? (
+                            <div className="text-neutral-600 italic py-12 text-center text-xs">
+                                No messages yet.<br />Say something to the stream!
+                            </div>
+                        ) : (
+                            chatMessages.map((m, idx) => (
+                                <div key={m.id || idx} className="break-words">
+                                    <span className="text-neutral-500 text-[10px] mr-1.5 select-none">
+                                        {m.time ? new Date(m.time * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : ""}
+                                    </span>
+                                    {m.isHost || m.user?.startsWith("[HOST]") ? (
+                                        <span className="text-[#ff0080] font-bold mr-1.5">[HOST]</span>
+                                    ) : (
+                                        <span className="text-neutral-300 font-bold mr-1.5">{m.user}:</span>
+                                    )}
+                                    <span className={m.isHost ? "text-white font-medium" : "text-neutral-200"}>
+                                        {m.text}
+                                    </span>
+                                </div>
+                            ))
+                        )}
+                    </div>
+
+                    {/* Chat Input Bar */}
+                    <form
+                        onSubmit={sendChatMessage}
+                        className="p-2 border-t border-neutral-700 bg-neutral-900/90 flex gap-1.5 items-center"
+                    >
+                        <input
+                            type="text"
+                            value={chatInputText}
+                            onChange={(e) => setChatInputText(e.target.value)}
+                            placeholder="Type a message... (Enter)"
+                            maxLength={200}
+                            className="flex-1 bg-black text-white px-2.5 py-1.5 border border-neutral-700 focus:border-[#ff0080] outline-none text-xs rounded-none placeholder:text-neutral-600"
+                        />
+                        <button
+                            type="submit"
+                            disabled={!chatInputText.trim()}
+                            className="px-2.5 py-1.5 bg-neutral-800 hover:bg-[#ff0080] hover:text-black text-white disabled:opacity-30 disabled:hover:bg-neutral-800 disabled:hover:text-white cursor-pointer uppercase text-[11px] font-bold transition-colors"
+                        >
+                            SEND
+                        </button>
+                    </form>
+                </aside>
+            )}
 
             {/* 4. TAB MODE SWITCH TOAST (Minimal Center Notification) */}
             {modeToast && (

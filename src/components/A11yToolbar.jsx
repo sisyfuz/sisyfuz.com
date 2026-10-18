@@ -1,6 +1,7 @@
 // src/components/A11yToolbar.jsx
 import { useEffect, useRef } from "react";
 import { useA11y } from "../context/A11yContext";
+import { ASCII_DIVIDER } from "../utils/ascii";
 
 export default function A11yToolbar() {
     const {
@@ -81,7 +82,7 @@ export default function A11yToolbar() {
 
     return (
         <div
-            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-xs select-none"
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-xs select-none"
             onClick={toggleA11yToolbar}
             role="presentation"
         >
@@ -92,10 +93,10 @@ export default function A11yToolbar() {
                 aria-labelledby="a11y-toolbar-title"
                 aria-describedby="a11y-toolbar-desc"
                 onClick={(e) => e.stopPropagation()}
-                className="w-full max-w-lg bg-[#0a0a0a] border border-neutral-600 text-[#f0f0f0] font-mono text-xs sm:text-sm shadow-2xl p-4 sm:p-6 space-y-5 animate-fadeIn focus:outline-none"
+                className="w-full max-w-lg bg-[#050505] text-[#f0f0f0] font-mono text-xs sm:text-sm shadow-2xl p-4 sm:p-6 space-y-4 focus:outline-none"
             >
                 {/* Header */}
-                <div className="flex items-center justify-between border-b border-neutral-700 pb-3">
+                <div className="flex items-center justify-between pb-2">
                     <div>
                         <div id="a11y-toolbar-title" className="font-bold text-white flex items-center gap-2">
                             <span className="text-[#ff0080] font-bold">&gt;</span>
@@ -109,17 +110,21 @@ export default function A11yToolbar() {
                         ref={closeBtnRef}
                         type="button"
                         onClick={toggleA11yToolbar}
-                        className="touch-target border border-neutral-600 px-2 py-1 text-[11px] font-bold uppercase hover:bg-[#ff0080] hover:text-black hover:border-[#ff0080] focus:outline-2 focus:outline-[#ff0080] cursor-pointer transition-colors"
+                        className="touch-target text-neutral-400 hover:bg-white hover:text-black px-1 -mx-1 text-[11px] font-bold uppercase cursor-pointer transition-none"
                         aria-label="Close accessibility toolbar (Escape)"
                     >
                         [ESC / CLOSE ✕]
                     </button>
                 </div>
 
+                <div aria-hidden="true" className="text-neutral-800 select-none overflow-hidden whitespace-nowrap text-[10px] leading-none">
+                    {ASCII_DIVIDER}
+                </div>
+
                 {/* Options List */}
-                <div className="space-y-4">
+                <div className="space-y-2">
                     {/* 1. Reduced Motion */}
-                    <div className="border border-neutral-800 p-3 space-y-2 hover:border-neutral-700 transition-colors">
+                    <div className="py-2 px-2 -mx-2 hover:bg-neutral-900/50 space-y-1 transition-none">
                         <div className="flex flex-wrap items-center justify-between gap-2">
                             <span className="font-bold uppercase text-white">
                                 01 // REDUCED MOTION
@@ -127,10 +132,10 @@ export default function A11yToolbar() {
                             <button
                                 type="button"
                                 onClick={toggleReducedMotion}
-                                className={`touch-target px-3 py-1 font-bold uppercase text-xs cursor-pointer border transition-colors focus:outline-2 focus:outline-[#ff0080] ${
+                                className={`touch-target px-2 py-0.5 font-bold uppercase text-xs cursor-pointer transition-none ${
                                     reducedMotion
-                                        ? "bg-pink-500 text-black border-pink-500"
-                                        : "bg-transparent text-neutral-400 border-neutral-700 hover:text-white hover:border-white"
+                                        ? "bg-pink-500 text-black"
+                                        : "text-neutral-400 hover:bg-white hover:text-black"
                                 }`}
                                 aria-label={`Toggle Reduced Motion (currently ${reducedMotion ? "reduced" : "normal"})`}
                                 aria-pressed={reducedMotion}
@@ -144,7 +149,7 @@ export default function A11yToolbar() {
                     </div>
 
                     {/* 2. High-Legibility Font */}
-                    <div className="border border-neutral-800 p-3 space-y-2 hover:border-neutral-700 transition-colors">
+                    <div className="py-2 px-2 -mx-2 hover:bg-neutral-900/50 space-y-1 transition-none">
                         <div className="flex flex-wrap items-center justify-between gap-2">
                             <span className="font-bold uppercase text-white">
                                 02 // HIGH-LEGIBILITY FONT
@@ -152,10 +157,10 @@ export default function A11yToolbar() {
                             <button
                                 type="button"
                                 onClick={toggleHighLegibilityFont}
-                                className={`touch-target px-3 py-1 font-bold uppercase text-xs cursor-pointer border transition-colors focus:outline-2 focus:outline-[#ff0080] ${
+                                className={`touch-target px-2 py-0.5 font-bold uppercase text-xs cursor-pointer transition-none ${
                                     highLegibilityFont
-                                        ? "bg-pink-500 text-black border-pink-500"
-                                        : "bg-transparent text-neutral-400 border-neutral-700 hover:text-white hover:border-white"
+                                        ? "bg-pink-500 text-black"
+                                        : "text-neutral-400 hover:bg-white hover:text-black"
                                 }`}
                                 aria-label={`Toggle High-Legibility Font (currently ${highLegibilityFont ? "sans-serif font" : "brutalist monospace"})`}
                                 aria-pressed={highLegibilityFont}
@@ -169,7 +174,7 @@ export default function A11yToolbar() {
                     </div>
 
                     {/* 3. High Contrast */}
-                    <div className="border border-neutral-800 p-3 space-y-2 hover:border-neutral-700 transition-colors">
+                    <div className="py-2 px-2 -mx-2 hover:bg-neutral-900/50 space-y-1 transition-none">
                         <div className="flex flex-wrap items-center justify-between gap-2">
                             <span className="font-bold uppercase text-white">
                                 03 // HIGH CONTRAST
@@ -177,10 +182,10 @@ export default function A11yToolbar() {
                             <button
                                 type="button"
                                 onClick={toggleHighContrast}
-                                className={`touch-target px-3 py-1 font-bold uppercase text-xs cursor-pointer border transition-colors focus:outline-2 focus:outline-[#ff0080] ${
+                                className={`touch-target px-2 py-0.5 font-bold uppercase text-xs cursor-pointer transition-none ${
                                     highContrast
-                                        ? "bg-pink-500 text-black border-pink-500"
-                                        : "bg-transparent text-neutral-400 border-neutral-700 hover:text-white hover:border-white"
+                                        ? "bg-pink-500 text-black"
+                                        : "text-neutral-400 hover:bg-white hover:text-black"
                                 }`}
                                 aria-label={`Toggle High Contrast (currently ${highContrast ? "enhanced contrast" : "standard contrast"})`}
                                 aria-pressed={highContrast}
@@ -189,12 +194,12 @@ export default function A11yToolbar() {
                             </button>
                         </div>
                         <p className="text-[11px] text-neutral-400 leading-normal">
-                            Maximizes border clarity and luminance contrast for low-vision environments.
+                            Maximizes luminance contrast for low-vision environments.
                         </p>
                     </div>
 
                     {/* 4. Low Power & 30 FPS Cap */}
-                    <div className="border border-neutral-800 p-3 space-y-2 hover:border-neutral-700 transition-colors">
+                    <div className="py-2 px-2 -mx-2 hover:bg-neutral-900/50 space-y-1 transition-none">
                         <div className="flex flex-wrap items-center justify-between gap-2">
                             <span className="font-bold uppercase text-white">
                                 04 // LOW POWER ENGINE (30 FPS)
@@ -202,10 +207,10 @@ export default function A11yToolbar() {
                             <button
                                 type="button"
                                 onClick={toggleLowPowerMode}
-                                className={`touch-target px-3 py-1 font-bold uppercase text-xs cursor-pointer border transition-colors focus:outline-2 focus:outline-[#ff0080] ${
+                                className={`touch-target px-2 py-0.5 font-bold uppercase text-xs cursor-pointer transition-none ${
                                     lowPowerMode
-                                        ? "bg-pink-500 text-black border-pink-500"
-                                        : "bg-transparent text-neutral-400 border-neutral-700 hover:text-white hover:border-white"
+                                        ? "bg-pink-500 text-black"
+                                        : "text-neutral-400 hover:bg-white hover:text-black"
                                 }`}
                                 aria-label={`Toggle Low Power Engine (currently ${lowPowerMode ? "30 FPS capped" : "60 FPS full power"})`}
                                 aria-pressed={lowPowerMode}
@@ -219,7 +224,7 @@ export default function A11yToolbar() {
                     </div>
 
                     {/* 5. Plain Media Alternative */}
-                    <div className="border border-neutral-800 p-3 space-y-2 hover:border-neutral-700 transition-colors">
+                    <div className="py-2 px-2 -mx-2 hover:bg-neutral-900/50 space-y-1 transition-none">
                         <div className="flex flex-wrap items-center justify-between gap-2">
                             <span className="font-bold uppercase text-white">
                                 05 // PLAIN MEDIA ALTERNATIVE
@@ -227,10 +232,10 @@ export default function A11yToolbar() {
                             <button
                                 type="button"
                                 onClick={toggleAsciiAltMode}
-                                className={`touch-target px-3 py-1 font-bold uppercase text-xs cursor-pointer border transition-colors focus:outline-2 focus:outline-[#ff0080] ${
+                                className={`touch-target px-2 py-0.5 font-bold uppercase text-xs cursor-pointer transition-none ${
                                     asciiAltMode
-                                        ? "bg-pink-500 text-black border-pink-500"
-                                        : "bg-transparent text-neutral-400 border-neutral-700 hover:text-white hover:border-white"
+                                        ? "bg-pink-500 text-black"
+                                        : "text-neutral-400 hover:bg-white hover:text-black"
                                 }`}
                                 aria-label={`Toggle Plain Media Alternative (currently ${asciiAltMode ? "plain photographic images" : "ASCII character shaders"})`}
                                 aria-pressed={asciiAltMode}
@@ -245,16 +250,19 @@ export default function A11yToolbar() {
                 </div>
 
                 {/* Footer Controls */}
-                <div className="flex items-center justify-between pt-2 border-t border-neutral-800 text-[11px]">
+                <div aria-hidden="true" className="text-neutral-800 select-none overflow-hidden whitespace-nowrap text-[10px] leading-none pt-2">
+                    {ASCII_DIVIDER}
+                </div>
+                <div className="flex items-center justify-between pt-2 text-[11px]">
                     <button
                         type="button"
                         onClick={resetA11yPreferences}
                         aria-label="Reset all accessibility preferences to defaults"
-                        className="touch-target text-neutral-500 hover:text-white hover:underline focus:outline-2 focus:outline-[#ff0080] cursor-pointer"
+                        className="touch-target text-neutral-500 hover:bg-white hover:text-black px-1 -mx-1 cursor-pointer transition-none uppercase"
                     >
                         [RESET_ALL_DEFAULTS]
                     </button>
-                    <span className="text-neutral-600">
+                    <span className="text-neutral-600 uppercase text-[10px]">
                         PREFERENCES SAVED LOCALLY
                     </span>
                 </div>

@@ -176,6 +176,23 @@ async function main() {
         ? "/opt/homebrew/bin/mediamtx"
         : (fs.existsSync("/usr/local/bin/mediamtx") ? "/usr/local/bin/mediamtx" : "mediamtx");
 
+    let activeStreamPath = "live";
+
+    // Query MediaMTX API event-driven during initialization or stream transitions
+    async function detectActiveStreamPath() {
+        try {
+            const res = await fetch("http://127.0.0.1:9997/v3/paths/list");
+            if (res.ok) {
+                const data = await res.json();
+                const active = data.items?.find((item) => item.ready && item.online);
+                if (active && active.name && active.name !== activeStreamPath) {
+                    activeStreamPath = active.name;
+                    console.log(`      [STREAM ROUTED] Client traffic automatically routed to active stream: '${activeStreamPath}'`);
+                }
+            }
+        } catch {}
+    }
+
     const launchMediaMTX = () => {
         if (isShuttingDown) return;
         mediamtxProc = spawn(bin, [confPath], {
@@ -192,8 +209,9 @@ async function main() {
             if (line.includes("ERR") || line.includes("WARN")) {
                 console.error(`      [MediaMTX] ${line}`);
             }
-            if (line.includes("is publishing to path 'live'") || line.includes("stream is available") || line.includes("[RTMP]")) {
+            if (line.includes("is publishing to path") || line.includes("stream is available") || line.includes("[RTMP]")) {
                 console.log(`      [STREAM DETECTED] OBS is broadcasting to MediaMTX!`);
+                detectActiveStreamPath();
             }
         });
 
@@ -219,6 +237,7 @@ async function main() {
 
     if (isHlsListening && isRtmpListening) {
         console.log("      [OK] MediaMTX is already active on port 1935 / 8888.\n");
+        detectActiveStreamPath();
     } else {
         // Clear any half-open/stale ports before starting fresh
         killPort(MEDIAMTX_HLS_PORT);
@@ -241,6 +260,7 @@ async function main() {
 
         if (isStarted) {
             console.log("      [OK] MediaMTX started on port 1935 (RTMP), 8888 (HLS), and 8889 (WebRTC)!\n");
+            detectActiveStreamPath();
         } else {
             console.error("      [FATAL] MediaMTX failed to start! Make sure mediamtx is installed and port 1935/8888/8889 is free.\n");
         }
@@ -259,24 +279,6 @@ async function main() {
         maxSockets: 100,
         keepAliveMsecs: 5000,
     });
-
-    let activeStreamPath = "live";
-
-    // Periodically query MediaMTX API to auto-detect whether stream is published to 'live' or 'live/live'
-    async function detectActiveStreamPath() {
-        try {
-            const res = await fetch("http://127.0.0.1:9997/v3/paths/list");
-            if (res.ok) {
-                const data = await res.json();
-                const active = data.items?.find((item) => item.ready && item.online);
-                if (active && active.name && active.name !== activeStreamPath) {
-                    activeStreamPath = active.name;
-                    console.log(`      [STREAM ROUTED] Client traffic automatically routed to active stream: '${activeStreamPath}'`);
-                }
-            }
-        } catch {}
-    }
-    const pathDetectorInterval = setInterval(detectActiveStreamPath, 1500);
 
     function getAlternatePath(url) {
         if (!url || typeof url !== "string") return null;
@@ -306,6 +308,27 @@ async function main() {
     const activeWsClients = new Set();
     let tdSocket = null;
     let tdConnected = false;
+    let liveUrl = null;
+
+    function getStatusPacket() {
+        return JSON.stringify({
+            type: "status",
+            active: Boolean(liveUrl),
+            url: liveUrl || "",
+            viewers: Math.max(0, activeWsClients.size),
+            tdConnected,
+            chatCount: chatHistory.length,
+        });
+    }
+
+    function broadcastStatus() {
+        const payload = getStatusPacket();
+        for (const client of activeWsClients) {
+            if (client.readyState === WebSocket.OPEN) {
+                try { client.send(payload); } catch {}
+            }
+        }
+    }
 
     // Connect to TouchDesigner receiver on port 9980 to forward telemetry & chat
     const connectTouchDesigner = () => {
@@ -671,16 +694,35 @@ async function main() {
     // Set up WebSocketServer for Chat & Multi-User Telemetry Hub
     const wss = new WebSocketServer({ noServer: true });
 
+    // 30s heartbeat to detect and cleanly terminate half-open zombie client connections
+    const heartbeatInterval = setInterval(() => {
+        for (const client of activeWsClients) {
+            if (client.isAlive === false) {
+                client.terminate();
+                activeWsClients.delete(client);
+                broadcastStatus();
+                continue;
+            }
+            client.isAlive = false;
+            client.ping();
+        }
+    }, 30000);
+
     wss.on("connection", (clientWs, req) => {
         activeWsClients.add(clientWs);
         clientWs.isLocal = isLocalRequest(req);
         clientWs.isHostClient = false;
+        clientWs.isAlive = true;
+        clientWs.on("pong", () => {
+            clientWs.isAlive = true;
+        });
 
-        // Send recent chat history and live stats on connect
+        // Send recent chat history, live stats and status on connect
         try {
             clientWs.send(JSON.stringify({ type: "chat_history", messages: chatHistory }));
             const statsMsg = JSON.stringify({ type: "stats", viewers: Math.max(1, activeWsClients.size) });
             clientWs.send(statsMsg);
+            clientWs.send(getStatusPacket());
             if (tdSocket && tdSocket.readyState === WebSocket.OPEN) {
                 tdSocket.send(statsMsg);
             }
@@ -689,8 +731,27 @@ async function main() {
         let lastMessageTime = 0;
 
         clientWs.on("message", (data) => {
+            // High-throughput fast path: forward 60 FPS mouse telemetry directly to TouchDesigner
+            // without JSON serialization/deserialization overhead
+            if (typeof data === "string") {
+                if (data.startsWith('{"type":"mouse"') || data.startsWith('{"type":"telemetry"')) {
+                    if (tdSocket && tdSocket.readyState === WebSocket.OPEN) {
+                        tdSocket.send(data);
+                    }
+                    return;
+                }
+            } else if (Buffer.isBuffer(data)) {
+                const prefix = data.subarray(0, 16).toString("utf8");
+                if (prefix.startsWith('{"type":"mouse"') || prefix.startsWith('{"type":"tele')) {
+                    if (tdSocket && tdSocket.readyState === WebSocket.OPEN) {
+                        tdSocket.send(data);
+                    }
+                    return;
+                }
+            }
+
             try {
-                const rawStr = data.toString();
+                const rawStr = typeof data === "string" ? data : data.toString();
                 const msg = JSON.parse(rawStr);
 
                 // Handle live audience chat message
@@ -733,7 +794,7 @@ async function main() {
                     return;
                 }
 
-                // Handle cursor telemetry (forward to TouchDesigner)
+                // Handle cursor telemetry (fallback for parsed objects)
                 if (msg.type === "mouse" || msg.type === "telemetry") {
                     if (tdSocket && tdSocket.readyState === WebSocket.OPEN) {
                         tdSocket.send(rawStr);
@@ -746,6 +807,7 @@ async function main() {
                     if (clientWs.isLocal) {
                         clientWs.isHostClient = true;
                     }
+                    clientWs.send(getStatusPacket());
                     return;
                 }
             } catch {
@@ -765,10 +827,12 @@ async function main() {
             if (tdSocket && tdSocket.readyState === WebSocket.OPEN) {
                 tdSocket.send(statsMsg);
             }
+            broadcastStatus();
         });
 
         clientWs.on("error", () => {
             activeWsClients.delete(clientWs);
+            broadcastStatus();
         });
     });
 
@@ -805,13 +869,12 @@ async function main() {
         stdio: ["ignore", "pipe", "pipe"],
     });
 
-    let liveUrl = null;
-
     const handleOutput = async (data) => {
         const text = data.toString();
         const match = text.match(/https:\/\/([a-zA-Z0-9\-]+\.trycloudflare\.com)/);
         if (match && !liveUrl && !isShuttingDown) {
             liveUrl = match[0];
+            broadcastStatus();
 
             console.log("\n==============================================================");
             console.log("  ● BROADCAST PIPELINE ACTIVE & READY FOR 60+ FPS!");
@@ -857,7 +920,9 @@ async function main() {
         if (isShuttingDown) return;
         isShuttingDown = true;
         console.log("\n[!] Stopping broadcast...");
-        try { clearInterval(pathDetectorInterval); } catch {}
+        try { clearInterval(heartbeatInterval); } catch {}
+        liveUrl = null;
+        broadcastStatus();
 
         try {
             if (cfProc) cfProc.kill("SIGINT");

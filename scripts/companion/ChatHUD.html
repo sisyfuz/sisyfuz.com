@@ -59,6 +59,10 @@
             animation: pulse 2s infinite;
         }
 
+        .dot.live-static {
+            background: #10b981;
+        }
+
         @keyframes pulse {
             0%, 100% { opacity: 1; }
             50% { opacity: 0.4; }
@@ -244,6 +248,9 @@
 
         let ws = null;
         let isConnected = false;
+        let isLive = false;
+        let isHUDVisible = false;
+        let hasPendingRender = false;
         const messages = [];
 
         const liveDot = document.getElementById("liveDot");
@@ -253,6 +260,28 @@
         const messagesContainer = document.getElementById("messagesContainer");
         const chatForm = document.getElementById("chatForm");
         const chatInput = document.getElementById("chatInput");
+
+        function updateIndicator() {
+            if (!isConnected) {
+                liveDot.className = "dot";
+                return;
+            }
+            if (isLive) {
+                // Throttle CSS animation to 0 CPU when HUD is hidden in menu bar
+                liveDot.className = isHUDVisible ? "dot live" : "dot live-static";
+            } else {
+                liveDot.className = "dot";
+            }
+        }
+
+        window.onHUDVisibilityChange = function(visible) {
+            isHUDVisible = Boolean(visible);
+            updateIndicator();
+            if (isHUDVisible && (hasPendingRender || messages.length > 0)) {
+                renderMessages();
+                hasPendingRender = false;
+            }
+        };
 
         function renderMessages() {
             if (messages.length === 0) {
@@ -292,10 +321,9 @@
 
                 ws.onopen = () => {
                     isConnected = true;
-                    liveDot.className = "dot live";
-                    // Authenticate as HOST
+                    updateIndicator();
+                    // Authenticate as HOST to receive status push
                     ws.send(JSON.stringify({ type: "host_auth" }));
-                    updateStatus();
                 };
 
                 ws.onmessage = (event) => {
@@ -306,15 +334,35 @@
                             if (Array.isArray(msg.messages)) {
                                 messages.push(...msg.messages);
                             }
-                            renderMessages();
+                            if (isHUDVisible) {
+                                renderMessages();
+                            } else {
+                                hasPendingRender = true;
+                            }
                         } else if (msg.type === "chat") {
                             messages.push(msg);
                             if (messages.length > 60) messages.shift();
-                            renderMessages();
+                            if (isHUDVisible) {
+                                renderMessages();
+                            } else {
+                                hasPendingRender = true;
+                            }
                         } else if (msg.type === "stats") {
                             if (typeof msg.viewers === "number") {
                                 statsBadge.textContent = `VIEWERS: ${msg.viewers}`;
                             }
+                        } else if (msg.type === "status") {
+                            isLive = Boolean(msg.active);
+                            if (msg.url) {
+                                streamUrlText.textContent = msg.url;
+                                streamUrlText.href = msg.url;
+                            } else {
+                                streamUrlText.textContent = "https://sisyfuz.com/live";
+                            }
+                            if (typeof msg.viewers === "number") {
+                                statsBadge.textContent = `VIEWERS: ${msg.viewers}`;
+                            }
+                            updateIndicator();
                         }
                     } catch (e) {
                         console.error(e);
@@ -323,35 +371,17 @@
 
                 ws.onclose = () => {
                     isConnected = false;
-                    liveDot.className = "dot";
-                    setTimeout(connect, 2000);
+                    updateIndicator();
+                    setTimeout(connect, 3000);
                 };
 
                 ws.onerror = () => {
                     isConnected = false;
-                    liveDot.className = "dot";
+                    updateIndicator();
                 };
             } catch (e) {
-                setTimeout(connect, 2000);
+                setTimeout(connect, 3000);
             }
-        }
-
-        async function updateStatus() {
-            try {
-                const res = await fetch(`${HTTP_BASE}/api/status`);
-                if (res.ok) {
-                    const data = await res.json();
-                    if (data.url) {
-                        streamUrlText.textContent = data.url;
-                        streamUrlText.href = data.url;
-                    } else {
-                        streamUrlText.textContent = "https://sisyfuz.com/live";
-                    }
-                    if (typeof data.viewers === "number") {
-                        statsBadge.textContent = `VIEWERS: ${data.viewers}`;
-                    }
-                }
-            } catch {}
         }
 
         chatForm.onsubmit = (e) => {
@@ -368,7 +398,6 @@
                 }));
                 chatInput.value = "";
             } else {
-                // Fallback HTTP POST
                 fetch(`${HTTP_BASE}/chat/send`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
@@ -387,8 +416,6 @@
             });
         };
 
-        // Poll status every 4s
-        setInterval(updateStatus, 4000);
         connect();
     </script>
 </body>

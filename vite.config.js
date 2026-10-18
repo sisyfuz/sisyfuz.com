@@ -9,4 +9,15 @@ export default defineConfig({
     tailwindcss(),
   ],
   base: '/', // Zorgt dat paden relatief zijn voor GitHub Pages
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'vendor-react': ['react', 'react-dom', 'react-router-dom'],
+          'vendor-sanity': ['@sanity/client', '@sanity/image-url'],
+        },
+      },
+    },
+  },
 })
+

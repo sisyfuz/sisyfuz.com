@@ -2,6 +2,7 @@
 import { useState, useEffect } from "react";
 import { client } from "../sanityClient";
 import AsciiMedia from "../components/AsciiMedia";
+import { getOptimizedImageUrl } from "../components/sanityImage";
 import { useDisco } from "../context/DiscoContext";
 import { ASCII_DIVIDER } from "../utils/ascii";
 
@@ -21,10 +22,12 @@ export default function TuiWork({ selectedId = null }) {
             tags,
             credits,
             technicalSpecs,
+            "rawMainImage": mainImage,
             "mainImage": mainImage.asset->url,
             media[] {
                 _type == 'image' => {
                     "type": "image",
+                    "asset": asset,
                     "src": asset->url
                 },
                 _type == 'videoUrl' => {
@@ -95,7 +98,7 @@ export default function TuiWork({ selectedId = null }) {
                     <div className="lg:col-span-7 space-y-2">
                         {activeProject.mainImage ? (
                             <AsciiMedia
-                                src={activeProject.mainImage}
+                                src={getOptimizedImageUrl(activeProject.rawMainImage || activeProject.mainImage, 1200)}
                                 alt={activeProject.title}
                                 cols={56}
                                 aspectRatio="aspect-[4/3]"
@@ -166,7 +169,7 @@ export default function TuiWork({ selectedId = null }) {
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
                             {activeProject.media.map((item, idx) => (
                                 <div key={idx}>
-                                    <AsciiMedia src={item.src} cols={44} aspectRatio="aspect-video" />
+                                    <AsciiMedia src={getOptimizedImageUrl(item.asset || item.src, 800)} cols={44} aspectRatio="aspect-video" />
                                 </div>
                             ))}
                         </div>
@@ -207,7 +210,7 @@ export default function TuiWork({ selectedId = null }) {
                             {project.mainImage && (
                                 <div className="mb-3">
                                     <AsciiMedia
-                                        src={project.mainImage}
+                                        src={getOptimizedImageUrl(project.rawMainImage || project.mainImage, 800)}
                                         alt={project.title}
                                         cols={48}
                                         aspectRatio="aspect-[3/2]"

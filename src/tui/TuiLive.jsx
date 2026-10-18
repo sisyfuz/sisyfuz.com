@@ -1,6 +1,4 @@
-// src/tui/TuiLive.jsx
 import { useState, useEffect, useRef, useMemo } from "react";
-import Hls from "hls.js";
 import { client } from "../sanityClient";
 import { ASCII_DIVIDER, ASCII_RAMP } from "../utils/ascii";
 import { useDisco } from "../context/DiscoContext";
@@ -10,6 +8,16 @@ const WORKER_LIVE_URL = "https://sisyfuz-counter.sisyfuz.workers.dev/live";
 const DEFAULT_STREAM_URL = isLocalhost ? "http://localhost:9988" : "";
 
 const GLITCH_CHARS = ["█", "▓", "▒", "░", "#", "+", "*", "~", "/", "\\", "%", "$", ">", "_"];
+
+const RAMP_LOOKUP = new Array(256);
+for (let l = 0; l < 256; l++) {
+    if (l < 16) {
+        RAMP_LOOKUP[l] = " ";
+    } else {
+        const charIdx = Math.min(ASCII_RAMP.length - 1, Math.floor((1 - l / 255) * ASCII_RAMP.length));
+        RAMP_LOOKUP[l] = ASCII_RAMP[charIdx] || " ";
+    }
+}
 
 // Helper component to render text with cellular ASCII wipe animation
 function AsciiWipeItem({ text, progress, startIndex = 0, totalLength = 110 }) {
@@ -26,37 +34,43 @@ function AsciiWipeItem({ text, progress, startIndex = 0, totalLength = 110 }) {
 
     // Dynamic wave progression with 1.35x headroom so wave sweeps completely past the end
     const wavePos = progress * 1.35;
+    const len = text.length;
+    const items = [];
+    const glitchOffset = Math.floor(progress * 25);
+    const denom = Math.max(1, totalLength);
+
+    for (let idx = 0; idx < len; idx++) {
+        const i = startIndex + idx;
+        const normX = i / denom;
+        const stagger = ((i * 17) % 7) * 0.015;
+        const threshold = normX + stagger;
+        const delta = wavePos - threshold;
+
+        if (delta > 0.05) {
+            // Fully resolved crisp character
+            items.push(<span key={idx}>{text[idx]}</span>);
+        } else if (delta >= -0.04 && delta <= 0.05) {
+            // Active wave front: Hot-pink glitch
+            const g = GLITCH_CHARS[(i + glitchOffset) % GLITCH_CHARS.length];
+            items.push(
+                <span key={idx} className="text-[#ff0080] font-bold">
+                    {g}
+                </span>
+            );
+        } else {
+            // Pre-wave: dim trailing ASCII glyph
+            const dimChar = ((i + idx) % 2 === 0) ? "·" : " ";
+            items.push(
+                <span key={idx} className="text-neutral-700 select-none">
+                    {dimChar}
+                </span>
+            );
+        }
+    }
 
     return (
         <span className="inline-block whitespace-pre font-mono">
-            {text.split("").map((char, idx) => {
-                const i = startIndex + idx;
-                const normX = i / Math.max(1, totalLength);
-                const stagger = ((i * 17) % 7) * 0.015;
-                const threshold = normX + stagger;
-                const delta = wavePos - threshold;
-
-                if (delta > 0.05) {
-                    // Fully resolved crisp character
-                    return <span key={idx}>{char}</span>;
-                } else if (delta >= -0.04 && delta <= 0.05) {
-                    // Active wave front: Hot-pink glitch
-                    const g = GLITCH_CHARS[(i + Math.floor(progress * 25)) % GLITCH_CHARS.length];
-                    return (
-                        <span key={idx} className="text-[#ff0080] font-bold">
-                            {g}
-                        </span>
-                    );
-                } else {
-                    // Pre-wave: dim trailing ASCII glyph
-                    const dimChar = ((i + idx) % 2 === 0) ? "·" : " ";
-                    return (
-                        <span key={idx} className="text-neutral-700 select-none">
-                            {dimChar}
-                        </span>
-                    );
-                }
-            })}
+            {items}
         </span>
     );
 }
@@ -405,12 +419,14 @@ export default function TuiLive({ onNavigate }) {
         };
 
         // --- HLS fallback: exact same code path as before, with clean buffer reset ---
-        const startHLS = () => {
+        const startHLS = async () => {
             if (!isMounted) return;
 
             // Clean up any remaining WebRTC state
             if (pcRef.current) {
                 try {
+                    pcRef.current.getSenders?.().forEach(s => s.track && s.track.stop());
+                    pcRef.current.getReceivers?.().forEach(r => r.track && r.track.stop());
                     pcRef.current.close();
                 } catch {}
                 pcRef.current = null;
@@ -433,54 +449,7 @@ export default function TuiLive({ onNavigate }) {
                 ? cleanUrl
                 : `${cleanUrl}/live/index.m3u8`;
 
-            if (Hls.isSupported()) {
-                const hls = new Hls({
-                    lowLatencyMode: true,
-                    liveSyncDurationCount: 3,
-                    liveMaxLatencyDurationCount: 6,
-                    maxLiveSyncPlaybackRate: 1.02,
-                    backBufferLength: 0,
-                    enableWorker: true,
-                    maxBufferLength: 4,
-                    maxMaxBufferLength: 8,
-                    highBufferWatchdogPeriod: 2,
-                    nudgeOffset: 0.1,
-                    nudgeMaxRetry: 5,
-                    manifestLoadingMaxRetry: 8,
-                    fragLoadingMaxRetry: 6,
-                    levelLoadingMaxRetry: 6,
-                });
-                hlsRef.current = hls;
-                hlsInstance = hls;
-
-                hls.loadSource(hlsUrl);
-                hls.attachMedia(video);
-
-                hls.on(Hls.Events.MANIFEST_PARSED, () => {
-                    if (isMounted) {
-                        playVideoSafe();
-                        setIsLive(true);
-                        setTransport("HLS");
-                    }
-                });
-
-                hls.on(Hls.Events.ERROR, (event, data) => {
-                    if (data.fatal) {
-                        switch (data.type) {
-                            case Hls.ErrorTypes.NETWORK_ERROR:
-                                setTimeout(() => {
-                                    if (isMounted && hls) hls.startLoad();
-                                }, 1500);
-                                break;
-                            case Hls.ErrorTypes.MEDIA_ERROR:
-                                hls.recoverMediaError();
-                                break;
-                            default:
-                                break;
-                        }
-                    }
-                });
-            } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
+            if (video.canPlayType("application/vnd.apple.mpegurl")) {
                 // Safari Native HLS
                 video.src = hlsUrl;
                 const onLoaded = () => {
@@ -491,6 +460,63 @@ export default function TuiLive({ onNavigate }) {
                     }
                 };
                 video.addEventListener("loadedmetadata", onLoaded, { once: true });
+                return;
+            }
+
+            try {
+                const { default: Hls } = await import("hls.js/dist/hls.light.min.mjs");
+                if (!isMounted) return;
+
+                if (Hls.isSupported()) {
+                    const hls = new Hls({
+                        lowLatencyMode: true,
+                        liveSyncDurationCount: 3,
+                        liveMaxLatencyDurationCount: 6,
+                        maxLiveSyncPlaybackRate: 1.02,
+                        backBufferLength: 0,
+                        enableWorker: true,
+                        maxBufferLength: 4,
+                        maxMaxBufferLength: 8,
+                        highBufferWatchdogPeriod: 2,
+                        nudgeOffset: 0.1,
+                        nudgeMaxRetry: 5,
+                        manifestLoadingMaxRetry: 8,
+                        fragLoadingMaxRetry: 6,
+                        levelLoadingMaxRetry: 6,
+                    });
+                    hlsRef.current = hls;
+                    hlsInstance = hls;
+
+                    hls.loadSource(hlsUrl);
+                    hls.attachMedia(video);
+
+                    hls.on(Hls.Events.MANIFEST_PARSED, () => {
+                        if (isMounted) {
+                            playVideoSafe();
+                            setIsLive(true);
+                            setTransport("HLS");
+                        }
+                    });
+
+                    hls.on(Hls.Events.ERROR, (event, data) => {
+                        if (data.fatal) {
+                            switch (data.type) {
+                                case Hls.ErrorTypes.NETWORK_ERROR:
+                                    setTimeout(() => {
+                                        if (isMounted && hls) hls.startLoad();
+                                    }, 1500);
+                                    break;
+                                case Hls.ErrorTypes.MEDIA_ERROR:
+                                    hls.recoverMediaError();
+                                    break;
+                                default:
+                                    break;
+                            }
+                        }
+                    });
+                }
+            } catch (err) {
+                console.warn("[HLS] Failed to load hls.js dynamically:", err);
             }
         };
 
@@ -663,12 +689,16 @@ export default function TuiLive({ onNavigate }) {
             isMounted = false;
             if (pcRef.current) {
                 try {
+                    pcRef.current.getSenders?.().forEach(s => s.track && s.track.stop());
+                    pcRef.current.getReceivers?.().forEach(r => r.track && r.track.stop());
                     pcRef.current.close();
                 } catch {}
                 pcRef.current = null;
             }
             if (hlsInstance) {
-                hlsInstance.destroy();
+                try {
+                    hlsInstance.destroy();
+                } catch {}
                 hlsRef.current = null;
             }
             if (video) {
@@ -739,6 +769,33 @@ export default function TuiLive({ onNavigate }) {
         let animId;
         let callbackId;
 
+        let lastW = 0;
+        let lastH = 0;
+        let cellW = 8;
+        let cellH = 14;
+        let cols = 0;
+        let rows = 0;
+        let rowChars = [];
+
+        const updateGridMetrics = (width, height) => {
+            const isMobile = width < 640;
+            const fontSize = isMobile ? 10 : 13;
+            ctx.font = `${fontSize}px monospace`;
+            ctx.textBaseline = "top";
+
+            const charW = ctx.measureText("M").width || (isMobile ? 6 : 8);
+            cellW = charW;
+            cellH = Math.round(cellW / 0.55);
+            cols = Math.floor(width / cellW);
+            rows = Math.floor(height / cellH);
+
+            if (cols > 0 && (!rowChars || rowChars.length !== cols)) {
+                rowChars = new Array(cols);
+            }
+            lastW = width;
+            lastH = height;
+        };
+
         const renderAscii = () => {
             if (!isVisibleRef.current) {
                 scheduleNext();
@@ -755,18 +812,10 @@ export default function TuiLive({ onNavigate }) {
             if (canvas.width !== width || canvas.height !== height) {
                 canvas.width = width;
                 canvas.height = height;
+                updateGridMetrics(width, height);
+            } else if (width !== lastW || height !== lastH) {
+                updateGridMetrics(width, height);
             }
-
-            const isMobile = width < 640;
-            const fontSize = isMobile ? 10 : 13;
-            ctx.font = `${fontSize}px monospace`;
-            ctx.textBaseline = "top";
-
-            const charW = ctx.measureText("M").width || (isMobile ? 6 : 8);
-            const cellW = charW;
-            const cellH = Math.round(cellW / 0.55);
-            const cols = Math.floor(width / cellW);
-            const rows = Math.floor(height / cellH);
 
             if (cols <= 0 || rows <= 0) {
                 scheduleNext();
@@ -814,26 +863,18 @@ export default function TuiLive({ onNavigate }) {
             // Step 1: Clear canvas
             ctx.clearRect(0, 0, width, height);
 
-            // Step 2: Draw text rows in white (only rows draw calls, ~0.3ms)
+            // Step 2: Draw text rows in white with table-lookup & integer math
             ctx.fillStyle = "#ffffff";
-            const ramp = ASCII_RAMP;
-            const rampLen = ramp.length;
             const now = performance.now();
 
             for (let y = 0; y < rows; y++) {
-                let rowStr = "";
                 const rowOffset = y * cols * 4;
                 for (let x = 0; x < cols; x++) {
                     const idx = rowOffset + x * 4;
-                    const lum = 0.299 * data[idx] + 0.587 * data[idx + 1] + 0.114 * data[idx + 2];
-                    if (lum < 16) {
-                        rowStr += " ";
-                    } else {
-                        const charIdx = Math.min(rampLen - 1, Math.floor((1 - lum / 255) * rampLen));
-                        rowStr += ramp[charIdx] || " ";
-                    }
+                    const lum = (data[idx] * 77 + data[idx + 1] * 150 + data[idx + 2] * 29) >> 8;
+                    rowChars[x] = RAMP_LOOKUP[lum];
                 }
-                ctx.fillText(rowStr, 0, y * cellH);
+                ctx.fillText(rowChars.join(""), 0, y * cellH);
             }
 
             // Step 3: Composite exact video colors or disco gradient onto ASCII glyphs
@@ -878,7 +919,7 @@ export default function TuiLive({ onNavigate }) {
         };
 
         const scheduleNext = () => {
-            if (video.requestVideoFrameCallback) {
+            if (video.requestVideoFrameCallback && !video.paused && !video.ended && video.readyState >= 2) {
                 callbackId = video.requestVideoFrameCallback(renderAscii);
             } else {
                 animId = requestAnimationFrame(renderAscii);
@@ -894,8 +935,20 @@ export default function TuiLive({ onNavigate }) {
             if (animId) {
                 cancelAnimationFrame(animId);
             }
+            offscreen.width = 0;
+            offscreen.height = 0;
         };
     }, [isLive, asciiLiveMode, displayMode, discoMode]);
+
+    // Canvas buffer memory cleanup on unmount
+    useEffect(() => {
+        return () => {
+            if (canvasRef.current) {
+                canvasRef.current.width = 0;
+                canvasRef.current.height = 0;
+            }
+        };
+    }, []);
 
     // 3. Multi-User Telemetry WebSocket Connection to TouchDesigner
     const sessionIdRef = useRef("usr_" + Math.random().toString(36).substring(2, 7));

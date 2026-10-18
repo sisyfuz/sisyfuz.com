@@ -2,6 +2,7 @@
 import { useState, useEffect } from "react";
 import { client } from "../sanityClient";
 import AsciiMedia from "../components/AsciiMedia";
+import { getOptimizedImageUrl } from "../components/sanityImage";
 import { ASCII_DIVIDER } from "../utils/ascii";
 
 export default function TuiAbout({ onNavigate }) {
@@ -11,7 +12,10 @@ export default function TuiAbout({ onNavigate }) {
         client.fetch(`*[_type == "aboutAssets"][0]`).then(setAssets);
     }, []);
 
-    const imageUrl = assets?.profileImage?.asset?.url || (typeof assets?.profileImage === "string" ? assets.profileImage : null);
+    const rawProfile = assets?.profileImage;
+    const imageUrl = rawProfile
+        ? getOptimizedImageUrl(rawProfile, 800)
+        : null;
 
     return (
         <div className="space-y-8 animate-fadeIn max-w-4xl text-xs sm:text-[13px] leading-relaxed">

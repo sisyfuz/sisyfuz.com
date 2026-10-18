@@ -1,15 +1,25 @@
 // src/components/SharpDisplay.jsx
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, lazy, Suspense } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useDisco } from "../context/DiscoContext";
 import { SISYFUZ_BANNER, ASCII_DIVIDER } from "../utils/ascii";
-import TuiWork from "../tui/TuiWork";
-import TuiArchive from "../tui/TuiArchive";
-import TuiAbout from "../tui/TuiAbout";
-import TuiContact from "../tui/TuiContact";
-import TuiPress from "../tui/TuiPress";
-import TuiLive from "../tui/TuiLive";
-import TuiPrivacy from "../tui/TuiPrivacy";
+
+const TuiWork = lazy(() => import("../tui/TuiWork"));
+const TuiArchive = lazy(() => import("../tui/TuiArchive"));
+const TuiAbout = lazy(() => import("../tui/TuiAbout"));
+const TuiContact = lazy(() => import("../tui/TuiContact"));
+const TuiPress = lazy(() => import("../tui/TuiPress"));
+const TuiLive = lazy(() => import("../tui/TuiLive"));
+const TuiPrivacy = lazy(() => import("../tui/TuiPrivacy"));
+
+function AsciiSectionLoader() {
+    return (
+        <div className="py-20 font-mono text-xs uppercase tracking-widest text-neutral-500 animate-pulse select-none">
+            [ LOADING_VIEW... ]
+        </div>
+    );
+}
+
 
 const SECTIONS = [
     { key: "work", label: "work" },
@@ -211,37 +221,39 @@ export default function SharpDisplay() {
                     </div>
                 )}
 
-                {activeSection === "work" && (
-                    <TuiWork selectedId={selectedWorkId} />
-                )}
+                <Suspense fallback={<AsciiSectionLoader />}>
+                    {activeSection === "work" && (
+                        <TuiWork selectedId={selectedWorkId} />
+                    )}
 
-                {activeSection === "archive" && (
-                    <TuiArchive onSelectWork={(id) => {
-                        setSelectedWorkId(id);
-                        setActiveSection("work");
-                        navigate(`/work#${id}`);
-                    }} />
-                )}
+                    {activeSection === "archive" && (
+                        <TuiArchive onSelectWork={(id) => {
+                            setSelectedWorkId(id);
+                            setActiveSection("work");
+                            navigate(`/work#${id}`);
+                        }} />
+                    )}
 
-                {activeSection === "about" && (
-                    <TuiAbout onNavigate={handleSwitchSection} />
-                )}
+                    {activeSection === "about" && (
+                        <TuiAbout onNavigate={handleSwitchSection} />
+                    )}
 
-                {activeSection === "contact" && (
-                    <TuiContact />
-                )}
+                    {activeSection === "contact" && (
+                        <TuiContact />
+                    )}
 
-                {activeSection === "press" && (
-                    <TuiPress />
-                )}
+                    {activeSection === "press" && (
+                        <TuiPress />
+                    )}
 
-                {activeSection === "live" && (
-                    <TuiLive onNavigate={handleSwitchSection} />
-                )}
+                    {activeSection === "live" && (
+                        <TuiLive onNavigate={handleSwitchSection} />
+                    )}
 
-                {activeSection === "privacy" && (
-                    <TuiPrivacy onNavigate={handleSwitchSection} />
-                )}
+                    {activeSection === "privacy" && (
+                        <TuiPrivacy onNavigate={handleSwitchSection} />
+                    )}
+                </Suspense>
             </main>
 
             {/* Subtle Minimal Footer with Privacy & Legal Notice */}

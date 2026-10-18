@@ -1,29 +1,31 @@
 // src/components/AsciiMedia.jsx
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { ASCII_RAMP } from "../utils/ascii";
 
-function getCoverCrop(srcW, srcH, destW, destH) {
+function setCoverCrop(srcW, srcH, destW, destH, out) {
     if (!srcW || !srcH || !destW || !destH) {
-        return { cropX: 0, cropY: 0, cropW: srcW || 1, cropH: srcH || 1 };
+        out.cropX = 0;
+        out.cropY = 0;
+        out.cropW = srcW || 1;
+        out.cropH = srcH || 1;
+        return;
     }
     const srcRatio = srcW / srcH;
     const destRatio = destW / destH;
-    let cropX = 0;
-    let cropY = 0;
-    let cropW = srcW;
-    let cropH = srcH;
 
     if (srcRatio > destRatio) {
         // Source is wider than destination -> crop sides
-        cropW = srcH * destRatio;
-        cropX = (srcW - cropW) / 2;
+        out.cropW = srcH * destRatio;
+        out.cropH = srcH;
+        out.cropX = (srcW - out.cropW) / 2;
+        out.cropY = 0;
     } else {
         // Source is taller than destination -> crop top/bottom
-        cropH = srcW / destRatio;
-        cropY = (srcH - cropH) / 2;
+        out.cropW = srcW;
+        out.cropH = srcW / destRatio;
+        out.cropX = 0;
+        out.cropY = (srcH - out.cropH) / 2;
     }
-
-    return { cropX, cropY, cropW, cropH };
 }
 
 export default function AsciiMedia({
@@ -35,26 +37,33 @@ export default function AsciiMedia({
 }) {
     const containerRef = useRef(null);
     const canvasRef = useRef(null);
+    const offscreenRef = useRef(null);
     const [isHovered, setIsHovered] = useState(false);
     const [imageLoaded, setImageLoaded] = useState(false);
 
     const stateRef = useRef({
         img: null,
-        matrix: [],
         rows: 28,
         cols: cols,
+        width: 0,
+        height: 0,
+        rampIndices: null,
+        thresholds: null,
+        crop: { cropX: 0, cropY: 0, cropW: 0, cropH: 0 },
         progress: 0,
         targetProgress: 0,
     });
 
-    // 1. Sample image into ASCII matrix with cover-crop logic
-    const recomputeMatrix = (img, width, height) => {
+    // 1. Sample image into ASCII matrix with cover-crop logic using persistent offscreen canvas & typed arrays
+    const recomputeMatrix = useCallback((img, width, height) => {
         const srcW = img.naturalWidth || img.width;
         const srcH = img.naturalHeight || img.height;
         if (!srcW || !srcH) return;
 
         const destW = width || 600;
         const destH = height || 400;
+        stateRef.current.width = destW;
+        stateRef.current.height = destH;
 
         // Auto-adapt column count for small mobile viewports to prevent squished characters
         const activeCols = destW < 420 ? Math.min(cols, 38) : (destW < 600 ? Math.min(cols, 46) : cols);
@@ -66,47 +75,178 @@ export default function AsciiMedia({
         stateRef.current.rows = rows;
         stateRef.current.cols = activeCols;
 
-        const { cropX, cropY, cropW, cropH } = getCoverCrop(srcW, srcH, destW, destH);
+        if (!offscreenRef.current) {
+            offscreenRef.current = document.createElement("canvas");
+        }
+        const offscreen = offscreenRef.current;
+        if (offscreen.width !== activeCols || offscreen.height !== rows) {
+            offscreen.width = activeCols;
+            offscreen.height = rows;
+        }
 
-        const offscreen = document.createElement("canvas");
-        offscreen.width = activeCols;
-        offscreen.height = rows;
         const ctx = offscreen.getContext("2d", { willReadFrequently: true });
         if (!ctx) return;
+
+        setCoverCrop(srcW, srcH, destW, destH, stateRef.current.crop);
+        const { cropX, cropY, cropW, cropH } = stateRef.current.crop;
 
         // Draw cropped source into activeCols x rows without stretching
         ctx.drawImage(img, cropX, cropY, cropW, cropH, 0, 0, activeCols, rows);
         const { data } = ctx.getImageData(0, 0, activeCols, rows);
 
-        const ramp = ASCII_RAMP;
-        const rampLength = ramp.length;
-        const matrix = [];
+        const totalCells = activeCols * rows;
+        let rampIndices = stateRef.current.rampIndices;
+        if (!rampIndices || rampIndices.length !== totalCells) {
+            rampIndices = new Uint8Array(totalCells);
+            stateRef.current.rampIndices = rampIndices;
+        }
+        let thresholds = stateRef.current.thresholds;
+        if (!thresholds || thresholds.length !== totalCells) {
+            thresholds = new Float32Array(totalCells);
+            stateRef.current.thresholds = thresholds;
+        }
+
+        const rampLength = ASCII_RAMP.length;
 
         for (let y = 0; y < rows; y++) {
-            const row = [];
+            const rowOffset = y * activeCols;
+            const stagger = ((y * 7) % 5) * 0.015;
             for (let x = 0; x < activeCols; x++) {
-                const idx = (y * activeCols + x) * 4;
+                const cellIdx = rowOffset + x;
+                thresholds[cellIdx] = (x / activeCols) + stagger;
+
+                const idx = cellIdx * 4;
                 const r = data[idx];
                 const g = data[idx + 1];
                 const b = data[idx + 2];
                 const a = data[idx + 3];
 
                 if (a < 30) {
-                    row.push({ char: " ", r: 0, g: 0, b: 0 });
+                    rampIndices[cellIdx] = rampLength - 1; // whitespace/dim
                     continue;
                 }
 
                 const brightness = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
                 const charIdx = Math.floor((1 - brightness) * (rampLength - 1));
-                const char = ramp[Math.max(0, Math.min(rampLength - 1, charIdx))];
-
-                row.push({ char, r, g, b });
+                rampIndices[cellIdx] = Math.max(0, Math.min(rampLength - 1, charIdx));
             }
-            matrix.push(row);
+        }
+    }, [cols]);
+
+    // Render frame with zero per-frame object allocations
+    const renderFrame = useCallback(() => {
+        const canvas = canvasRef.current;
+        const state = stateRef.current;
+        if (!canvas || !state.img || !state.rampIndices) return;
+
+        const dpr = window.devicePixelRatio || 1;
+        let width = state.width;
+        let height = state.height;
+
+        if (width === 0 || height === 0) {
+            const container = containerRef.current;
+            if (!container) return;
+            const rect = container.getBoundingClientRect();
+            width = Math.floor(rect.width);
+            height = Math.floor(rect.height);
+            state.width = width;
+            state.height = height;
         }
 
-        stateRef.current.matrix = matrix;
-    };
+        if (width === 0 || height === 0) return;
+
+        const targetCanvasW = Math.round(width * dpr);
+        const targetCanvasH = Math.round(height * dpr);
+        if (canvas.width !== targetCanvasW || canvas.height !== targetCanvasH) {
+            canvas.width = targetCanvasW;
+            canvas.height = targetCanvasH;
+        }
+
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return;
+
+        ctx.save();
+        ctx.scale(dpr, dpr);
+
+        const progress = state.progress;
+        const img = state.img;
+        const srcW = img.naturalWidth || img.width;
+        const srcH = img.naturalHeight || img.height;
+
+        setCoverCrop(srcW, srcH, width, height, state.crop);
+        const { cropX, cropY, cropW, cropH } = state.crop;
+
+        // When fully revealed: Draw full image with object-fit: cover
+        if (progress >= 0.999) {
+            ctx.drawImage(img, cropX, cropY, cropW, cropH, 0, 0, width, height);
+            ctx.restore();
+            return;
+        }
+
+        const numCols = state.cols;
+        const numRows = state.rows;
+        const cellW = width / numCols;
+        const cellH = height / numRows;
+
+        ctx.fillStyle = "#050505";
+        ctx.fillRect(0, 0, width, height);
+
+        const fontSize = Math.max(8, Math.floor(cellH * 0.95));
+        ctx.font = `${fontSize}px "Space Mono", "Courier New", monospace`;
+        ctx.textBaseline = "middle";
+        ctx.textAlign = "center";
+
+        const ramp = ASCII_RAMP;
+        const rampIndices = state.rampIndices;
+        const thresholds = state.thresholds;
+
+        // Source slice dimensions per cell (based on cropped area)
+        const srcCellW = cropW / numCols;
+        const srcCellH = cropH / numRows;
+        const dw = Math.ceil(cellW);
+        const dh = Math.ceil(cellH);
+
+        let activeColor = "";
+
+        for (let y = 0; y < numRows; y++) {
+            const rowY = y * cellH + cellH / 2;
+            const rowOffset = y * numCols;
+            const sy = cropY + y * srcCellH;
+            const dy = Math.floor(y * cellH);
+
+            for (let x = 0; x < numCols; x++) {
+                const cellIdx = rowOffset + x;
+                const delta = progress - thresholds[cellIdx];
+
+                if (delta > 0.04) {
+                    // CELL REVEALED: Draw exact unstretched slice from cropped source
+                    const sx = cropX + x * srcCellW;
+                    const dx = Math.floor(x * cellW);
+                    ctx.drawImage(img, sx, sy, srcCellW, srcCellH, dx, dy, dw, dh);
+                } else {
+                    const char = ramp[rampIndices[cellIdx]];
+                    const cellX = x * cellW + cellW / 2;
+
+                    if (delta >= -0.02 && delta <= 0.04) {
+                        // ACTIVE TRANSITION FLASH: Hot pink
+                        if (activeColor !== "#ff0080") {
+                            ctx.fillStyle = "#ff0080";
+                            activeColor = "#ff0080";
+                        }
+                    } else {
+                        // STILL ASCII
+                        if (activeColor !== "#f0f0f0") {
+                            ctx.fillStyle = "#f0f0f0";
+                            activeColor = "#f0f0f0";
+                        }
+                    }
+                    ctx.fillText(char, cellX, rowY);
+                }
+            }
+        }
+
+        ctx.restore();
+    }, []);
 
     // Load image
     useEffect(() => {
@@ -129,7 +269,7 @@ export default function AsciiMedia({
         img.onerror = () => {
             console.warn("Image load failed:", src);
         };
-    }, [src, cols]);
+    }, [src, cols, recomputeMatrix, renderFrame]);
 
     // Animate progress on hover
     useEffect(() => {
@@ -154,123 +294,44 @@ export default function AsciiMedia({
 
         frameId = requestAnimationFrame(animate);
         return () => cancelAnimationFrame(frameId);
-    }, [isHovered]);
+    }, [isHovered, renderFrame]);
 
-    // Resize listener to prevent distortion when window resizes
+    // Resize listener to adapt matrix and dimensions without layout thrashing
     useEffect(() => {
         const container = containerRef.current;
         if (!container) return;
 
-        const ro = new ResizeObserver(() => {
+        const ro = new ResizeObserver((entries) => {
+            const entry = entries[0];
+            const width = entry ? Math.floor(entry.contentRect.width) : Math.floor(container.clientWidth);
+            const height = entry ? Math.floor(entry.contentRect.height) : Math.floor(container.clientHeight);
+            stateRef.current.width = width;
+            stateRef.current.height = height;
+
             if (stateRef.current.img) {
-                const rect = container.getBoundingClientRect();
-                recomputeMatrix(stateRef.current.img, rect.width, rect.height);
+                recomputeMatrix(stateRef.current.img, width, height);
             }
             renderFrame();
         });
         ro.observe(container);
 
         return () => ro.disconnect();
-    }, [cols]);
+    }, [cols, recomputeMatrix, renderFrame]);
 
-    // Render frame
-    const renderFrame = () => {
-        const canvas = canvasRef.current;
-        const container = containerRef.current;
-        const state = stateRef.current;
-        if (!canvas || !container || !state.img) return;
-
-        const dpr = window.devicePixelRatio || 1;
-        const rect = container.getBoundingClientRect();
-        const width = Math.floor(rect.width);
-        const height = Math.floor(rect.height);
-
-        if (width === 0 || height === 0) return;
-
-        if (canvas.width !== width * dpr || canvas.height !== height * dpr) {
-            canvas.width = width * dpr;
-            canvas.height = height * dpr;
-        }
-
-        const ctx = canvas.getContext("2d");
-        if (!ctx) return;
-
-        ctx.save();
-        ctx.scale(dpr, dpr);
-
-        const progress = state.progress;
-        const img = state.img;
-        const srcW = img.naturalWidth || img.width;
-        const srcH = img.naturalHeight || img.height;
-
-        // Calculate exact object-fit: cover coordinates
-        const { cropX, cropY, cropW, cropH } = getCoverCrop(srcW, srcH, width, height);
-
-        // When fully revealed: Draw full image with object-fit: cover
-        if (progress >= 0.999) {
-            ctx.drawImage(img, cropX, cropY, cropW, cropH, 0, 0, width, height);
-            ctx.restore();
-            return;
-        }
-
-        const numCols = state.cols;
-        const numRows = state.rows;
-        const cellW = width / numCols;
-        const cellH = height / numRows;
-
-        ctx.fillStyle = "#050505";
-        ctx.fillRect(0, 0, width, height);
-
-        const fontSize = Math.max(8, Math.floor(cellH * 0.95));
-        ctx.font = `${fontSize}px "Space Mono", "Courier New", monospace`;
-        ctx.textBaseline = "middle";
-        ctx.textAlign = "center";
-
-        const matrix = state.matrix;
-
-        // Source slice dimensions per cell (based on cropped area)
-        const srcCellW = cropW / numCols;
-        const srcCellH = cropH / numRows;
-
-        for (let y = 0; y < numRows; y++) {
-            const row = matrix[y];
-            if (!row) continue;
-
-            const rowY = y * cellH + cellH / 2;
-
-            for (let x = 0; x < numCols; x++) {
-                const cell = row[x];
-                if (!cell) continue;
-
-                const cellX = x * cellW + cellW / 2;
-                const stagger = ((y * 7) % 5) * 0.015;
-                const cellThreshold = (x / numCols) + stagger;
-                const delta = progress - cellThreshold;
-
-                const dx = Math.floor(x * cellW);
-                const dy = Math.floor(y * cellH);
-                const dw = Math.ceil(cellW);
-                const dh = Math.ceil(cellH);
-
-                if (delta > 0.04) {
-                    // CELL REVEALED: Draw exact unstretched slice from cropped source!
-                    const sx = cropX + x * srcCellW;
-                    const sy = cropY + y * srcCellH;
-                    ctx.drawImage(img, sx, sy, srcCellW, srcCellH, dx, dy, dw, dh);
-                } else if (delta >= -0.02 && delta <= 0.04) {
-                    // ACTIVE TRANSITION FLASH: Hot pink
-                    ctx.fillStyle = "#ff0080";
-                    ctx.fillText(cell.char, cellX, rowY);
-                } else {
-                    // STILL ASCII:
-                    ctx.fillStyle = "#f0f0f0";
-                    ctx.fillText(cell.char, cellX, rowY);
-                }
+    // Canvas buffer memory cleanup on unmount
+    useEffect(() => {
+        return () => {
+            if (canvasRef.current) {
+                canvasRef.current.width = 0;
+                canvasRef.current.height = 0;
             }
-        }
-
-        ctx.restore();
-    };
+            if (offscreenRef.current) {
+                offscreenRef.current.width = 0;
+                offscreenRef.current.height = 0;
+                offscreenRef.current = null;
+            }
+        };
+    }, []);
 
     return (
         <div

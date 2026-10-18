@@ -15,8 +15,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     var currentLiveUrl: String = ""
     var currentViewers: Int = 0
 
-    // Status polling timer
-    var statusTimer: Timer?
+    // Event-driven WebSocket connection & heartbeat
+    var webSocketTask: URLSessionWebSocketTask?
+    var wsPingTimer: Timer?
+    var isConnectingWS = false
 
     // Project root directory
     let projectDir: String = {
@@ -42,13 +44,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         buildMenu()
         setupChatHUD()
 
-        // Start status poller (checks every 2.5s)
-        statusTimer = Timer.scheduledTimer(withTimeInterval: 2.5, repeats: true) { [weak self] _ in
-            self?.pollBackendStatus()
-        }
-
-        // Check if broadcast is already running locally on port 9988
-        pollBackendStatus()
+        // Event-driven real-time push connection to broadcast hub (replaces polling)
+        connectWebSocket()
     }
 
     // MARK: - Menu Construction
@@ -166,6 +163,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         panel.isMovableByWindowBackground = true
         panel.titleVisibility = .hidden
         panel.titlebarAppearsTransparent = true
+        panel.delegate = self
         panel.center()
 
         let config = WKWebViewConfiguration()
@@ -182,17 +180,149 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         self.webView = wv
     }
 
+    // NSWindowDelegate: Keep CPU at near 0.0% when hidden/minimized
+    func windowWillClose(_ notification: Notification) {
+        setHUDActive(false)
+    }
+
+    func windowDidMiniaturize(_ notification: Notification) {
+        setHUDActive(false)
+    }
+
+    func windowDidDeminiaturize(_ notification: Notification) {
+        setHUDActive(true)
+    }
+
+    private func setHUDActive(_ active: Bool) {
+        let js = "window.onHUDVisibilityChange && window.onHUDVisibilityChange(\(active ? "true" : "false"));"
+        webView?.evaluateJavaScript(js, completionHandler: nil)
+    }
+
     @objc func toggleChatHUD() {
         guard let window = chatWindow else { return }
         if window.isVisible {
+            setHUDActive(false)
             window.orderOut(nil)
         } else {
-            // Reload page on show to re-sync
-            if let htmlUrl = URL(string: "file://\(projectDir)/scripts/companion/ChatHUD.html") {
-                webView?.loadFileURL(htmlUrl, allowingReadAccessTo: URL(fileURLWithPath: "\(projectDir)/scripts/companion"))
-            }
             window.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
+            setHUDActive(true)
+        }
+    }
+
+    // MARK: - Event-Driven WebSocket Client (Zero-CPU Idle)
+    func connectWebSocket() {
+        guard !isConnectingWS else { return }
+        isConnectingWS = true
+
+        wsPingTimer?.invalidate()
+        wsPingTimer = nil
+        webSocketTask?.cancel(with: .goingAway, reason: nil)
+        webSocketTask = nil
+
+        guard let wsUrl = URL(string: "ws://127.0.0.1:9988/ws") else {
+            isConnectingWS = false
+            return
+        }
+
+        let session = URLSession(configuration: .default)
+        let task = session.webSocketTask(with: wsUrl)
+        self.webSocketTask = task
+        task.resume()
+
+        // Send host authentication to subscribe to real-time status & stats push
+        let authMsg = URLSessionWebSocketTask.Message.string("{\"type\":\"host_auth\"}")
+        task.send(authMsg) { [weak self] error in
+            DispatchQueue.main.async {
+                self?.isConnectingWS = false
+                if error == nil {
+                    self?.schedulePingTimer()
+                }
+            }
+        }
+
+        listenToWebSocket()
+    }
+
+    func schedulePingTimer() {
+        wsPingTimer?.invalidate()
+        // 15-second heartbeat ping to cleanly detect server shutdown without executing subshells or lsof
+        wsPingTimer = Timer.scheduledTimer(withTimeInterval: 15.0, repeats: true) { [weak self] _ in
+            guard let self = self, let task = self.webSocketTask else { return }
+            task.sendPing { error in
+                if error != nil {
+                    DispatchQueue.main.async {
+                        self.handleWebSocketDisconnect()
+                    }
+                }
+            }
+        }
+    }
+
+    func listenToWebSocket() {
+        webSocketTask?.receive { [weak self] result in
+            guard let self = self else { return }
+            switch result {
+            case .failure(_):
+                DispatchQueue.main.async {
+                    self.handleWebSocketDisconnect()
+                }
+            case .success(let message):
+                switch message {
+                case .string(let text):
+                    self.handleWebSocketMessage(text)
+                case .data(let data):
+                    if let text = String(data: data, encoding: .utf8) {
+                        self.handleWebSocketMessage(text)
+                    }
+                @unknown default:
+                    break
+                }
+                self.listenToWebSocket()
+            }
+        }
+    }
+
+    func handleWebSocketMessage(_ text: String) {
+        guard let data = text.data(using: .utf8),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
+
+        let msgType = json["type"] as? String ?? ""
+
+        if msgType == "status" {
+            let active = (json["active"] as? Bool) ?? false
+            let viewers = (json["viewers"] as? Int) ?? 0
+            let liveUrl = (json["url"] as? String) ?? ""
+
+            self.isBroadcasting = active
+            self.currentViewers = viewers
+            if !liveUrl.isEmpty {
+                self.currentLiveUrl = liveUrl
+            }
+            self.updateMenuState()
+        } else if msgType == "stats" {
+            if let viewers = json["viewers"] as? Int {
+                self.currentViewers = viewers
+                self.updateMenuState()
+            }
+        }
+    }
+
+    func handleWebSocketDisconnect() {
+        wsPingTimer?.invalidate()
+        wsPingTimer = nil
+        webSocketTask = nil
+        isConnectingWS = false
+
+        if broadcastProcess == nil && isBroadcasting {
+            isBroadcasting = false
+            currentViewers = 0
+            updateMenuState()
+        }
+
+        // Lightweight reconnect backoff (every 3 seconds)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) { [weak self] in
+            self?.connectWebSocket()
         }
     }
 
@@ -258,6 +388,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             self.broadcastProcess = proc
             self.isBroadcasting = true
             updateMenuState()
+            // Connect WebSocket to new broadcast instance
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
+                self?.connectWebSocket()
+            }
         } catch {
             print("Failed to run broadcast.js: \(error)")
         }
@@ -278,36 +412,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         isBroadcasting = false
         currentViewers = 0
         updateMenuState()
-    }
-
-    // MARK: - Backend Polling
-    func pollBackendStatus() {
-        guard let url = URL(string: "http://127.0.0.1:9988/api/status") else { return }
-
-        let task = URLSession.shared.dataTask(with: url) { [weak self] data, response, error in
-            guard let self = self else { return }
-            guard let data = data, error == nil else {
-                if self.broadcastProcess == nil && self.isBroadcasting {
-                    self.isBroadcasting = false
-                    self.updateMenuState()
-                }
-                return
-            }
-
-            if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
-                let active = (json["active"] as? Bool) ?? false
-                let viewers = (json["viewers"] as? Int) ?? 0
-                let liveUrl = (json["url"] as? String) ?? ""
-
-                self.isBroadcasting = active
-                self.currentViewers = viewers
-                if !liveUrl.isEmpty {
-                    self.currentLiveUrl = liveUrl
-                }
-                self.updateMenuState()
-            }
-        }
-        task.resume()
+        handleWebSocketDisconnect()
     }
 
     // MARK: - Quick Actions

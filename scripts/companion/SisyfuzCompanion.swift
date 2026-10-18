@@ -2,11 +2,21 @@ import AppKit
 import WebKit
 import Foundation
 
+// MARK: - Brutalist HUD Panel (Custom NSPanel with key input support)
+class BrutalistHUDPanel: NSPanel {
+    override var canBecomeKey: Bool {
+        return true
+    }
+    override var canBecomeMain: Bool {
+        return true
+    }
+}
+
 // MARK: - Sisyfuz Companion Menu Bar Application
 class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKScriptMessageHandler {
     var statusItem: NSStatusItem!
     var menu: NSMenu!
-    var chatWindow: NSPanel?
+    var chatWindow: BrutalistHUDPanel?
     var webView: WKWebView?
 
     // Broadcast child process
@@ -37,8 +47,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKScriptMe
         // Setup Menu Bar Status Item
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         if let button = statusItem.button {
-            button.title = "⚪ SISYFUZ"
+            button.title = "○ SISYFUZ [IDLE]"
             button.font = NSFont.monospacedSystemFont(ofSize: 11, weight: .bold)
+            button.target = self
+            button.action = #selector(statusItemClicked(_:))
+            button.sendAction(on: [.leftMouseUp, .rightMouseUp])
         }
 
         buildMenu()
@@ -46,98 +59,200 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKScriptMe
 
         // Event-driven real-time push connection to broadcast hub (replaces polling)
         connectWebSocket()
+
+        // Auto-open brutalist studio HUD on launch
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
+            self?.showChatHUD()
+        }
     }
 
-    // MARK: - Menu Construction
+    // MARK: - Menu Bar Button Clicks
+    @objc func statusItemClicked(_ sender: NSStatusBarButton) {
+        guard let event = NSApp.currentEvent else {
+            toggleChatHUD()
+            return
+        }
+
+        let isRightClick = (event.type == .rightMouseUp) || (event.modifierFlags.contains(.control) && event.type == .leftMouseUp)
+
+        if isRightClick {
+            updateMenuState()
+            menu.popUp(positioning: nil, at: NSPoint(x: 0, y: 0), in: sender)
+        } else {
+            // Direct left-click toggles the brutalist Studio HUD directly beneath menu item
+            toggleChatHUD()
+        }
+    }
+
+    // MARK: - Brutalist Menu Helpers
+    func makeBrutalistMenuItem(
+        title: String,
+        action: Selector? = nil,
+        key: String = "",
+        tag: Int = 0,
+        color: NSColor = .white,
+        isHeader: Bool = false
+    ) -> NSMenuItem {
+        let item = NSMenuItem(title: title, action: action, keyEquivalent: key)
+        item.target = self
+        item.tag = tag
+
+        let font = NSFont(name: "Space Mono", size: 11) ?? NSFont.monospacedSystemFont(ofSize: 11, weight: isHeader ? .bold : .medium)
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: font,
+            .foregroundColor: color
+        ]
+        item.attributedTitle = NSAttributedString(string: title, attributes: attributes)
+        return item
+    }
+
+    func makeAsciiSeparator() -> NSMenuItem {
+        let sep = NSMenuItem(title: "+------------------------------------+", action: nil, keyEquivalent: "")
+        sep.isEnabled = false
+        let font = NSFont(name: "Space Mono", size: 10) ?? NSFont.monospacedSystemFont(ofSize: 10, weight: .regular)
+        sep.attributedTitle = NSAttributedString(
+            string: "+------------------------------------+",
+            attributes: [.font: font, .foregroundColor: NSColor(white: 0.35, alpha: 1.0)]
+        )
+        return sep
+    }
+
+    // MARK: - Menu Construction (Brutalist ASCII TUI)
     func buildMenu() {
         menu = NSMenu()
+        menu.autoenablesItems = false
 
         // Header
-        let headerItem = NSMenuItem(title: "SISYFUZ BROADCAST ENGINE", action: nil, keyEquivalent: "")
-        headerItem.isEnabled = false
-        menu.addItem(headerItem)
+        let header = makeBrutalistMenuItem(
+            title: "+--[ > SISYFUZ // STUDIO ENGINE ]--+",
+            color: NSColor(red: 1.0, green: 0.0, blue: 0.5, alpha: 1.0), // #FF0080
+            isHeader: true
+        )
+        header.isEnabled = false
+        menu.addItem(header)
 
-        // Status Item
-        let statusTitle = isBroadcasting ? "Status: 🟢 LIVE (60 FPS)" : "Status: ⚪ Idle"
-        let statusDisplay = NSMenuItem(title: statusTitle, action: nil, keyEquivalent: "")
+        menu.addItem(makeAsciiSeparator())
+
+        // Status Item (Tag 101)
+        let statusTitle = isBroadcasting ? "STATUS:  [● LIVE • 60 FPS]" : "STATUS:  [○ STANDBY / IDLE]"
+        let statusColor = isBroadcasting ? NSColor(red: 0.0, green: 1.0, blue: 0.4, alpha: 1.0) : NSColor(white: 0.65, alpha: 1.0)
+        let statusDisplay = makeBrutalistMenuItem(title: statusTitle, tag: 101, color: statusColor, isHeader: true)
         statusDisplay.isEnabled = false
-        statusDisplay.tag = 101
         menu.addItem(statusDisplay)
 
-        // Viewers Count Item
-        let viewersDisplay = NSMenuItem(title: "Viewers: \(currentViewers)", action: nil, keyEquivalent: "")
+        // Viewers Count Item (Tag 102)
+        let viewersStr = String(format: "%02d", currentViewers)
+        let viewersDisplay = makeBrutalistMenuItem(
+            title: "VIEWERS: [\(viewersStr)]",
+            tag: 102,
+            color: NSColor(white: 0.85, alpha: 1.0)
+        )
         viewersDisplay.isEnabled = false
-        viewersDisplay.tag = 102
         menu.addItem(viewersDisplay)
 
-        menu.addItem(NSMenuItem.separator())
+        menu.addItem(makeAsciiSeparator())
 
-        // Start / Stop Action
-        let toggleTitle = isBroadcasting ? "Stop Broadcast" : "Start Broadcast"
-        let toggleItem = NSMenuItem(title: toggleTitle, action: #selector(toggleBroadcast), keyEquivalent: "s")
-        toggleItem.target = self
-        toggleItem.tag = 103
+        // Start / Stop Action (Tag 103)
+        let toggleTitle = isBroadcasting ? "[■ STOP_BROADCAST]" : "[▶ START_BROADCAST]"
+        let toggleColor = isBroadcasting ? NSColor(red: 1.0, green: 0.25, blue: 0.25, alpha: 1.0) : NSColor(red: 0.0, green: 0.9, blue: 1.0, alpha: 1.0)
+        let toggleItem = makeBrutalistMenuItem(
+            title: toggleTitle,
+            action: #selector(toggleBroadcast),
+            key: "s",
+            tag: 103,
+            color: toggleColor,
+            isHeader: true
+        )
         menu.addItem(toggleItem)
 
         // Chat HUD Action
-        let chatItem = NSMenuItem(title: "Open Chat HUD Window...", action: #selector(toggleChatHUD), keyEquivalent: "k")
-        chatItem.target = self
+        let chatItem = makeBrutalistMenuItem(
+            title: "[TOGGLE_STUDIO_HUD] (⌘K)",
+            action: #selector(toggleChatHUD),
+            key: "k",
+            color: .white
+        )
         menu.addItem(chatItem)
 
-        menu.addItem(NSMenuItem.separator())
+        menu.addItem(makeAsciiSeparator())
 
         // Stream Links
-        let copyLinkItem = NSMenuItem(title: "Copy Stream URL", action: #selector(copyStreamUrl), keyEquivalent: "c")
-        copyLinkItem.target = self
+        let copyLinkItem = makeBrutalistMenuItem(
+            title: "[COPY_STREAM_URL]   (⌘C)",
+            action: #selector(copyStreamUrl),
+            key: "c",
+            color: NSColor(white: 0.9, alpha: 1.0)
+        )
         menu.addItem(copyLinkItem)
 
-        let openWebItem = NSMenuItem(title: "Open Stream in Browser", action: #selector(openWebStream), keyEquivalent: "o")
-        openWebItem.target = self
+        let openWebItem = makeBrutalistMenuItem(
+            title: "[OPEN_IN_BROWSER]   (⌘O)",
+            action: #selector(openWebStream),
+            key: "o",
+            color: NSColor(white: 0.9, alpha: 1.0)
+        )
         menu.addItem(openWebItem)
 
-        menu.addItem(NSMenuItem.separator())
+        menu.addItem(makeAsciiSeparator())
 
         // Quick App Launchers
-        let openObsItem = NSMenuItem(title: "Open OBS Studio", action: #selector(openOBS), keyEquivalent: "")
-        openObsItem.target = self
+        let openObsItem = makeBrutalistMenuItem(
+            title: "[LAUNCH_OBS_STUDIO]",
+            action: #selector(openOBS),
+            color: NSColor(white: 0.75, alpha: 1.0)
+        )
         menu.addItem(openObsItem)
 
-        let openTdItem = NSMenuItem(title: "Open TouchDesigner", action: #selector(openTouchDesigner), keyEquivalent: "")
-        openTdItem.target = self
+        let openTdItem = makeBrutalistMenuItem(
+            title: "[LAUNCH_TOUCHDESIGNER]",
+            action: #selector(openTouchDesigner),
+            color: NSColor(white: 0.75, alpha: 1.0)
+        )
         menu.addItem(openTdItem)
 
-        menu.addItem(NSMenuItem.separator())
+        menu.addItem(makeAsciiSeparator())
 
         // Quit
-        let quitItem = NSMenuItem(title: "Quit Companion App", action: #selector(quitApp), keyEquivalent: "q")
-        quitItem.target = self
+        let quitItem = makeBrutalistMenuItem(
+            title: "[QUIT_COMPANION]    (⌘Q)",
+            action: #selector(quitApp),
+            key: "q",
+            color: NSColor(red: 1.0, green: 0.3, blue: 0.35, alpha: 1.0)
+        )
         menu.addItem(quitItem)
-
-        statusItem.menu = menu
     }
 
     func updateMenuState() {
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
 
+            let viewersStr = String(format: "%02d", self.currentViewers)
+
             if let button = self.statusItem.button {
                 if self.isBroadcasting {
-                    button.title = "🟢 SISYFUZ [LIVE • \(self.currentViewers)]"
+                    button.title = "● SISYFUZ [LIVE • \(viewersStr)]"
                 } else {
-                    button.title = "⚪ SISYFUZ [IDLE]"
+                    button.title = "○ SISYFUZ [IDLE]"
                 }
             }
 
             if let statusItem = self.menu.item(withTag: 101) {
-                statusItem.title = self.isBroadcasting ? "Status: 🟢 LIVE (60 FPS)" : "Status: ⚪ Idle"
+                let statusTitle = self.isBroadcasting ? "STATUS:  [● LIVE • 60 FPS]" : "STATUS:  [○ STANDBY / IDLE]"
+                let statusColor = self.isBroadcasting ? NSColor(red: 0.0, green: 1.0, blue: 0.4, alpha: 1.0) : NSColor(white: 0.65, alpha: 1.0)
+                let font = NSFont(name: "Space Mono", size: 11) ?? NSFont.monospacedSystemFont(ofSize: 11, weight: .bold)
+                statusItem.attributedTitle = NSAttributedString(string: statusTitle, attributes: [.font: font, .foregroundColor: statusColor])
             }
 
             if let viewersItem = self.menu.item(withTag: 102) {
-                viewersItem.title = "Viewers: \(self.currentViewers)"
+                let font = NSFont(name: "Space Mono", size: 11) ?? NSFont.monospacedSystemFont(ofSize: 11, weight: .medium)
+                viewersItem.attributedTitle = NSAttributedString(string: "VIEWERS: [\(viewersStr)]", attributes: [.font: font, .foregroundColor: NSColor(white: 0.85, alpha: 1.0)])
             }
 
             if let toggleItem = self.menu.item(withTag: 103) {
-                toggleItem.title = self.isBroadcasting ? "Stop Broadcast" : "Start Broadcast"
+                let toggleTitle = self.isBroadcasting ? "[■ STOP_BROADCAST]" : "[▶ START_BROADCAST]"
+                let toggleColor = self.isBroadcasting ? NSColor(red: 1.0, green: 0.25, blue: 0.25, alpha: 1.0) : NSColor(red: 0.0, green: 0.9, blue: 1.0, alpha: 1.0)
+                let font = NSFont(name: "Space Mono", size: 11) ?? NSFont.monospacedSystemFont(ofSize: 11, weight: .bold)
+                toggleItem.attributedTitle = NSAttributedString(string: toggleTitle, attributes: [.font: font, .foregroundColor: toggleColor])
             }
 
             // Sync state with ChatHUD WebKit view
@@ -158,10 +273,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKScriptMe
         let width: CGFloat = 400
         let height: CGFloat = 580
 
-        // Create sleek floating NSPanel
-        let panel = NSPanel(
+        // Create sleek floating NSPanel with custom brutalist styling
+        let panel = BrutalistHUDPanel(
             contentRect: NSRect(x: 100, y: 100, width: width, height: height),
-            styleMask: [.titled, .closable, .resizable, .utilityWindow, .nonactivatingPanel],
+            styleMask: [.titled, .closable, .resizable, .utilityWindow, .fullSizeContentView],
             backing: .buffered,
             defer: false
         )
@@ -170,12 +285,16 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKScriptMe
         panel.isFloatingPanel = true
         panel.level = .floating // Stays on top of OBS and TouchDesigner
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-        panel.backgroundColor = NSColor(red: 0.02, green: 0.02, blue: 0.02, alpha: 0.98)
+        panel.backgroundColor = .clear
+        panel.isOpaque = false
+        panel.hasShadow = true
         panel.isMovableByWindowBackground = true
         panel.titleVisibility = .hidden
         panel.titlebarAppearsTransparent = true
+        panel.standardWindowButton(.closeButton)?.isHidden = true
+        panel.standardWindowButton(.miniaturizeButton)?.isHidden = true
+        panel.standardWindowButton(.zoomButton)?.isHidden = true
         panel.delegate = self
-        panel.center()
 
         let config = WKWebViewConfiguration()
         let contentController = WKUserContentController()
@@ -186,9 +305,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKScriptMe
         wv.autoresizingMask = [.width, .height]
         wv.setValue(false, forKey: "drawsBackground")
 
-        let htmlPath = "\(projectDir)/scripts/companion/ChatHUD.html"
-        let htmlUrl = URL(fileURLWithPath: htmlPath)
-        wv.loadFileURL(htmlUrl, allowingReadAccessTo: URL(fileURLWithPath: "\(projectDir)/scripts/companion"))
+        let htmlUrl: URL = {
+            if let bundleUrl = Bundle.main.url(forResource: "ChatHUD", withExtension: "html") {
+                return bundleUrl
+            }
+            return URL(fileURLWithPath: "\(projectDir)/scripts/companion/ChatHUD.html")
+        }()
+        wv.loadFileURL(htmlUrl, allowingReadAccessTo: htmlUrl.deletingLastPathComponent())
 
         panel.contentView?.addSubview(wv)
         self.chatWindow = panel
@@ -213,16 +336,50 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKScriptMe
         webView?.evaluateJavaScript(js, completionHandler: nil)
     }
 
+    func positionHUDUnderStatusBarButton() {
+        guard let window = chatWindow,
+              let button = statusItem.button,
+              let btnWindow = button.window else { return }
+
+        let buttonRect = button.convert(button.bounds, to: nil)
+        let screenRect = btnWindow.convertToScreen(buttonRect)
+
+        let winWidth = window.frame.width
+        let winHeight = window.frame.height
+
+        var targetX = screenRect.midX - (winWidth / 2.0)
+
+        let screen = btnWindow.screen ?? NSScreen.main
+        if let screen = screen {
+            let visibleFrame = screen.visibleFrame
+            if targetX + winWidth > visibleFrame.maxX {
+                targetX = visibleFrame.maxX - winWidth - 12
+            }
+            if targetX < visibleFrame.minX {
+                targetX = visibleFrame.minX + 12
+            }
+        }
+
+        let targetY = screenRect.minY - winHeight - 6
+        window.setFrameOrigin(NSPoint(x: targetX, y: targetY))
+    }
+
+    func showChatHUD() {
+        guard let window = chatWindow else { return }
+        positionHUDUnderStatusBarButton()
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+        setHUDActive(true)
+        updateMenuState()
+    }
+
     @objc func toggleChatHUD() {
         guard let window = chatWindow else { return }
         if window.isVisible {
             setHUDActive(false)
             window.orderOut(nil)
         } else {
-            window.makeKeyAndOrderFront(nil)
-            NSApp.activate(ignoringOtherApps: true)
-            setHUDActive(true)
-            updateMenuState()
+            showChatHUD()
         }
     }
 

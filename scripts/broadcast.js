@@ -287,8 +287,13 @@ async function main() {
             return;
         }
 
-        // --- WHEP proxy: Forward WebRTC signaling to MediaMTX with auto-retry ---
-        if (req.url.startsWith("/live/whep") || req.url.startsWith("/live/live/whep")) {
+        // --- WebRTC signaling proxy (WHEP playback & WHIP ingestion) ---
+        if (
+            req.url.startsWith("/live/whep") ||
+            req.url.startsWith("/live/live/whep") ||
+            req.url.startsWith("/live/whip") ||
+            req.url.startsWith("/live/live/whip")
+        ) {
             const chunks = [];
             req.on("data", (chunk) => chunks.push(chunk));
             req.on("end", () => {
@@ -319,13 +324,17 @@ async function main() {
 
                         const fwdHeaders = {
                             "access-control-allow-origin": "*",
-                            "access-control-expose-headers": "Location, Link",
+                            "access-control-expose-headers": "Location, Link, Accept-Post",
                         };
                         if (whepRes.headers["content-type"]) fwdHeaders["content-type"] = whepRes.headers["content-type"];
+                        if (whepRes.headers["accept-post"]) fwdHeaders["accept-post"] = whepRes.headers["accept-post"];
                         if (whepRes.headers["location"]) {
                             let loc = whepRes.headers["location"];
                             if (activeStreamPath !== "live" && loc.includes(`/${activeStreamPath}/whep`)) {
                                 loc = loc.replace(`/${activeStreamPath}/whep`, "/live/whep");
+                            }
+                            if (activeStreamPath !== "live" && loc.includes(`/${activeStreamPath}/whip`)) {
+                                loc = loc.replace(`/${activeStreamPath}/whip`, "/live/whip");
                             }
                             fwdHeaders["location"] = loc;
                         }
@@ -501,17 +510,22 @@ async function main() {
             console.log(`  WebRTC WHEP Feed:   ${liveUrl}/live/whep`);
             console.log(`  Cursor Telemetry:   wss://${match[1]}/ws`);
             console.log("--------------------------------------------------------------");
-            console.log("  OBS STUDIO 60 FPS ULTRA-LOW LATENCY SETTINGS:");
-            console.log("  1. Source:            macOS Syphon -> Select TouchDesigner");
-            console.log("  2. Video FPS:         60 FPS (Settings -> Video -> Common FPS: 60)");
-            console.log("  3. Stream Service:    Custom");
-            console.log("  4. Stream Server:     rtmp://localhost:1935");
-            console.log("  5. Stream Key:        live  (or Server: rtmp://localhost:1935/live + Key: live)");
-            console.log("  6. Output -> Encoder: Apple VT H264 Hardware (or x264)");
-            console.log("  7. Keyframe Interval: 1s (Strictly 1 second / 60 frames)");
-            console.log("  8. B-Frames:          0 (Zero B-Frames for lowest latency)");
-            console.log("  9. Bitrate:           6000 - 8000 Kbps CBR");
-            console.log("  10. Click:            [Start Streaming] in OBS");
+            console.log("  OBS STUDIO 60 FPS STREAMING SETTINGS:");
+            console.log("  1. Video Source:      macOS Syphon -> Select TouchDesigner");
+            console.log("  2. Audio Source:      Sources (+) -> Application Audio Capture -> TouchDesigner");
+            console.log("                        (Or Audio Input Capture -> Your Mic / BlackHole)");
+            console.log("  3. Audio Monitoring:  In Audio Mixer gear -> Advanced Audio Properties -> Monitor Off");
+            console.log("  4. Video Canvas/FPS:  1280x1280 @ 60 FPS (Settings -> Video)");
+            console.log("  5. Stream (Option A - WHIP ~150ms with Native Opus Audio):");
+            console.log("       Service:         WHIP");
+            console.log("       Server:          http://localhost:8889/live/whip (or http://localhost:9988/live/whip)");
+            console.log("       Bearer Token:    (leave empty)");
+            console.log("     Stream (Option B - RTMP Ingest):");
+            console.log("       Service:         Custom");
+            console.log("       Server:          rtmp://localhost:1935");
+            console.log("       Stream Key:      live");
+            console.log("  6. Video Encoder:     Apple VT H264 Hardware (Bitrate: 6000-8000 Kbps, Keyframe: 1s)");
+            console.log("  7. Click:             [Start Streaming] in OBS");
             console.log("==============================================================\n");
 
             console.log("  Publishing live state to sisyfuz.com...");

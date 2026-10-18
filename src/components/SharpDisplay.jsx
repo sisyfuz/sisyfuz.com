@@ -9,6 +9,7 @@ import TuiAbout from "../tui/TuiAbout";
 import TuiContact from "../tui/TuiContact";
 import TuiPress from "../tui/TuiPress";
 import TuiLive from "../tui/TuiLive";
+import TuiPrivacy from "../tui/TuiPrivacy";
 
 const SECTIONS = [
     { key: "work", label: "work" },
@@ -42,6 +43,9 @@ export default function SharpDisplay() {
         if (path === "" || path === "home") {
             setActiveSection("home");
             setSelectedWorkId(null);
+        } else if (path === "privacy" || path === "legal") {
+            setActiveSection("privacy");
+            setSelectedWorkId(null);
         } else if (SECTIONS.some(s => s.key === path)) {
             setActiveSection(path);
             if (location.hash) {
@@ -65,7 +69,7 @@ export default function SharpDisplay() {
         setBuffer(val);
         bufferRef.current = val;
 
-        const routes = ["work", "archive", "about", "contact", "press", "live", "home"];
+        const routes = ["work", "archive", "about", "contact", "press", "live", "home", "privacy", "legal"];
 
         if (val.endsWith("disco")) {
             setDiscoMode(prev => !prev);
@@ -83,8 +87,9 @@ export default function SharpDisplay() {
             inputRef.current?.blur();
         } else if (routes.some(r => val.endsWith(r))) {
             const matchedRoute = routes.find(r => val.endsWith(r));
-            setActiveSection(matchedRoute);
-            navigate(matchedRoute === "home" ? "/" : `/${matchedRoute}`);
+            const targetSection = matchedRoute === "legal" ? "privacy" : matchedRoute;
+            setActiveSection(targetSection);
+            navigate(targetSection === "home" ? "/" : `/${targetSection}`);
             setBuffer("");
             bufferRef.current = "";
             setSearchQuery("");
@@ -233,12 +238,29 @@ export default function SharpDisplay() {
                 {activeSection === "live" && (
                     <TuiLive onNavigate={handleSwitchSection} />
                 )}
+
+                {activeSection === "privacy" && (
+                    <TuiPrivacy onNavigate={handleSwitchSection} />
+                )}
             </main>
 
-            {/* Subtle Minimal Footer */}
-            <footer className="pt-8 pb-16 text-neutral-600 flex flex-wrap items-center justify-between gap-2 uppercase z-10 text-[11px] sm:text-xs">
-                <span>SISYFUZ // DORUS KLEIJNE</span>
-                <span>UTRECHT, NL</span>
+            {/* Subtle Minimal Footer with Privacy & Legal Notice */}
+            <footer className="pt-8 pb-16 text-neutral-600 flex flex-wrap items-center justify-between gap-y-2 gap-x-4 uppercase z-10 text-[11px] sm:text-xs">
+                <div className="flex items-center gap-3">
+                    <span>SISYFUZ // DORUS KLEIJNE</span>
+                    <span>UTRECHT, NL</span>
+                </div>
+                <div className="flex items-center gap-3">
+                    <button
+                        onClick={() => handleSwitchSection("privacy")}
+                        className={`hover:bg-white hover:text-black px-1 -mx-1 cursor-pointer transition-none ${
+                            activeSection === "privacy" ? "text-white font-bold bg-neutral-800" : "text-neutral-500"
+                        }`}
+                        title="Privacyverklaring & Colofon (AVG/GDPR)"
+                    >
+                        [PRIVACY_&_LEGAL]
+                    </button>
+                </div>
             </footer>
 
             {/* RAW ASCII FLOATING SEARCH BOX */}

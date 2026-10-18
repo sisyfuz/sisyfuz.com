@@ -48,12 +48,18 @@ export default function TuiAbout({ onNavigate }) {
                         </div>
                     </div>
 
-                    <div className="pt-2">
+                    <div className="pt-2 flex flex-wrap gap-2">
                         <button
                             onClick={() => onNavigate && onNavigate("contact")}
                             className="text-white hover:bg-white hover:text-black font-bold uppercase py-1 px-2 -ml-2 cursor-pointer transition-colors inline-block"
                         >
                             [STUUR_EEN_BERICHT →]
+                        </button>
+                        <button
+                            onClick={() => onNavigate && onNavigate("privacy")}
+                            className="text-neutral-400 hover:bg-white hover:text-black font-bold uppercase py-1 px-2 cursor-pointer transition-colors inline-block"
+                        >
+                            [PRIVACY_&_LEGAL →]
                         </button>
                     </div>
 

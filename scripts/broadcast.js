@@ -37,12 +37,53 @@ const MEDIAMTX_HLS_PORT = 8888;
 const MEDIAMTX_WEBRTC_PORT = 8889;
 const PROXY_PORT = 9988;
 const WORKER_LIVE_URL = "https://sisyfuz-counter.sisyfuz.workers.dev/live";
+const BROADCAST_SECRET = process.env.BROADCAST_SECRET || "";
 
 // Metered.ca TURN credentials (optional — WebRTC falls back to STUN-only if unset)
 const TURN_USERNAME = process.env.METERED_TURN_USERNAME || "";
 const TURN_CREDENTIAL = process.env.METERED_TURN_CREDENTIAL || "";
 const TURN_HOST = process.env.METERED_TURN_HOST || "global.relay.metered.ca";
 const TURN_URL = process.env.METERED_TURN_URL || (TURN_USERNAME ? `turn:${TURN_HOST}:80` : "");
+
+// Chat & Security constants
+const URL_REGEX = /(https?:\/\/|www\.|\.com\/|\.org\/|\.net\/|\.xyz|\.ru|\.top|\.cn|discord\.gg|t\.me)/i;
+const clientChatTimes = new Map();
+
+// Helper to detect if request originated from local machine (127.0.0.1 / localhost)
+// and NOT forwarded through Cloudflare Tunnel or external proxy
+function isLocalRequest(req) {
+    if (!req) return false;
+    // Cloudflare Tunnel injects CF-* headers for all forwarded traffic
+    if (req.headers["cf-connecting-ip"] || req.headers["cf-ray"] || req.headers["cf-visitor"]) {
+        return false;
+    }
+    const host = (req.headers["host"] || "").toLowerCase();
+    if (host.includes("trycloudflare.com") || host.includes("sisyfuz.com")) {
+        return false;
+    }
+    const remote = req.socket?.remoteAddress || "";
+    const isLoopbackIp = remote === "127.0.0.1" || remote === "::1" || remote === "::ffff:127.0.0.1";
+    const isLocalHost = host.startsWith("localhost") || host.startsWith("127.0.0.1");
+    return isLoopbackIp && isLocalHost;
+}
+
+function sanitizeChatText(str) {
+    return String(str || "")
+        .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F]/g, "") // strip control characters
+        .trim()
+        .slice(0, 200);
+}
+
+function sanitizeUsername(str, isHost = false) {
+    let clean = String(str || "anon")
+        .replace(/[\u0000-\u001F\u007F-\u009F]/g, "")
+        .trim()
+        .slice(0, 24) || "anon";
+    if (!isHost) {
+        clean = clean.replace(/^\[HOST\]\s*/i, "").trim() || "anon";
+    }
+    return clean;
+}
 
 console.log("\n==============================================================");
 console.log("   SISYFUZ // 60+ FPS ULTRA-RAW BROADCASTER                   ");
@@ -76,12 +117,16 @@ function killPort(port) {
     } catch {}
 }
 
-// Publish/Unpublish status to worker
+// Publish/Unpublish status to worker with optional authentication
 async function setLiveState(url, active) {
     try {
+        const headers = { "Content-Type": "application/json" };
+        if (BROADCAST_SECRET) {
+            headers["X-Broadcast-Secret"] = BROADCAST_SECRET;
+        }
         const res = await fetch(WORKER_LIVE_URL, {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers,
             body: JSON.stringify({ url: url || "", active: Boolean(active) }),
         });
         if (!res.ok) {
@@ -353,17 +398,37 @@ async function main() {
 
         // --- /chat/send: Send a chat message via HTTP POST ---
         if (req.url === "/chat/send" && req.method === "POST") {
+            const isLocal = isLocalRequest(req);
+            const clientIp = req.headers["cf-connecting-ip"] || req.headers["x-forwarded-for"] || req.socket.remoteAddress || "client";
+
+            // Basic rate limit check for HTTP chat posts (1 per 1.5s per client IP)
+            const now = Date.now();
+            const lastPost = clientChatTimes.get(clientIp) || 0;
+            if (now - lastPost < 1500) {
+                res.writeHead(429, { "Content-Type": "application/json" });
+                res.end(JSON.stringify({ error: "Slow down. Please wait 1.5s between messages." }));
+                return;
+            }
+            clientChatTimes.set(clientIp, now);
+
             const chunks = [];
             req.on("data", (chunk) => chunks.push(chunk));
             req.on("end", () => {
                 try {
                     const body = JSON.parse(Buffer.concat(chunks).toString() || "{}");
-                    const user = String(body.user || "anon").trim().slice(0, 24) || "anon";
-                    const text = String(body.text || "").trim().slice(0, 200);
-                    const isHost = Boolean(body.isHost);
+                    const isHost = isLocal && Boolean(body.isHost);
+                    const user = sanitizeUsername(body.user, isHost);
+                    const text = sanitizeChatText(body.text);
+
                     if (!text) {
                         res.writeHead(400, { "Content-Type": "application/json" });
                         res.end(JSON.stringify({ error: "Empty message" }));
+                        return;
+                    }
+
+                    if (!isHost && URL_REGEX.test(text)) {
+                        res.writeHead(400, { "Content-Type": "application/json" });
+                        res.end(JSON.stringify({ error: "Links are not permitted in chat." }));
                         return;
                     }
 
@@ -397,8 +462,13 @@ async function main() {
             return;
         }
 
-        // --- /api/status: Broadcast health & stats for Companion App ---
+        // --- /api/status: Broadcast health & stats for Companion App (Localhost Only) ---
         if (req.url === "/api/status") {
+            if (!isLocalRequest(req)) {
+                res.writeHead(403, { "Content-Type": "application/json" });
+                res.end(JSON.stringify({ error: "Forbidden: Local access only" }));
+                return;
+            }
             res.writeHead(200, { "Content-Type": "application/json" });
             res.end(JSON.stringify({
                 active: Boolean(liveUrl),
@@ -410,8 +480,13 @@ async function main() {
             return;
         }
 
-        // --- /api/broadcast/stop: Clean shutdown invoked from Companion App ---
+        // --- /api/broadcast/stop: Clean shutdown invoked from Companion App (Localhost Only) ---
         if (req.url === "/api/broadcast/stop" && req.method === "POST") {
+            if (!isLocalRequest(req)) {
+                res.writeHead(403, { "Content-Type": "application/json" });
+                res.end(JSON.stringify({ error: "Forbidden: Local access only" }));
+                return;
+            }
             res.writeHead(200, { "Content-Type": "application/json" });
             res.end(JSON.stringify({ success: true, message: "Stopping broadcast..." }));
             setTimeout(() => {
@@ -598,6 +673,8 @@ async function main() {
 
     wss.on("connection", (clientWs, req) => {
         activeWsClients.add(clientWs);
+        clientWs.isLocal = isLocalRequest(req);
+        clientWs.isHostClient = false;
 
         // Send recent chat history and live stats on connect
         try {
@@ -619,15 +696,20 @@ async function main() {
                 // Handle live audience chat message
                 if (msg.type === "chat") {
                     const now = Date.now();
-                    // Basic anti-spam cooldown (1s per message per client)
-                    if (now - lastMessageTime < 1000) return;
+                    // Anti-spam cooldown (1.5s per message per client)
+                    if (now - lastMessageTime < 1500) return;
                     lastMessageTime = now;
 
-                    const cleanUser = String(msg.user || "anon").trim().slice(0, 24) || "anon";
-                    const cleanText = String(msg.text || "").trim().slice(0, 200);
+                    const isHost = clientWs.isLocal && Boolean(msg.isHost || clientWs.isHostClient);
+                    const cleanUser = sanitizeUsername(msg.user, isHost);
+                    const cleanText = sanitizeChatText(msg.text);
                     if (!cleanText) return;
 
-                    const isHost = Boolean(msg.isHost || clientWs.isHostClient);
+                    // Filter links from non-host viewers
+                    if (!isHost && URL_REGEX.test(cleanText)) {
+                        return;
+                    }
+
                     const msgObj = {
                         type: "chat",
                         id: `msg-${now}-${Math.random().toString(36).slice(2, 7)}`,
@@ -659,9 +741,11 @@ async function main() {
                     return;
                 }
 
-                // Handle Companion App identification
+                // Handle Companion App identification (Local only)
                 if (msg.type === "host_auth") {
-                    clientWs.isHostClient = true;
+                    if (clientWs.isLocal) {
+                        clientWs.isHostClient = true;
+                    }
                     return;
                 }
             } catch {

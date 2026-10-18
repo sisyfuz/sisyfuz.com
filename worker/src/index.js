@@ -29,6 +29,24 @@ function corsHeaders(origin) {
   };
 }
 
+const ipRateLimits = new Map();
+
+function checkRateLimit(ip, limit = 15, windowMs = 10000) {
+  const now = Date.now();
+  const timestamps = (ipRateLimits.get(ip) || []).filter((t) => now - t < windowMs);
+  if (timestamps.length >= limit) {
+    return false;
+  }
+  timestamps.push(now);
+  ipRateLimits.set(ip, timestamps);
+  if (ipRateLimits.size > 2000) {
+    for (const [k, v] of ipRateLimits.entries()) {
+      if (v.every((t) => now - t >= windowMs)) ipRateLimits.delete(k);
+    }
+  }
+  return true;
+}
+
 export default {
   async fetch(request, env) {
     const origin = request.headers.get("Origin") || "";
@@ -56,11 +74,33 @@ export default {
       }
 
       if (request.method === "POST") {
+        // Authenticate Broadcast Secret if set in worker environment
+        const secret = env.BROADCAST_SECRET;
+        if (secret) {
+          const authHeader = request.headers.get("X-Broadcast-Secret") || request.headers.get("Authorization");
+          if (authHeader !== secret && authHeader !== `Bearer ${secret}`) {
+            return new Response(JSON.stringify({ error: "Unauthorized: Invalid or missing broadcast secret" }), {
+              status: 401,
+              headers: { ...corsHeaders(origin), "Content-Type": "application/json" },
+            });
+          }
+        }
+
         let body = {};
         try {
           body = await request.json();
         } catch {
           body = {};
+        }
+
+        // Validate stream URL pattern to prevent arbitrary redirects
+        if (body.url !== undefined && body.url !== "") {
+          if (typeof body.url !== "string" || !body.url.startsWith("https://") || body.url.length > 250) {
+            return new Response(JSON.stringify({ error: "Invalid stream URL: Must be a valid secure HTTPS URL" }), {
+              status: 400,
+              headers: { ...corsHeaders(origin), "Content-Type": "application/json" },
+            });
+          }
         }
 
         const mutateRes = await fetch(sanityMutateUrl, {
@@ -114,6 +154,23 @@ export default {
     if (request.method !== "POST") {
       return new Response(JSON.stringify({ error: "Method not allowed" }), {
         status: 405,
+        headers: { ...corsHeaders(origin), "Content-Type": "application/json" },
+      });
+    }
+
+    // Verify Origin (block third-party spam bots)
+    if (origin && !ALLOWED_ORIGINS.includes(origin)) {
+      return new Response(JSON.stringify({ error: "Forbidden origin" }), {
+        status: 403,
+        headers: { ...corsHeaders(origin), "Content-Type": "application/json" },
+      });
+    }
+
+    // IP Rate Limiting (max 15 clicks per 10s window per IP)
+    const clientIp = request.headers.get("CF-Connecting-IP") || request.headers.get("X-Forwarded-For") || "anon";
+    if (!checkRateLimit(clientIp, 15, 10000)) {
+      return new Response(JSON.stringify({ error: "Too many requests. Please slow down." }), {
+        status: 429,
         headers: { ...corsHeaders(origin), "Content-Type": "application/json" },
       });
     }

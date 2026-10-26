@@ -7,6 +7,7 @@ import { getOptimizedImageUrl } from "../components/sanityImage";
 import { useDisco } from "../context/DiscoContext";
 import { ASCII_DIVIDER } from "../utils/ascii";
 import { workPath, isPlainLeftClick } from "../utils/routing";
+import TuiLoadError from "./TuiLoadError";
 
 // `selectedId` is the project slug from the URL (/work/<slug>); the URL is the
 // source of truth for which project detail is shown.
@@ -14,8 +15,13 @@ export default function TuiWork({ selectedId = null }) {
     const { searchQuery } = useDisco();
     const [projects, setProjects] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
+    const [loadError, setLoadError] = useState(false);
+    const [reloadKey, setReloadKey] = useState(0);
 
     useEffect(() => {
+        let cancelled = false;
+        setIsLoading(true);
+        setLoadError(false);
         const query = `*[_type == "project" && category == "work"] | order(ranking asc, year desc) {
             "id": coalesce(slug.current, _id),
             title,
@@ -42,14 +48,18 @@ export default function TuiWork({ selectedId = null }) {
 
         client.fetch(query)
             .then((data) => {
-                setProjects(data);
+                if (cancelled) return;
+                setProjects(Array.isArray(data) ? data : []);
                 setIsLoading(false);
             })
             .catch((err) => {
+                if (cancelled) return;
                 console.error("Error fetching projects:", err);
+                setLoadError(true);
                 setIsLoading(false);
             });
-    }, []);
+        return () => { cancelled = true; };
+    }, [reloadKey]);
 
     const activeProject = selectedId ? projects.find(p => p.id === selectedId) ?? null : null;
 
@@ -70,6 +80,10 @@ export default function TuiWork({ selectedId = null }) {
                 [ LOADING_SELECTED_WORKS... ]
             </div>
         );
+    }
+
+    if (loadError) {
+        return <TuiLoadError label="COULD_NOT_LOAD_WORKS" onRetry={() => setReloadKey(k => k + 1)} />;
     }
 
     if (selectedId && !activeProject) {

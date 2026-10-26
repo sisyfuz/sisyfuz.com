@@ -4,6 +4,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { client } from "../sanityClient";
 import { ASCII_DIVIDER } from "../utils/ascii";
 import { workPath } from "../utils/routing";
+import TuiLoadError from "./TuiLoadError";
 
 // Each row's ACCESS cell holds a real link (keyboard focusable, middle-click /
 // open-in-new-tab capable); clicking anywhere else on the row follows it too.
@@ -11,8 +12,13 @@ export default function TuiArchive() {
     const navigate = useNavigate();
     const [items, setItems] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
+    const [loadError, setLoadError] = useState(false);
+    const [reloadKey, setReloadKey] = useState(0);
 
     useEffect(() => {
+        let cancelled = false;
+        setIsLoading(true);
+        setLoadError(false);
         const query = `*[_type == "project" && category != "draft"] | order(year desc) {
             "id": coalesce(slug.current, _id),
             title,
@@ -24,14 +30,18 @@ export default function TuiArchive() {
 
         client.fetch(query)
             .then((data) => {
-                setItems(data);
+                if (cancelled) return;
+                setItems(Array.isArray(data) ? data : []);
                 setIsLoading(false);
             })
             .catch((err) => {
+                if (cancelled) return;
                 console.error("Error fetching archive:", err);
+                setLoadError(true);
                 setIsLoading(false);
             });
-    }, []);
+        return () => { cancelled = true; };
+    }, [reloadKey]);
 
     if (isLoading) {
         return (
@@ -39,6 +49,10 @@ export default function TuiArchive() {
                 [ LOADING_ARCHIVE_DATA... ]
             </div>
         );
+    }
+
+    if (loadError) {
+        return <TuiLoadError label="COULD_NOT_LOAD_ARCHIVE" onRetry={() => setReloadKey(k => k + 1)} />;
     }
 
     return (

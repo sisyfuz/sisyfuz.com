@@ -1,4 +1,5 @@
 // src/components/MobileCommandBar.jsx
+import { Link } from "react-router-dom";
 import { useA11y } from "../context/A11yContext";
 import { ASCII_DIVIDER } from "../utils/ascii";
 
@@ -10,7 +11,9 @@ const MOBILE_NAV_ITEMS = [
     { key: "contact", label: "CONTACT" },
 ];
 
-export default function MobileCommandBar({ activeSection, onNavigate, isSearchFocused = false }) {
+// `onLinkClick` runs on every nav link click (before the router navigates) so the
+// parent can reset search state; navigation itself is done by the <Link>.
+export default function MobileCommandBar({ activeSection, onLinkClick, isSearchFocused = false }) {
     const { toggleA11yToolbar, isA11yToolbarOpen } = useA11y();
 
     return (
@@ -29,10 +32,10 @@ export default function MobileCommandBar({ activeSection, onNavigate, isSearchFo
                 {MOBILE_NAV_ITEMS.map((item) => {
                     const isActive = activeSection === item.key;
                     return (
-                        <button
+                        <Link
                             key={item.key}
-                            type="button"
-                            onClick={() => onNavigate(item.key)}
+                            to={`/${item.key}`}
+                            onClick={onLinkClick}
                             aria-label={`Navigate to ${item.label} section`}
                             aria-current={isActive ? "page" : undefined}
                             className={`min-h-[44px] min-w-[44px] px-1.5 py-1 font-mono text-[11px] uppercase tracking-wider flex items-center justify-center cursor-pointer transition-none shrink-0 ${
@@ -44,7 +47,7 @@ export default function MobileCommandBar({ activeSection, onNavigate, isSearchFo
                             <span>
                                 [{item.label}{isActive ? " ●" : ""}]
                             </span>
-                        </button>
+                        </Link>
                     );
                 })}
 

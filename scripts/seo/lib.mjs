@@ -1,5 +1,5 @@
 // scripts/seo/lib.mjs
-// Pure helpers for the post-build SEO step (per-route HTML, meta tags).
+// Pure helpers for the post-build SEO step (per-route HTML, meta tags, sitemap).
 // No dependencies: runs on plain Node 20+.
 
 export const SITE_URL = "https://sisyfuz.com";
@@ -19,7 +19,7 @@ const TAGLINE = "Sci-fi als taal. Queer als basishouding.";
 
 // Canonical form: every page is a folder with index.html, so GitHub Pages serves
 // it at "/<route>/" (and 301-redirects "/<route>" there). All canonical URLs and
-// any future sitemap entries therefore use the trailing-slash form.
+// sitemap entries therefore use the trailing-slash form.
 export const ROUTES = [
     { path: "/", title: "sisyfuz — Dorus Kleijne", description: STATEMENT },
     { path: "/work/", title: "Work — sisyfuz", description: `Werk van Dorus Kleijne (sisyfuz). ${TAGLINE}` },
@@ -37,6 +37,10 @@ const HTML_ESCAPES = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'
 
 export function escapeHtml(value) {
     return String(value ?? "").replace(/[&<>"']/g, (c) => HTML_ESCAPES[c]);
+}
+
+export function escapeXml(value) {
+    return String(value ?? "").replace(/[&<>"']/g, (c) => (c === "'" ? "&apos;" : HTML_ESCAPES[c]));
 }
 
 /** Collapse whitespace and cut to `max` chars on a word boundary. */
@@ -150,6 +154,13 @@ export function injectHead(html, page) {
 export function outputFileFor(path) {
     const rel = path.replace(/^\/+|\/+$/g, "");
     return rel ? `${rel}/index.html` : "index.html";
+}
+
+export function buildSitemap(pages) {
+    const urls = pages
+        .filter((p) => p.sitemap !== false)
+        .map((p) => `  <url>\n    <loc>${escapeXml(absoluteUrl(p.path))}</loc>\n  </url>`);
+    return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls.join("\n")}\n</urlset>\n`;
 }
 
 /**

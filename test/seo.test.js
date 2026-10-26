@@ -18,6 +18,8 @@ import {
     injectHead,
     outputFileFor,
     fetchProjects,
+    buildSitemap,
+    escapeXml,
 } from "../scripts/seo/lib.mjs";
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -159,6 +161,37 @@ describe("SEO helpers", () => {
             assert.deepEqual(await fetchProjects({ fetchImpl: bad, warn: (m) => warnings.push(m) }), []);
             assert.equal(warnings.length, 1);
         }
+    });
+
+    test("buildSitemap lists absolute trailing-slash URLs and skips aliases", () => {
+        const pages = [...ROUTES, ...projectsToPages([{ slug: "p&q", title: "x" }, { slug: "proj", title: "P" }])];
+        const xml = buildSitemap(pages);
+        assert.ok(xml.startsWith('<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'));
+        assert.ok(xml.trimEnd().endsWith("</urlset>"));
+        const locs = [...xml.matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => m[1]);
+        assert.deepEqual(locs, [
+            "https://sisyfuz.com/",
+            "https://sisyfuz.com/work/",
+            "https://sisyfuz.com/archive/",
+            "https://sisyfuz.com/about/",
+            "https://sisyfuz.com/contact/",
+            "https://sisyfuz.com/press/",
+            "https://sisyfuz.com/live/",
+            "https://sisyfuz.com/privacy/",
+            "https://sisyfuz.com/work/proj/",
+        ]);
+    });
+
+    test("escapeXml escapes all five XML entities", () => {
+        assert.equal(escapeXml(`<&>"'`), "&lt;&amp;&gt;&quot;&apos;");
+    });
+
+    test("public/robots.txt allows all and points to the sitemap", () => {
+        const robots = fs.readFileSync(path.join(rootDir, "public/robots.txt"), "utf8");
+        assert.match(robots, /^User-agent: \*$/m);
+        assert.match(robots, /^Allow: \/$/m);
+        assert.doesNotMatch(robots, /^Disallow: \/\s*$/m);
+        assert.match(robots, /^Sitemap: https:\/\/sisyfuz\.com\/sitemap\.xml$/m);
     });
 
     test("index.html keeps the SEO markers the prerender step relies on", () => {

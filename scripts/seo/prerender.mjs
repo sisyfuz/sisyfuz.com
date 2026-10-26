@@ -1,7 +1,7 @@
 // scripts/seo/prerender.mjs
 // Runs after `vite build`. Writes dist/<route>/index.html (copies of the SPA shell
 // with route-specific <title>, description, canonical, Open Graph and Twitter tags)
-// for every static route and every Sanity work project.
+// for every static route and every Sanity work project, plus dist/sitemap.xml.
 // GitHub Pages then answers those URLs with HTTP 200 instead of going through 404.html.
 //
 // Set SEO_SKIP_SANITY=1 to skip the network fetch (static routes only).
@@ -11,6 +11,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
     ROUTES,
+    buildSitemap,
     fetchProjects,
     injectHead,
     outputFileFor,
@@ -36,7 +37,9 @@ async function main() {
         await writeFile(file, injectHead(template, page));
     }
 
-    console.log(`[seo] wrote ${ROUTES.length} route pages, ${projectPages.length} project pages`);
+    await writeFile(path.join(distDir, "sitemap.xml"), buildSitemap(pages));
+
+    console.log(`[seo] wrote ${ROUTES.length} route pages, ${projectPages.length} project pages and sitemap.xml`);
 }
 
 main().catch((err) => {

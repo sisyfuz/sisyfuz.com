@@ -34,6 +34,8 @@ export function DiscoProvider({ children }) {
             const rawUrl = foundEgg.url.trim();
             // Strictly allow only valid secure HTTP/HTTPS URLs (prevents javascript: XSS)
             if (rawUrl.startsWith("https://") || rawUrl.startsWith("http://")) {
+                // Clearing the query is a one-shot reaction to a matched command, not derived state.
+                // eslint-disable-next-line react-hooks/set-state-in-effect
                 setSearchQuery("");
                 window.open(rawUrl, "_blank", "noopener,noreferrer");
             }
@@ -54,6 +56,7 @@ export function DiscoProvider({ children }) {
     );
 }
 
+// eslint-disable-next-line react-refresh/only-export-components -- hook is colocated with its provider
 export const useDisco = () => {
     const context = useContext(DiscoContext);
     if (!context) {

@@ -31,7 +31,7 @@ export default function A11yToolbar() {
         } else if (triggerRef.current && typeof triggerRef.current.focus === "function") {
             try {
                 triggerRef.current.focus();
-            } catch {}
+            } catch { /* best-effort: ignore */ }
             triggerRef.current = null;
         }
     }, [isA11yToolbarOpen]);
@@ -43,7 +43,7 @@ export default function A11yToolbar() {
         // Autofocus close button on modal open
         try {
             closeBtnRef.current?.focus();
-        } catch {}
+        } catch { /* best-effort: ignore */ }
 
         const handleKeyDown = (e) => {
             if (e.key === "Escape") {

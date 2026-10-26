@@ -132,7 +132,7 @@ export function A11yProvider({ children }) {
                 mediaQuery.addListener(handler);
                 return () => mediaQuery.removeListener(handler);
             }
-        } catch {}
+        } catch { /* best-effort: ignore */ }
     }, []);
 
     const toggleReducedMotion = useCallback(() => {
@@ -207,6 +207,7 @@ export function A11yProvider({ children }) {
     );
 }
 
+// eslint-disable-next-line react-refresh/only-export-components -- hook is colocated with its provider
 export function useA11y() {
     const context = useContext(A11yContext);
     if (!context) {

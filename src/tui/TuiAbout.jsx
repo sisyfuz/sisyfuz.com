@@ -13,7 +13,6 @@ export default function TuiAbout({ onNavigate }) {
 
     useEffect(() => {
         let cancelled = false;
-        setLoadError(false);
         client.fetch(`*[_type == "aboutAssets"][0]`)
             .then((data) => {
                 if (!cancelled) setAssets(data);
@@ -96,7 +95,10 @@ export default function TuiAbout({ onNavigate }) {
                     ) : loadError ? (
                         <TuiLoadError
                             label="COULD_NOT_LOAD_PORTRAIT"
-                            onRetry={() => setReloadKey(k => k + 1)}
+                            onRetry={() => {
+                                setLoadError(false);
+                                setReloadKey(k => k + 1);
+                            }}
                             className="p-16 justify-center"
                         />
                     ) : (

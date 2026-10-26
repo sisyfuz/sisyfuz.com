@@ -10,19 +10,14 @@ const WORKER_URL = "https://sisyfuz-counter.sisyfuz.workers.dev";
 
 export default function TuiPress() {
     const [count, setCount] = useState(null);
-    const [hasPressed, setHasPressed] = useState(false);
+    const [hasPressed, setHasPressed] = useState(() => !!localStorage.getItem(STORAGE_KEY));
     const [pressing, setPressing] = useState(false);
     const [error, setError] = useState(null);
     const [countError, setCountError] = useState(false);
     const [reloadKey, setReloadKey] = useState(0);
 
     useEffect(() => {
-        setHasPressed(!!localStorage.getItem(STORAGE_KEY));
-    }, []);
-
-    useEffect(() => {
         let cancelled = false;
-        setCountError(false);
         client
             .fetch(`*[_id == "${COUNTER_ID}"][0].count`)
             .then((c) => {
@@ -74,7 +69,10 @@ export default function TuiPress() {
                 {countError ? (
                     <TuiLoadError
                         label="COULD_NOT_LOAD_COUNTER"
-                        onRetry={() => setReloadKey(k => k + 1)}
+                        onRetry={() => {
+                            setCountError(false);
+                            setReloadKey(k => k + 1);
+                        }}
                         className=""
                     />
                 ) : (

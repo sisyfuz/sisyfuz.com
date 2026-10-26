@@ -20,8 +20,6 @@ export default function TuiWork({ selectedId = null }) {
 
     useEffect(() => {
         let cancelled = false;
-        setIsLoading(true);
-        setLoadError(false);
         const query = `*[_type == "project" && category == "work"] | order(ranking asc, year desc) {
             "id": coalesce(slug.current, _id),
             title,
@@ -61,6 +59,13 @@ export default function TuiWork({ selectedId = null }) {
         return () => { cancelled = true; };
     }, [reloadKey]);
 
+    // Reset state in the event handler, not the effect, so a retry renders once
+    const retry = () => {
+        setIsLoading(true);
+        setLoadError(false);
+        setReloadKey(k => k + 1);
+    };
+
     const activeProject = selectedId ? projects.find(p => p.id === selectedId) ?? null : null;
 
     const filteredProjects = projects.filter(p => {
@@ -83,7 +88,7 @@ export default function TuiWork({ selectedId = null }) {
     }
 
     if (loadError) {
-        return <TuiLoadError label="COULD_NOT_LOAD_WORKS" onRetry={() => setReloadKey(k => k + 1)} />;
+        return <TuiLoadError label="COULD_NOT_LOAD_WORKS" onRetry={retry} />;
     }
 
     if (selectedId && !activeProject) {

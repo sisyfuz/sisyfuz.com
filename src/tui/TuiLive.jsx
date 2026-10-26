@@ -3,7 +3,7 @@ import { client } from "../sanityClient";
 import { ASCII_DIVIDER, ASCII_RAMP } from "../utils/ascii";
 import { useDisco } from "../context/DiscoContext";
 import { useA11y } from "../context/A11yContext";
-import { sanitizeUrlParam, sanitizeChat, sanitizeStreamUrl } from "../utils/sanitize";
+import { sanitizeChat, sanitizeStreamUrl } from "../utils/sanitize";
 
 const isLocalhost = typeof window !== "undefined" && (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
 const WORKER_LIVE_URL = "https://sisyfuz-counter.sisyfuz.workers.dev/live";
@@ -132,7 +132,6 @@ export default function TuiLive({ onNavigate }) {
     useEffect(() => {
         isChatOpenRef.current = isChatOpen;
         if (isChatOpen) {
-            setUnreadChatCount(0);
             setTimeout(() => {
                 if (chatScrollRef.current) {
                     chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight;
@@ -357,6 +356,7 @@ export default function TuiLive({ onNavigate }) {
             if (e.key === "c" || e.key === "C") {
                 e.preventDefault();
                 setIsChatOpen(prev => !prev);
+                setUnreadChatCount(0);
             } else if (e.key === "Tab") {
                 e.preventDefault();
                 setDisplayMode(prev => {
@@ -406,6 +406,7 @@ export default function TuiLive({ onNavigate }) {
         const isHttp = streamUrl && (streamUrl.startsWith("http://") || streamUrl.startsWith("https://"));
 
         if (!isHttp) {
+            // eslint-disable-next-line react-hooks/set-state-in-effect -- the stream source changed to none; reset the live flag owned by this engine
             setIsLive(false);
             return;
         }
@@ -978,7 +979,7 @@ export default function TuiLive({ onNavigate }) {
     }, []);
 
     // 3. Multi-User Telemetry WebSocket Connection to TouchDesigner
-    const sessionIdRef = useRef("usr_" + Math.random().toString(36).substring(2, 7));
+    const [sessionId] = useState(() => "usr_" + Math.random().toString(36).substring(2, 7));
 
     useEffect(() => {
         let isMounted = true;
@@ -1093,7 +1094,8 @@ export default function TuiLive({ onNavigate }) {
     const lastMouseSendRef = useRef(0);
     const isMouseDownRef = useRef(false);
     const isTouchRef = useRef(false);
-    const prevCoordRef = useRef({ u: 0.5, v: 0.5, time: performance.now() });
+    // time 0 makes the first velocity sample ~0 instead of reading the clock during render
+    const prevCoordRef = useRef({ u: 0.5, v: 0.5, time: 0 });
     const clickStartRef = useRef(0);
     const totalClicksRef = useRef(0);
 
@@ -1120,10 +1122,7 @@ export default function TuiLive({ onNavigate }) {
         }
         const vAspect = lastKnownAspectRef.current;
 
-        let imgX = 0;
-        let imgY = 0;
-        let imgW = viewportWidth;
-        let imgH = viewportHeight;
+        let imgX, imgY, imgW, imgH;
 
         if (currentMode === "cover") {
             if (vAspect > viewportAspect) {
@@ -1189,7 +1188,7 @@ export default function TuiLive({ onNavigate }) {
 
         const packet = {
             type: "mouse",
-            id: sessionIdRef.current,
+            id: sessionId,
             u: Number(u.toFixed(4)),
             v: Number(v.toFixed(4)),
             raw_u: Number(rawU.toFixed(4)),
@@ -1454,7 +1453,10 @@ export default function TuiLive({ onNavigate }) {
 
                         {/* Chat Toggle: [C: CHAT] */}
                         <button
-                            onClick={() => setIsChatOpen(prev => !prev)}
+                            onClick={() => {
+                                setIsChatOpen(prev => !prev);
+                                setUnreadChatCount(0);
+                            }}
                             className={`px-1 uppercase cursor-pointer transition-colors ${
                                 isChatOpen
                                     ? "text-[#ff0080] font-bold hover:bg-[#ff0080] hover:text-black"

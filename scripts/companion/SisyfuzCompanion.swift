@@ -388,9 +388,10 @@ class OpenFilesDetector {
         }
 
         if _isDetectionRunning {
-            let res = _cachedResult ?? DetectionResult(files: [], appName: resolveTargetApp()?.localizedName ?? "Finder", summary: "FINDER: NO OPEN WINDOWS OR SELECTION", isFinderFolder: false)
+            // Unlock before resolveTargetApp(): it takes stateLock (non-recursive) itself
+            let cached = _cachedResult
             stateLock.unlock()
-            return res
+            return cached ?? DetectionResult(files: [], appName: resolveTargetApp()?.localizedName ?? "Finder", summary: "SCANNING OPEN FILES...", isFinderFolder: false)
         }
 
         _isDetectionRunning = true
@@ -398,7 +399,9 @@ class OpenFilesDetector {
         let prev = _cachedResult
         stateLock.unlock()
 
-        if prev == nil {
+        // Callers off the main thread (sorting) need a real first result, but the main thread must never
+        // wait: AppleScript can block for seconds, or indefinitely on a first-run Automation prompt
+        if prev == nil && !Thread.isMainThread {
             let res = scriptQueue.sync {
                 return performDetection()
             }
@@ -417,7 +420,14 @@ class OpenFilesDetector {
             stateLock.unlock()
         }
 
-        return prev ?? DetectionResult(files: [], appName: "Finder", summary: "FINDER: NO OPEN WINDOWS OR SELECTION", isFinderFolder: false)
+        return prev ?? DetectionResult(files: [], appName: resolveTargetApp()?.localizedName ?? "Finder", summary: "SCANNING OPEN FILES...", isFinderFolder: false)
+    }
+
+    /// Latest detection without triggering AppleScript, for frequent status polling.
+    static func cachedDetection() -> DetectionResult? {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        return _cachedResult
     }
 
     private static func performDetection() -> DetectionResult {
@@ -608,7 +618,13 @@ class OpenFilesDetector {
 class NativeFileSorterEngine {
     static let shared = NativeFileSorterEngine()
 
+    /// Set by the self-test before `shared` is first used, so tests never touch the real config
+    static var configPathOverride: URL?
+
     var configPath: URL {
+        if let override = NativeFileSorterEngine.configPathOverride {
+            return override
+        }
         let projDir = AppDelegate.defaultProjectDir
         let projectConfig = URL(fileURLWithPath: "\(projDir)/scripts/companion/guardian_config.json")
         if FileManager.default.fileExists(atPath: projectConfig.path) {
@@ -1596,19 +1612,21 @@ class StorageGuardianHTTPServer {
 
         if cleanPath == "/api/status" && method == "GET" {
             let disk = getDiskUsage()
-            let detect = OpenFilesDetector.detectOpenFiles()
+            // Polled every second by FileSorterBridge, so never trigger AppleScript here; the HUD timer
+            // and sort actions refresh the open-files detection
+            let detect = OpenFilesDetector.cachedDetection()
             let status: [String: Any] = [
                 "status": "online",
                 "active_mode": delegate?.currentMode ?? "AUTO",
                 "locked": false,
-                "frontmost_app": detect.appName,
+                "frontmost_app": OpenFilesDetector.resolveTargetApp()?.localizedName ?? detect?.appName ?? "Finder",
                 "disk": disk,
                 "storage": disk,
                 "history": sorter.transactionHistory,
                 "active_target": sorter.activeTargetId,
-                "target_summary": detect.summary,
+                "target_summary": detect?.summary ?? "NO ACTIVE DOCUMENTS",
                 "targets": sorter.targets.map { ["id": $0.id, "label": $0.label, "path": $0.path ?? ""] },
-                "open_files_count": detect.files.count
+                "open_files_count": detect?.files.count ?? 0
             ]
             reply(200, status)
             return
@@ -2146,10 +2164,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKScriptMe
         // Connect to broadcast hub
         connectWebSocket()
 
-        // Auto-refresh active target and open files detector periodically
+        // Auto-refresh open files while the HUD is on screen (each refresh sends AppleScript to the
+        // frontmost app, so stay quiet in the background)
         openFilesRefreshTimer?.invalidate()
         openFilesRefreshTimer = Timer.scheduledTimer(withTimeInterval: 2.5, repeats: true) { [weak self] _ in
-            self?.refreshOpenFilesStatus()
+            guard let self = self, self.chatWindow?.isVisible == true else { return }
+            self.refreshOpenFilesStatus()
         }
 
         // Auto-open studio HUD on launch
@@ -2253,7 +2273,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKScriptMe
         self.currentMode = normalized
         self.fileSorterBridge.activeMode = normalized
 
-        if source != .fileSorter {
+        // The native sorter reads currentMode directly, so only forward to /api/mode when an external
+        // sorter daemon owns port 7479. In-process, that POST re-enters setMode with Live mapped to Work.
+        if source != .fileSorter && !guardianServer.isRunning {
             let sorterMode = (normalized == "Live") ? "Work" : normalized
             fileSorterBridge.setMode(mode: sorterMode)
         }
@@ -2464,7 +2486,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKScriptMe
         let isRightClick = (event.type == .rightMouseUp) || (event.modifierFlags.contains(.control) && event.type == .leftMouseUp)
 
         if isRightClick {
-            updateMenuState()
+            refreshOpenFilesStatus()
             menu.popUp(positioning: nil, at: NSPoint(x: 0, y: 0), in: sender)
         } else {
             toggleChatHUD()
@@ -3413,8 +3435,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKScriptMe
 func runStorageGuardianSelfTest() {
     print("=== STARTING SISYFUZ STORAGE GUARDIAN SELF-TEST ===")
     let fm = FileManager.default
-    let testRoot = URL(fileURLWithPath: fm.currentDirectoryPath).appendingPathComponent("scripts/companion/test_sandbox_\(UUID().uuidString.prefix(6))")
+    let testRoot = fm.temporaryDirectory.appendingPathComponent("sisyfuz_test_sandbox_\(UUID().uuidString.prefix(6))")
     try? fm.createDirectory(at: testRoot, withIntermediateDirectories: true)
+    NativeFileSorterEngine.configPathOverride = testRoot.appendingPathComponent("guardian_config.json")
 
     defer {
         try? fm.removeItem(at: testRoot)
@@ -3422,7 +3445,6 @@ func runStorageGuardianSelfTest() {
 
     print("1. Testing StorageGuardianConfig initialization & persistence...")
     let sorter = NativeFileSorterEngine.shared
-    let originalConfigData = try? Data(contentsOf: sorter.configPath)
     assert(!sorter.rules.isEmpty, "Rules should not be empty")
     assert(!sorter.targets.isEmpty, "Targets should not be empty")
     assert(fm.fileExists(atPath: sorter.configPath.path), "Config file must exist at \(sorter.configPath.path)")
@@ -3522,8 +3544,9 @@ func runStorageGuardianSelfTest() {
     print("   [OK] OpenFilesDetector resolved without self-referential deadlock")
 
     print("9. Testing Idempotent Sort / Nesting Prevention...")
-    // Sort files in testDownloads
-    _ = sorter.sortDirectorySynchronous(url: testDownloads, mode: "School")
+    // Sort files in testDownloads (synchronous sorts don't record undo history, so push it like sortDirectory does)
+    let (idempotentMoves, _) = sorter.sortDirectorySynchronous(url: testDownloads, mode: "School")
+    sorter.pushUndoMoves(idempotentMoves)
     let sortedPdfURL = testDownloads.appendingPathComponent("School/Readings/lecture_slides.pdf")
     assert(fm.fileExists(atPath: sortedPdfURL.path), "Sorted PDF should exist")
 
@@ -3644,9 +3667,13 @@ func runStorageGuardianSelfTest() {
 
     // Writing to broken socket must NOT terminate process with SIGPIPE
     let dummyData = [UInt8]("TEST_BROKEN_PIPE".utf8)
-    let sendRes1 = send(acceptedFd, dummyData, dummyData.count, 0)
-    let sendRes2 = send(acceptedFd, dummyData, dummyData.count, 0)
-    assert(sendRes1 == -1 || sendRes2 == -1, "Send on closed socket should return -1 with EPIPE")
+    // The first send after the peer closes is usually buffered; a later one fails once the peer's RST lands
+    var sawBrokenPipe = false
+    for _ in 0..<50 where !sawBrokenPipe {
+        sawBrokenPipe = send(acceptedFd, dummyData, dummyData.count, 0) == -1
+        if !sawBrokenPipe { usleep(5000) }
+    }
+    assert(sawBrokenPipe, "Send on closed socket should return -1 with EPIPE")
     close(acceptedFd)
     close(sigpipeServerFd)
     print("   [OK] SIGPIPE resiliency verified: broken pipe safely returned EPIPE without crash")
@@ -3695,10 +3722,16 @@ func runStorageGuardianSelfTest() {
     let getReq = "GET /api/status HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n"
     _ = getReq.withCString { send(testClientFd, $0, strlen($0), 0) }
 
+    // Read until the server closes (Connection: close): the status body includes history and can exceed one recv
     var responseBuf = [UInt8](repeating: 0, count: 4096)
-    let respBytes = recv(testClientFd, &responseBuf, responseBuf.count, 0)
-    assert(respBytes > 0, "Server must not drop connection on delayed client (got \(respBytes) bytes)")
-    let respStr = String(decoding: responseBuf[0..<respBytes], as: UTF8.self)
+    var responseData = [UInt8]()
+    while true {
+        let n = recv(testClientFd, &responseBuf, responseBuf.count, 0)
+        if n <= 0 { break }
+        responseData.append(contentsOf: responseBuf[0..<n])
+    }
+    assert(!responseData.isEmpty, "Server must not drop connection on delayed client (got 0 bytes)")
+    let respStr = String(decoding: responseData, as: UTF8.self)
     assert(respStr.contains("200 OK"), "Response should be 200 OK")
     assert(respStr.contains("\"status\" : \"online\"") || respStr.contains("\"status\": \"online\"") || respStr.contains("\"status\":\"online\""), "Response should contain online status")
     close(testClientFd)
@@ -3784,9 +3817,6 @@ func runStorageGuardianSelfTest() {
     print("   [OK] Concurrent result state synchronization verified with zero race crashes")
 
     print("\n=== ALL GUARDIAN SELF-TESTS PASSED SUCCESSFULLY! ===")
-    if let orig = originalConfigData {
-        try? orig.write(to: sorter.configPath, options: [.atomic])
-    }
     try? fm.removeItem(at: testRoot)
     exit(0)
 }

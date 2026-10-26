@@ -317,12 +317,21 @@ async function main() {
     let liveUrl = null;
     let activeMode = "AUTO";
 
+    // Audience size: the Companion app and its HUD connect locally and are not viewers
+    function viewerCount() {
+        let n = 0;
+        for (const c of activeWsClients) {
+            if (!c.isLocal) n++;
+        }
+        return n;
+    }
+
     function getStatusPacket() {
         return JSON.stringify({
             type: "status",
             active: Boolean(liveUrl),
             url: liveUrl || "",
-            viewers: Math.max(0, activeWsClients.size),
+            viewers: viewerCount(),
             tdConnected,
             chatCount: chatHistory.length,
             mode: activeMode,
@@ -349,7 +358,7 @@ async function main() {
                 tdConnected = true;
                 console.log(`      [OK] Connected to TouchDesigner receiver on port ${TD_PORT}`);
                 try {
-                    ws.send(JSON.stringify({ type: "stats", viewers: Math.max(1, activeWsClients.size) }));
+                    ws.send(JSON.stringify({ type: "stats", viewers: viewerCount() }));
                 } catch {}
             });
 
@@ -504,7 +513,7 @@ async function main() {
             res.end(JSON.stringify({
                 active: Boolean(liveUrl),
                 url: liveUrl,
-                viewers: Math.max(0, activeWsClients.size),
+                viewers: viewerCount(),
                 tdConnected,
                 chatCount: chatHistory.length,
             }));
@@ -762,7 +771,7 @@ async function main() {
         // Send recent chat history, live stats and status on connect
         try {
             clientWs.send(JSON.stringify({ type: "chat_history", messages: chatHistory }));
-            const statsMsg = JSON.stringify({ type: "stats", viewers: Math.max(1, activeWsClients.size) });
+            const statsMsg = JSON.stringify({ type: "stats", viewers: viewerCount() });
             clientWs.send(statsMsg);
             clientWs.send(getStatusPacket());
             if (tdSocket && tdSocket.readyState === WebSocket.OPEN) {
@@ -863,8 +872,9 @@ async function main() {
                 // Handle Storage Guardian Telemetry routing to TouchDesigner & Web clients
                 if (msg.type === "storage_telemetry") {
                     if (!clientWs.isHostClient) return;
+                    // Contains the frontmost app and disk state: keep it off public viewer sockets
                     for (const c of activeWsClients) {
-                        if (c !== clientWs && c.readyState === WebSocket.OPEN) c.send(rawStr);
+                        if (c !== clientWs && c.isLocal && c.readyState === WebSocket.OPEN) c.send(rawStr);
                     }
                     if (tdSocket && tdSocket.readyState === WebSocket.OPEN) {
                         tdSocket.send(rawStr);
@@ -900,7 +910,7 @@ async function main() {
 
         clientWs.on("close", () => {
             activeWsClients.delete(clientWs);
-            const statsMsg = JSON.stringify({ type: "stats", viewers: Math.max(1, activeWsClients.size) });
+            const statsMsg = JSON.stringify({ type: "stats", viewers: viewerCount() });
             for (const c of activeWsClients) {
                 if (c.readyState === WebSocket.OPEN) c.send(statsMsg);
             }

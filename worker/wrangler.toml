@@ -1,3 +1,14 @@
 name = "sisyfuz-counter"
 main = "src/index.js"
-compatibility_date = "2024-01-01"
+compatibility_date = "2025-12-01"
+
+# Secrets (not stored here; set with `npx wrangler secret put <NAME>`):
+#   SANITY_WRITE_TOKEN
+#   BROADCAST_SECRET   (required: POST /live fails closed without it)
+
+# Workers Rate Limiting binding: 15 requests per 10 s per client IP.
+# namespace_id is an arbitrary positive integer, unique within the account.
+[[ratelimits]]
+name = "RATE_LIMITER"
+namespace_id = "1001"
+simple = { limit = 15, period = 10 }

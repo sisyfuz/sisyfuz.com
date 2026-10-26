@@ -16,7 +16,6 @@
 import { spawn, execSync } from "child_process";
 import fs from "fs";
 import http from "http";
-import httpProxy from "http-proxy";
 import path from "path";
 import { fileURLToPath } from "url";
 import { WebSocketServer, WebSocket } from "ws";
@@ -75,6 +74,7 @@ function isLocalRequest(req) {
 
 function sanitizeChatText(str) {
     return String(str || "")
+        // eslint-disable-next-line no-control-regex -- stripping control characters is the point
         .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F]/g, "") // strip control characters
         .trim()
         .slice(0, 200);
@@ -82,6 +82,7 @@ function sanitizeChatText(str) {
 
 function sanitizeUsername(str, isHost = false) {
     let clean = String(str || "anon")
+        // eslint-disable-next-line no-control-regex -- stripping control characters is the point
         .replace(/[\u0000-\u001F\u007F-\u009F]/g, "")
         .trim()
         .slice(0, 24) || "anon";
@@ -274,11 +275,6 @@ async function main() {
 
     // 3. Start Transparent Cookie-Handling Proxy (Port 9988)
     console.log(`[3/4] Starting unified proxy on port ${PROXY_PORT}...`);
-    const wsProxy = httpProxy.createProxyServer({
-        ws: true,
-        xfwd: true,
-    });
-
     const activeCookies = new Map();
     const httpAgent = new http.Agent({
         keepAlive: true,
@@ -961,7 +957,7 @@ async function main() {
 
     const handleOutput = async (data) => {
         const text = data.toString();
-        const match = text.match(/https:\/\/([a-zA-Z0-9\-]+\.trycloudflare\.com)/);
+        const match = text.match(/https:\/\/([a-zA-Z0-9-]+\.trycloudflare\.com)/);
         if (match && !liveUrl && !isShuttingDown) {
             liveUrl = match[0];
             broadcastStatus();

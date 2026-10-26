@@ -34,6 +34,8 @@ export default defineConfig([
     },
     rules: {
       'no-unused-vars': ['error', { varsIgnorePattern: '^[A-Z_]' }],
+      // Best-effort `catch {}` (socket sends, cleanup) is an intentional idiom here
+      'no-empty': ['error', { allowEmptyCatch: true }],
     },
   },
   {
@@ -46,6 +48,8 @@ export default defineConfig([
     },
     rules: {
       'no-unused-vars': ['error', { varsIgnorePattern: '^[A-Z_]' }],
+      // Best-effort `catch {}` (socket sends, cleanup) is an intentional idiom here
+      'no-empty': ['error', { allowEmptyCatch: true }],
     },
   },
   {

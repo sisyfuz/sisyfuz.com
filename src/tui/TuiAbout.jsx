@@ -31,18 +31,18 @@ export default function TuiAbout({ onNavigate }) {
         : null;
 
     return (
-        <div className="space-y-8 animate-fadeIn max-w-4xl text-xs sm:text-[13px] leading-relaxed">
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-start">
+        <div className="space-y-[2lh] animate-fadeIn max-w-[112ch]">
+            <div className="term-split">
                 {/* Left Column: Authentic Statements */}
-                <div className="lg:col-span-7 space-y-6">
-                    <div className="space-y-3">
+                <div className="space-y-[1lh]">
+                    <div className="space-y-[1lh]">
                         <span className="font-bold uppercase text-white block">
                             DORUS KLEIJNE (2006)
                         </span>
                         <div className="text-neutral-600 select-none overflow-hidden whitespace-nowrap">
                             {ASCII_DIVIDER}
                         </div>
-                        <div className="space-y-3 text-neutral-300">
+                        <div className="space-y-[1lh] text-neutral-300">
                             <p>
                                 Dorus Kleijne maakt onverstaanbaar, intellectueel, eclectisch en interdisciplinair werk. Doormiddel van sci-fi ontstaan ruizige ervaringen, die inherent queer zijn.
                             </p>
@@ -56,7 +56,7 @@ export default function TuiAbout({ onNavigate }) {
                     </div>
 
                     {/* Metadata Specs */}
-                    <div className="space-y-1.5 text-neutral-400 pt-2 uppercase">
+                    <div className="text-neutral-400 uppercase">
                         <div>
                             <span className="text-neutral-500">PLEKJE:</span> <span className="text-white">UTRECHT, NL</span>
                         </div>
@@ -65,16 +65,16 @@ export default function TuiAbout({ onNavigate }) {
                         </div>
                     </div>
 
-                    <div className="pt-2 flex flex-wrap gap-2">
+                    <div className="flex flex-wrap gap-x-[1ch]">
                         <button
                             onClick={() => onNavigate && onNavigate("contact")}
-                            className="text-white hover:bg-white hover:text-black font-bold uppercase py-1 px-2 -ml-2 cursor-pointer transition-colors inline-block"
+                            className="text-white hover:bg-white hover:text-black font-bold uppercase px-[1ch] -ml-[1ch] cursor-pointer transition-colors inline-block"
                         >
                             [STUUR_EEN_BERICHT →]
                         </button>
                         <button
                             onClick={() => onNavigate && onNavigate("privacy")}
-                            className="text-neutral-400 hover:bg-white hover:text-black font-bold uppercase py-1 px-2 cursor-pointer transition-colors inline-block"
+                            className="text-neutral-400 hover:bg-white hover:text-black font-bold uppercase px-[1ch] cursor-pointer transition-colors inline-block"
                         >
                             [PRIVACY_&_LEGAL →]
                         </button>
@@ -84,13 +84,12 @@ export default function TuiAbout({ onNavigate }) {
                 </div>
 
                 {/* Right Column: ASCII Portrait with Cellular Wipe */}
-                <div className="lg:col-span-5 space-y-2">
+                <div>
                     {imageUrl ? (
                         <AsciiMedia
                             src={imageUrl}
                             alt="Dorus Kleijne Portrait"
-                            cols={50}
-                            aspectRatio="aspect-[3/4]"
+                            aspect={3 / 4}
                         />
                     ) : loadError ? (
                         <TuiLoadError
@@ -99,14 +98,14 @@ export default function TuiAbout({ onNavigate }) {
                                 setLoadError(false);
                                 setReloadKey(k => k + 1);
                             }}
-                            className="p-16 justify-center"
+                            className="px-[8ch] py-[3lh] justify-center"
                         />
                     ) : (
-                        <div className="p-16 text-center text-neutral-600 uppercase">
+                        <div className="px-[8ch] py-[3lh] text-center text-neutral-600 uppercase">
                             [LOADING_PORTRAIT...]
                         </div>
                     )}
-                    <div className="text-[11px] text-neutral-500 uppercase">
+                    <div className="text-neutral-500 uppercase">
                         // DORUS KLEIJNE (STUDIO PORTRAIT)
                     </div>
                 </div>

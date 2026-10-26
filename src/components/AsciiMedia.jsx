@@ -1,7 +1,8 @@
 // src/components/AsciiMedia.jsx
-import { useEffect, useState, useRef, useCallback } from "react";
+import { useEffect, useLayoutEffect, useState, useRef, useCallback } from "react";
 import { ASCII_RAMP } from "../utils/ascii";
 import { useA11y } from "../context/A11yContext";
+import { useTermCell, rowBaseline } from "../hooks/useTermCell";
 
 function setCoverCrop(srcW, srcH, destW, destH, out) {
     if (!srcW || !srcH || !destW || !destH) {
@@ -29,14 +30,22 @@ function setCoverCrop(srcW, srcH, destW, destH, out) {
     }
 }
 
+// Renders an image as ASCII on the page's terminal grid: every glyph occupies exactly
+// one 1ch x 1lh cell in the page font, and the box is a whole number of rows tall.
+// `aspect` is width / height; the height is rounded to the nearest row.
 export default function AsciiMedia({
     src,
     alt = "media",
-    cols = 52,
-    aspectRatio = "aspect-[3/2]",
+    aspect = 3 / 2,
     className = "",
 }) {
     const { reducedMotion, lowPowerMode, asciiAltMode } = useA11y();
+    const cell = useTermCell();
+    const cellRef = useRef(cell);
+    useLayoutEffect(() => {
+        cellRef.current = cell;
+    }, [cell]);
+    const [boxWidth, setBoxWidth] = useState(0);
     const containerRef = useRef(null);
     const canvasRef = useRef(null);
     const offscreenRef = useRef(null);
@@ -45,8 +54,8 @@ export default function AsciiMedia({
 
     const stateRef = useRef({
         img: null,
-        rows: 28,
-        cols: cols,
+        rows: 0,
+        cols: 0,
         width: 0,
         height: 0,
         rampIndices: null,
@@ -57,22 +66,19 @@ export default function AsciiMedia({
     });
 
     // 1. Sample image into ASCII matrix with cover-crop logic using persistent offscreen canvas & typed arrays
-    const recomputeMatrix = useCallback((img, width, height) => {
+    const recomputeMatrix = useCallback((img, width) => {
         const srcW = img.naturalWidth || img.width;
         const srcH = img.naturalHeight || img.height;
-        if (!srcW || !srcH) return;
+        if (!srcW || !srcH || !width) return;
 
-        const destW = width || 600;
-        const destH = height || 400;
+        // One sample per grid cell: whole columns that fit, rows from the requested aspect
+        const { w: cellW, h: cellH } = cellRef.current;
+        const activeCols = Math.max(1, Math.floor(width / cellW));
+        const rows = Math.max(4, Math.round(width / aspect / cellH));
+        const destW = activeCols * cellW;
+        const destH = rows * cellH;
         stateRef.current.width = destW;
         stateRef.current.height = destH;
-
-        // Auto-adapt column count for small mobile viewports to prevent squished characters
-        const activeCols = destW < 420 ? Math.min(cols, 38) : (destW < 600 ? Math.min(cols, 46) : cols);
-
-        // Character font aspect ratio ~ 0.52 (width/height)
-        const charAspect = 0.52;
-        const rows = Math.max(14, Math.floor(activeCols * (destH / destW) * charAspect));
 
         stateRef.current.rows = rows;
         stateRef.current.cols = activeCols;
@@ -133,7 +139,7 @@ export default function AsciiMedia({
                 rampIndices[cellIdx] = Math.max(0, Math.min(rampLength - 1, charIdx));
             }
         }
-    }, [cols]);
+    }, [aspect]);
 
     // Render frame with zero per-frame object allocations
     const renderFrame = useCallback(() => {
@@ -142,19 +148,8 @@ export default function AsciiMedia({
         if (!canvas || !state.img || !state.rampIndices) return;
 
         const dpr = window.devicePixelRatio || 1;
-        let width = state.width;
-        let height = state.height;
-
-        if (width === 0 || height === 0) {
-            const container = containerRef.current;
-            if (!container) return;
-            const rect = container.getBoundingClientRect();
-            width = Math.floor(rect.width);
-            height = Math.floor(rect.height);
-            state.width = width;
-            state.height = height;
-        }
-
+        const width = state.width;
+        const height = state.height;
         if (width <= 0 || height <= 0) return;
 
         const numCols = state.cols;
@@ -167,6 +162,9 @@ export default function AsciiMedia({
         if (canvas.width !== targetCanvasW || canvas.height !== targetCanvasH) {
             canvas.width = targetCanvasW;
             canvas.height = targetCanvasH;
+            // CSS size = exactly the drawn cells, so the canvas never stretches off-grid
+            canvas.style.width = `${width}px`;
+            canvas.style.height = `${height}px`;
         }
 
         const ctx = canvas.getContext("2d");
@@ -205,10 +203,11 @@ export default function AsciiMedia({
             ctx.fillStyle = "#050505";
             ctx.fillRect(0, 0, width, height);
 
-            const fontSize = Math.max(8, Math.floor(cellH * 0.95));
-            ctx.font = `${fontSize}px "Space Mono", "Courier New", monospace`;
-            ctx.textBaseline = "middle";
-            ctx.textAlign = "center";
+            // Same font, size and baseline as the surrounding DOM text
+            const termCell = cellRef.current;
+            ctx.font = termCell.font;
+            ctx.textBaseline = "alphabetic";
+            ctx.textAlign = "left";
 
             const ramp = ASCII_RAMP;
             const rampIndices = state.rampIndices;
@@ -231,7 +230,7 @@ export default function AsciiMedia({
             let activeColor = "";
 
             for (let y = 0; y < numRows; y++) {
-                const rowY = y * cellH + cellH / 2;
+                const rowY = rowBaseline(termCell, y * cellH);
                 const rowOffset = y * numCols;
                 const sy = cropY + y * srcCellH;
                 const dy = Math.floor(y * cellH);
@@ -247,7 +246,7 @@ export default function AsciiMedia({
                         ctx.drawImage(img, sx, sy, srcCellW, srcCellH, dx, dy, dw, dh);
                     } else {
                         const char = ramp[rampIndices[cellIdx]];
-                        const cellX = x * cellW + cellW / 2;
+                        const cellX = x * cellW;
 
                         if (delta >= -0.02 && delta <= 0.04) {
                             // ACTIVE TRANSITION FLASH: Hot pink
@@ -277,9 +276,9 @@ export default function AsciiMedia({
     }, []);
 
     // Reset the loading state during render whenever the image source or density changes
-    const [loadDeps, setLoadDeps] = useState({ src, cols });
-    if (loadDeps.src !== src || loadDeps.cols !== cols) {
-        setLoadDeps({ src, cols });
+    const [loadDeps, setLoadDeps] = useState({ src });
+    if (loadDeps.src !== src) {
+        setLoadDeps({ src });
         if (src) setImageLoaded(false);
     }
 
@@ -294,8 +293,7 @@ export default function AsciiMedia({
         img.onload = () => {
             stateRef.current.img = img;
             const container = containerRef.current;
-            const rect = container ? container.getBoundingClientRect() : { width: 600, height: 400 };
-            recomputeMatrix(img, rect.width, rect.height);
+            recomputeMatrix(img, container ? container.clientWidth : 600);
             setImageLoaded(true);
             renderFrame();
         };
@@ -303,7 +301,7 @@ export default function AsciiMedia({
         img.onerror = () => {
             console.warn("Image load failed:", src);
         };
-    }, [src, cols, recomputeMatrix, renderFrame]);
+    }, [src, recomputeMatrix, renderFrame]);
 
     const startAnimationRef = useRef(null);
 
@@ -393,13 +391,11 @@ export default function AsciiMedia({
 
         const ro = new ResizeObserver((entries) => {
             const entry = entries[0];
-            const width = entry ? Math.floor(entry.contentRect.width) : Math.floor(container.clientWidth);
-            const height = entry ? Math.floor(entry.contentRect.height) : Math.floor(container.clientHeight);
-            stateRef.current.width = width;
-            stateRef.current.height = height;
+            const width = entry ? entry.contentRect.width : container.clientWidth;
+            setBoxWidth(width);
 
             if (stateRef.current.img) {
-                recomputeMatrix(stateRef.current.img, width, height);
+                recomputeMatrix(stateRef.current.img, width);
             }
             if (!asciiAltMode) {
                 renderFrame();
@@ -408,7 +404,16 @@ export default function AsciiMedia({
         ro.observe(container);
 
         return () => ro.disconnect();
-    }, [cols, recomputeMatrix, renderFrame, asciiAltMode]);
+    }, [recomputeMatrix, renderFrame, asciiAltMode]);
+
+    // The grid cell changes at breakpoints and once the web font loads: resample and repaint
+    useEffect(() => {
+        const container = containerRef.current;
+        if (stateRef.current.img && container) {
+            recomputeMatrix(stateRef.current.img, container.clientWidth);
+            if (!asciiAltMode) renderFrame();
+        }
+    }, [cell, recomputeMatrix, renderFrame, asciiAltMode]);
 
     // Canvas buffer memory cleanup on unmount
     useEffect(() => {
@@ -428,18 +433,23 @@ export default function AsciiMedia({
     // When toggling plain-media mode off, trigger immediate canvas re-render
     useEffect(() => {
         if (!asciiAltMode && stateRef.current.img && containerRef.current) {
-            const rect = containerRef.current.getBoundingClientRect();
-            if (rect.width > 0 && rect.height > 0) {
-                recomputeMatrix(stateRef.current.img, Math.floor(rect.width), Math.floor(rect.height));
+            const width = containerRef.current.clientWidth;
+            if (width > 0) {
+                recomputeMatrix(stateRef.current.img, width);
                 renderFrame();
             }
         }
     }, [asciiAltMode, recomputeMatrix, renderFrame]);
 
+    // Whole rows tall once the width is known; the CSS aspect ratio only bridges first paint
+    const gridRows = boxWidth ? Math.max(4, Math.round(boxWidth / aspect / cell.h)) : 0;
+    const boxStyle = gridRows ? { height: gridRows * cell.h } : { aspectRatio: aspect };
+
     return (
         <figure
             ref={containerRef}
-            className={`relative overflow-hidden ${asciiAltMode ? "" : "cursor-crosshair"} select-none bg-black ${aspectRatio} ${className}`}
+            style={boxStyle}
+            className={`relative overflow-hidden ${asciiAltMode ? "" : "cursor-crosshair"} select-none bg-black ${className}`}
             onMouseEnter={() => setIsHovered(true)}
             onMouseLeave={() => setIsHovered(false)}
             onClick={() => setIsHovered(prev => !prev)}
@@ -457,12 +467,12 @@ export default function AsciiMedia({
                 </>
             ) : (
                 <>
-                    <canvas ref={canvasRef} aria-hidden="true" className="w-full h-full block" />
+                    <canvas ref={canvasRef} aria-hidden="true" className="block" />
                     <figcaption className="sr-only">{alt}</figcaption>
                     {!imageLoaded && (
                         <div
                             aria-hidden="true"
-                            className="absolute inset-0 flex items-center justify-center font-mono text-[10px] text-neutral-600 uppercase tracking-widest animate-pulse"
+                            className="absolute inset-0 flex items-center justify-center font-mono text-neutral-600 uppercase animate-pulse"
                         >
                             [loading ascii matrix...]
                         </div>

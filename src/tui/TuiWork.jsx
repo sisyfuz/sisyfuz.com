@@ -81,7 +81,7 @@ export default function TuiWork({ selectedId = null }) {
 
     if (isLoading) {
         return (
-            <div className="py-20 font-mono text-xs uppercase tracking-widest text-neutral-500 animate-pulse">
+            <div className="py-[4lh] font-mono uppercase text-neutral-500 animate-pulse">
                 [ LOADING_SELECTED_WORKS... ]
             </div>
         );
@@ -93,11 +93,11 @@ export default function TuiWork({ selectedId = null }) {
 
     if (selectedId && !activeProject) {
         return (
-            <div className="py-20 font-mono text-xs uppercase text-neutral-500 space-y-2">
+            <div className="py-[4lh] font-mono uppercase text-neutral-500">
                 <div>[ PROJECT_NOT_FOUND ]</div>
                 <Link
                     to="/work"
-                    className="inline-block uppercase hover:bg-white hover:text-black px-1 -mx-1 font-bold cursor-pointer text-white"
+                    className="inline-block uppercase hover:bg-white hover:text-black font-bold cursor-pointer text-white"
                 >
                     [← BACK_TO_WORKS]
                 </Link>
@@ -107,14 +107,14 @@ export default function TuiWork({ selectedId = null }) {
 
     if (activeProject) {
         return (
-            <div className="space-y-8 animate-fadeIn max-w-4xl text-xs sm:text-[13px] leading-relaxed">
-                <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="space-y-[2lh] animate-fadeIn max-w-[112ch]">
+                <div className="flex flex-wrap items-center justify-between gap-x-[1ch]">
                     <span className="font-bold uppercase text-white">
                         {activeProject.title} ({activeProject.year})
                     </span>
                     <Link
                         to="/work"
-                        className="uppercase hover:bg-white hover:text-black px-1 -mx-1 font-bold cursor-pointer"
+                        className="uppercase hover:bg-white hover:text-black font-bold cursor-pointer"
                     >
                         [← BACK_TO_WORKS]
                     </Link>
@@ -124,29 +124,28 @@ export default function TuiWork({ selectedId = null }) {
                     {ASCII_DIVIDER}
                 </div>
 
-                <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+                <div className="term-split">
                     {/* Visual with Cellular ASCII Wipe */}
-                    <div className="lg:col-span-7 space-y-2">
+                    <div>
                         {activeProject.mainImage ? (
                             <AsciiMedia
                                 src={getOptimizedImageUrl(activeProject.rawMainImage || activeProject.mainImage, 1200)}
                                 alt={activeProject.title}
-                                cols={56}
-                                aspectRatio="aspect-[4/3]"
+                                aspect={4 / 3}
                             />
                         ) : (
-                            <div className="p-12 text-center opacity-50">
+                            <div className="px-[6ch] py-[2lh] text-center opacity-50">
                                 [NO_MEDIA_ATTACHED]
                             </div>
                         )}
-                        <div className="text-neutral-500 uppercase text-[11px]">
+                        <div className="text-neutral-500 uppercase">
                             // HOVER / TOUCH TO REVEAL FULL-COLOR
                         </div>
                     </div>
 
                     {/* Description & Technical Specs */}
-                    <div className="lg:col-span-5 space-y-6">
-                        <div className="flex gap-2 flex-wrap">
+                    <div className="space-y-[1lh]">
+                        <div className="flex gap-x-[1ch] flex-wrap">
                             {activeProject.tags?.map(t => (
                                 <span key={t} className="text-pink-400 uppercase">
                                     [{t}]
@@ -159,11 +158,11 @@ export default function TuiWork({ selectedId = null }) {
                         </div>
 
                         {activeProject.technicalSpecs && activeProject.technicalSpecs.length > 0 && (
-                            <div className="space-y-1.5 pt-4">
+                            <div className="pt-[1lh]">
                                 <span className="uppercase font-bold text-neutral-400 block">
                                     TECHNICAL_SPECS:
                                 </span>
-                                <ul className="space-y-1 text-neutral-400">
+                                <ul className="text-neutral-400">
                                     {activeProject.technicalSpecs.map((s, i) => (
                                         <li key={i}>&gt; {s}</li>
                                     ))}
@@ -172,11 +171,11 @@ export default function TuiWork({ selectedId = null }) {
                         )}
 
                         {activeProject.credits && activeProject.credits.length > 0 && (
-                            <div className="space-y-1.5 pt-4">
+                            <div className="pt-[1lh]">
                                 <span className="uppercase font-bold text-neutral-400 block">
                                     CREDITS:
                                 </span>
-                                <div className="space-y-1 text-neutral-400">
+                                <div className="text-neutral-400">
                                     {activeProject.credits.map((c, i) => (
                                         <div key={i}>
                                             <span className="text-neutral-500 uppercase">{c.role}:</span> <b>{c.name}</b>
@@ -190,21 +189,20 @@ export default function TuiWork({ selectedId = null }) {
 
                 {/* Additional Media */}
                 {activeProject.media && activeProject.media.length > 0 && (
-                    <div className="pt-8 space-y-4">
+                    <div className="pt-[2lh] space-y-[1lh]">
                         <div className="text-neutral-600 select-none overflow-hidden whitespace-nowrap">
                             {ASCII_DIVIDER}
                         </div>
                         <span className="uppercase font-bold text-neutral-400 block">
                             MEDIA_ATTACHMENTS ({activeProject.media.length})
                         </span>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                        <div className="term-cards">
                             {activeProject.media.map((item, idx) => (
                                 <div key={idx}>
                                     <AsciiMedia
                                         src={getOptimizedImageUrl(item.asset || item.src, 800)}
                                         alt={item.caption || item.alt || `${activeProject.title} media attachment ${idx + 1}`}
-                                        cols={44}
-                                        aspectRatio="aspect-video"
+                                        aspect={16 / 9}
                                     />
                                 </div>
                             ))}
@@ -217,24 +215,24 @@ export default function TuiWork({ selectedId = null }) {
 
     if (filteredProjects.length === 0) {
         return (
-            <div className="py-20 font-mono text-xs uppercase text-neutral-500 space-y-2">
+            <div className="py-[4lh] font-mono uppercase text-neutral-500">
                 <div>[ NO_PROJECTS_MATCHING "{searchQuery}" ]</div>
-                <div className="text-neutral-600 text-[11px]">PRESS ESC TO CLEAR SEARCH FILTER</div>
+                <div className="text-neutral-600">PRESS ESC TO CLEAR SEARCH FILTER</div>
             </div>
         );
     }
 
     return (
-        <div className="space-y-10 text-xs sm:text-[13px] leading-relaxed">
+        <div className="space-y-[2lh]">
             {searchQuery && (
-                <div className="flex flex-wrap items-center gap-2 uppercase">
+                <div className="flex flex-wrap items-center gap-x-[1ch] uppercase">
                     <span className="text-neutral-500">FILTER:</span>
-                    <span className="bg-pink-500 text-black font-bold px-1">"{searchQuery}"</span>
-                    <span className="text-neutral-600 text-[11px]">(PRESS ESC OR TAP [ESC] TO CLEAR)</span>
+                    <span className="bg-pink-500 text-black font-bold">"{searchQuery}"</span>
+                    <span className="text-neutral-600">(PRESS ESC OR TAP [ESC] TO CLEAR)</span>
                 </div>
             )}
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 sm:gap-10 lg:gap-14">
+            <div className="term-cards">
                 {filteredProjects.map((project) => (
                     <Link
                         key={project.id}
@@ -242,41 +240,40 @@ export default function TuiWork({ selectedId = null }) {
                         onClick={(e) => {
                             if (isPlainLeftClick(e)) window.scrollTo({ top: 0, behavior: "instant" });
                         }}
-                        className="cursor-pointer group flex flex-col justify-between space-y-3"
+                        className="cursor-pointer group flex flex-col justify-between space-y-[1lh]"
                     >
                         <div>
                             {/* Visual without any box border */}
                             {project.mainImage && (
-                                <div className="mb-3">
+                                <div className="mb-[1lh]">
                                     <AsciiMedia
                                         src={getOptimizedImageUrl(project.rawMainImage || project.mainImage, 800)}
                                         alt={project.title}
-                                        cols={48}
-                                        aspectRatio="aspect-[3/2]"
+                                        aspect={3 / 2}
                                     />
                                 </div>
                             )}
 
                             {/* Title & Metadata */}
-                            <div className="flex items-start justify-between gap-2 uppercase mb-1">
-                                <h3 className="font-bold text-white group-hover:bg-white group-hover:text-black group-focus-visible:bg-white group-focus-visible:text-black px-1 -mx-1 transition-none">
+                            <div className="flex items-start justify-between gap-x-[1ch] uppercase">
+                                <h3 className="font-bold text-white group-hover:bg-white group-hover:text-black group-focus-visible:bg-white group-focus-visible:text-black transition-none">
                                     {project.title}
                                 </h3>
                                 <span className="text-neutral-500 shrink-0">{project.year}</span>
                             </div>
 
-                            <p className="text-neutral-400 line-clamp-3 mb-2">
+                            <p className="text-neutral-400 line-clamp-3">
                                 {project.shortDesc}
                             </p>
                         </div>
 
-                        <div className="flex items-center justify-between uppercase pt-1">
-                            <div className="flex gap-2 flex-wrap text-neutral-500">
+                        <div className="flex items-center justify-between uppercase">
+                            <div className="flex gap-x-[1ch] flex-wrap text-neutral-500">
                                 {project.tags?.slice(0, 2).map(tag => (
                                     <span key={tag}>[{tag}]</span>
                                 ))}
                             </div>
-                            <span className="text-neutral-300 group-hover:bg-pink-500 group-hover:text-black group-focus-visible:bg-pink-500 group-focus-visible:text-black px-1 font-bold">
+                            <span className="text-neutral-300 group-hover:bg-pink-500 group-hover:text-black group-focus-visible:bg-pink-500 group-focus-visible:text-black font-bold">
                                 [VIEW →]
                             </span>
                         </div>

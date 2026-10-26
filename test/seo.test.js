@@ -199,4 +199,16 @@ describe("SEO helpers", () => {
         assert.ok(html.includes(SEO_START) && html.includes(SEO_END));
         assert.equal((html.match(/<title>/g) || []).length, 1);
     });
+
+    test("index.html and 404.html declare Dutch and ship default home meta", () => {
+        for (const file of ["index.html", "public/404.html"]) {
+            const html = fs.readFileSync(path.join(rootDir, file), "utf8");
+            assert.match(html, /<html lang="nl">/, `${file} lang`);
+            assert.match(html, /<meta name="description" content="Dorus Kleijne maakt onverstaanbaar/, `${file} description`);
+            assert.match(html, /<meta property="og:title" /, `${file} og:title`);
+            assert.match(html, /<meta name="twitter:card" /, `${file} twitter:card`);
+        }
+        const index = fs.readFileSync(path.join(rootDir, "index.html"), "utf8");
+        assert.ok(index.includes(buildHeadTags(ROUTES[0]).join("\n    ")), "index.html SEO block matches the generated home tags");
+    });
 });

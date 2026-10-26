@@ -1,16 +1,20 @@
 // src/tui/TuiWork.jsx
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { client } from "../sanityClient";
 import AsciiMedia from "../components/AsciiMedia";
 import { getOptimizedImageUrl } from "../components/sanityImage";
 import { useDisco } from "../context/DiscoContext";
 import { ASCII_DIVIDER } from "../utils/ascii";
+import { workPath } from "../utils/routing";
 
+// `selectedId` is the project slug from the URL (/work/<slug>); the URL is the
+// source of truth for which project detail is shown.
 export default function TuiWork({ selectedId = null }) {
+    const navigate = useNavigate();
     const { searchQuery } = useDisco();
     const [projects, setProjects] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
-    const [activeProject, setActiveProject] = useState(null);
 
     useEffect(() => {
         const query = `*[_type == "project" && category == "work"] | order(ranking asc, year desc) {
@@ -48,14 +52,7 @@ export default function TuiWork({ selectedId = null }) {
             });
     }, []);
 
-    useEffect(() => {
-        if (selectedId && projects.length > 0) {
-            const found = projects.find(p => p.id === selectedId);
-            if (found) setActiveProject(found);
-        } else if (!selectedId) {
-            setActiveProject(null);
-        }
-    }, [selectedId, projects]);
+    const activeProject = selectedId ? projects.find(p => p.id === selectedId) ?? null : null;
 
     const filteredProjects = projects.filter(p => {
         if (!searchQuery) return true;
@@ -76,6 +73,20 @@ export default function TuiWork({ selectedId = null }) {
         );
     }
 
+    if (selectedId && !activeProject) {
+        return (
+            <div className="py-20 font-mono text-xs uppercase text-neutral-500 space-y-2">
+                <div>[ PROJECT_NOT_FOUND ]</div>
+                <button
+                    onClick={() => navigate("/work")}
+                    className="uppercase hover:bg-white hover:text-black px-1 -mx-1 font-bold cursor-pointer text-white"
+                >
+                    [← BACK_TO_WORKS]
+                </button>
+            </div>
+        );
+    }
+
     if (activeProject) {
         return (
             <div className="space-y-8 animate-fadeIn max-w-4xl text-xs sm:text-[13px] leading-relaxed">
@@ -84,7 +95,7 @@ export default function TuiWork({ selectedId = null }) {
                         {activeProject.title} ({activeProject.year})
                     </span>
                     <button
-                        onClick={() => setActiveProject(null)}
+                        onClick={() => navigate("/work")}
                         className="uppercase hover:bg-white hover:text-black px-1 -mx-1 font-bold cursor-pointer"
                     >
                         [← BACK_TO_WORKS]
@@ -209,7 +220,10 @@ export default function TuiWork({ selectedId = null }) {
                 {filteredProjects.map((project) => (
                     <div
                         key={project.id}
-                        onClick={() => setActiveProject(project)}
+                        onClick={() => {
+                            window.scrollTo({ top: 0, behavior: "instant" });
+                            navigate(workPath(project.id));
+                        }}
                         className="cursor-pointer group flex flex-col justify-between space-y-3"
                     >
                         <div>

@@ -1,10 +1,10 @@
 // src/components/SharpDisplay.jsx
-import { useState, useEffect, useRef, useCallback, lazy, Suspense } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo, lazy, Suspense } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useDisco } from "../context/DiscoContext";
 import { useA11y } from "../context/A11yContext";
 import { SISYFUZ_BANNER, ASCII_DIVIDER } from "../utils/ascii";
-import { sanitizeUrlParam } from "../utils/sanitize";
+import { parseRoute, sectionPath, workPath } from "../utils/routing";
 import { parseCommand, isCommandPrefix, normalizeSearchInput } from "../utils/commands";
 import A11yToolbar from "./A11yToolbar";
 import MobileCommandBar from "./MobileCommandBar";
@@ -40,14 +40,26 @@ export default function SharpDisplay() {
     const { discoMode, setDiscoMode, searchQuery, setSearchQuery, setAsciiLiveMode } = useDisco();
     const { isA11yToolbarOpen, toggleA11yToolbar } = useA11y();
 
-    const [activeSection, setActiveSection] = useState("home");
-    const [selectedWorkId, setSelectedWorkId] = useState(null);
+    // The URL is the source of truth for the active view and project detail.
+    const route = useMemo(
+        () => parseRoute(location.pathname, location.hash),
+        [location.pathname, location.hash]
+    );
+    const activeSection = route.section;
+    const selectedWorkSlug = route.slug;
+    const isWorkList = activeSection === "work" && !selectedWorkSlug;
+
     const [buffer, setBuffer] = useState("");
     const [isSearchFocused, setIsSearchFocused] = useState(false);
 
     const inputRef = useRef(null);
 
     const isLive = activeSection === "live" || location.pathname.toLowerCase().startsWith("/live");
+
+    // Legacy URLs (e.g. /work#slug) are replaced with their canonical form.
+    useEffect(() => {
+        if (route.redirect) navigate(route.redirect, { replace: true });
+    }, [route.redirect, navigate]);
 
     // Reset the search buffer + active filter, optionally blurring the input.
     const clearSearch = useCallback(({ blur = true } = {}) => {
@@ -56,60 +68,29 @@ export default function SharpDisplay() {
         if (blur) inputRef.current?.blur();
     }, [setSearchQuery]);
 
-    // Sync route with active section
-    useEffect(() => {
-        const path = location.pathname.replace(/^\//, "").toLowerCase();
-        if (path === "" || path === "home") {
-            setActiveSection("home");
-            setSelectedWorkId(null);
-        } else if (path === "privacy" || path === "legal") {
-            setActiveSection("privacy");
-            setSelectedWorkId(null);
-        } else if (SECTIONS.some(s => s.key === path)) {
-            setActiveSection(path);
-            if (location.hash) {
-                const cleanId = sanitizeUrlParam(location.hash);
-                if (cleanId && cleanId !== "main-content" && cleanId !== "terminal-main-content") {
-                    setSelectedWorkId(cleanId);
-                } else {
-                    setSelectedWorkId(null);
-                }
-            } else {
-                setSelectedWorkId(null);
-            }
-        } else {
-            setActiveSection("home");
-            setSelectedWorkId(null);
-        }
-    }, [location.pathname, location.hash]);
-
     const handleSwitchSection = (sectionKey) => {
-        setActiveSection(sectionKey);
-        setSelectedWorkId(null);
         clearSearch({ blur: false });
         window.scrollTo({ top: 0, behavior: 'instant' });
-        navigate(sectionKey === "home" ? "/" : `/${sectionKey}`);
+        navigate(sectionPath(sectionKey));
     };
 
-    // While typing, the buffer is always a search filter. Jump to /work to show
-    // results, unless the buffer may still become a command name (e.g. "arch").
+    // While typing, the buffer is always a search filter. Jump to the /work list
+    // to show results, unless the buffer may still become a command name (e.g. "arch").
     const handleSearchInput = useCallback((raw) => {
         const clean = normalizeSearchInput(raw, 25);
         setBuffer(clean);
         const q = clean.trim();
         setSearchQuery(q);
-        if (q.length > 0 && activeSection !== "work" && !isCommandPrefix(q)) {
-            setActiveSection("work");
+        if (q.length > 0 && !isWorkList && !isCommandPrefix(q)) {
             navigate("/work");
         }
-    }, [activeSection, navigate, setSearchQuery]);
+    }, [isWorkList, navigate, setSearchQuery]);
 
     // On Enter: run the command if the whole buffer is exactly one, else keep the filter.
     const submitSearch = useCallback(() => {
         const command = parseCommand(buffer);
         if (!command) {
-            if (buffer.trim().length > 0 && activeSection !== "work") {
-                setActiveSection("work");
+            if (buffer.trim().length > 0 && !isWorkList) {
                 navigate("/work");
             }
             inputRef.current?.blur();
@@ -122,14 +103,12 @@ export default function SharpDisplay() {
             setDiscoMode(prev => !prev);
         } else if (command.type === "ascii") {
             setAsciiLiveMode(prev => (isLive ? !prev : true));
-            setActiveSection("live");
             navigate(command.to);
         } else if (command.type === "navigate") {
-            setActiveSection(command.to === "/" ? "home" : command.to.slice(1));
             navigate(command.to);
         }
         clearSearch();
-    }, [activeSection, buffer, clearSearch, isLive, navigate, setAsciiLiveMode, setDiscoMode, toggleA11yToolbar]);
+    }, [buffer, clearSearch, isLive, isWorkList, navigate, setAsciiLiveMode, setDiscoMode, toggleA11yToolbar]);
 
     // Clear search on global Escape key
     useEffect(() => {
@@ -273,15 +252,11 @@ export default function SharpDisplay() {
 
                 <Suspense fallback={<AsciiSectionLoader />}>
                     {activeSection === "work" && (
-                        <TuiWork selectedId={selectedWorkId} />
+                        <TuiWork selectedId={selectedWorkSlug} />
                     )}
 
                     {activeSection === "archive" && (
-                        <TuiArchive onSelectWork={(id) => {
-                            setSelectedWorkId(id);
-                            setActiveSection("work");
-                            navigate(`/work#${id}`);
-                        }} />
+                        <TuiArchive onSelectWork={(id) => navigate(workPath(id))} />
                     )}
 
                     {activeSection === "about" && (

@@ -1,10 +1,10 @@
 // src/components/SharpDisplay.jsx
 import { useState, useEffect, useRef, useCallback, useMemo, lazy, Suspense } from "react";
-import { useNavigate, useLocation } from "react-router-dom";
+import { useNavigate, useLocation, Link } from "react-router-dom";
 import { useDisco } from "../context/DiscoContext";
 import { useA11y } from "../context/A11yContext";
 import { SISYFUZ_BANNER, ASCII_DIVIDER } from "../utils/ascii";
-import { parseRoute, sectionPath, workPath } from "../utils/routing";
+import { parseRoute, sectionPath, isPlainLeftClick } from "../utils/routing";
 import { parseCommand, isCommandPrefix, normalizeSearchInput } from "../utils/commands";
 import A11yToolbar from "./A11yToolbar";
 import MobileCommandBar from "./MobileCommandBar";
@@ -68,10 +68,21 @@ export default function SharpDisplay() {
         if (blur) inputRef.current?.blur();
     }, [setSearchQuery]);
 
-    const handleSwitchSection = (sectionKey) => {
+    const resetForNavigation = () => {
         clearSearch({ blur: false });
         window.scrollTo({ top: 0, behavior: 'instant' });
+    };
+
+    // For views that navigate imperatively (TuiAbout, TuiLive, TuiPrivacy).
+    const handleSwitchSection = (sectionKey) => {
+        resetForNavigation();
         navigate(sectionPath(sectionKey));
+    };
+
+    // onClick for nav <Link>s: same side effects as handleSwitchSection, but only
+    // for plain clicks, so ctrl/cmd/middle-click can open a new tab untouched.
+    const handleNavLinkClick = (e) => {
+        if (isPlainLeftClick(e)) resetForNavigation();
     };
 
     // While typing, the buffer is always a search filter. Jump to the /work list
@@ -145,20 +156,23 @@ export default function SharpDisplay() {
             {/* Top Raw Header */}
             <div className="space-y-4 pb-8 sm:pb-10 z-10">
                 <header role="banner" className="flex flex-wrap items-center justify-between gap-y-3 gap-x-4 uppercase">
-                    <button
-                        onClick={() => handleSwitchSection("home")}
+                    <Link
+                        to="/"
+                        onClick={handleNavLinkClick}
                         className="font-bold cursor-pointer hover:bg-white hover:text-black px-1 -mx-1"
                     >
                         sisyfuz
-                    </button>
+                    </Link>
 
                     <nav role="navigation" aria-label="Main Navigation" className="flex flex-wrap items-center gap-x-3 sm:gap-x-6 gap-y-1.5">
                         {SECTIONS.map((sec) => {
                             const isActive = activeSection === sec.key;
                             return (
-                                <button
+                                <Link
                                     key={sec.key}
-                                    onClick={() => handleSwitchSection(sec.key)}
+                                    to={sectionPath(sec.key)}
+                                    onClick={handleNavLinkClick}
+                                    aria-current={isActive ? "page" : undefined}
                                     className={`cursor-pointer px-1 -mx-1 font-mono uppercase transition-colors ${
                                         isActive
                                             ? "bg-pink-500 text-black font-bold"
@@ -166,7 +180,7 @@ export default function SharpDisplay() {
                                     }`}
                                 >
                                     [{sec.label}]
-                                </button>
+                                </Link>
                             );
                         })}
 
@@ -222,30 +236,34 @@ export default function SharpDisplay() {
 
                         {/* Raw Jump Links with Reverse-Video */}
                         <div className="pt-4 flex flex-wrap gap-x-4 gap-y-2 sm:gap-6 uppercase">
-                            <button
-                                onClick={() => handleSwitchSection("work")}
+                            <Link
+                                to="/work"
+                                onClick={handleNavLinkClick}
                                 className="text-white hover:bg-white hover:text-black font-bold px-1 -mx-1 cursor-pointer"
                             >
                                 [VIEW_SELECTED_WORKS →]
-                            </button>
-                            <button
-                                onClick={() => handleSwitchSection("archive")}
+                            </Link>
+                            <Link
+                                to="/archive"
+                                onClick={handleNavLinkClick}
                                 className="text-neutral-400 hover:bg-white hover:text-black px-1 -mx-1 cursor-pointer"
                             >
                                 [SYSTEM_ARCHIVE →]
-                            </button>
-                            <button
-                                onClick={() => handleSwitchSection("about")}
+                            </Link>
+                            <Link
+                                to="/about"
+                                onClick={handleNavLinkClick}
                                 className="text-neutral-400 hover:bg-white hover:text-black px-1 -mx-1 cursor-pointer"
                             >
                                 [ABOUT_INFO →]
-                            </button>
-                            <button
-                                onClick={() => handleSwitchSection("contact")}
+                            </Link>
+                            <Link
+                                to="/contact"
+                                onClick={handleNavLinkClick}
                                 className="text-neutral-400 hover:bg-white hover:text-black px-1 -mx-1 cursor-pointer"
                             >
                                 [CONTACT →]
-                            </button>
+                            </Link>
                         </div>
                     </div>
                 )}
@@ -256,7 +274,7 @@ export default function SharpDisplay() {
                     )}
 
                     {activeSection === "archive" && (
-                        <TuiArchive onSelectWork={(id) => navigate(workPath(id))} />
+                        <TuiArchive />
                     )}
 
                     {activeSection === "about" && (
@@ -288,15 +306,16 @@ export default function SharpDisplay() {
                     <span>UTRECHT, NL</span>
                 </div>
                 <div className="flex items-center gap-3">
-                    <button
-                        onClick={() => handleSwitchSection("privacy")}
+                    <Link
+                        to="/privacy"
+                        onClick={handleNavLinkClick}
                         className={`hover:bg-white hover:text-black px-1 -mx-1 cursor-pointer transition-none ${
                             activeSection === "privacy" ? "text-white font-bold bg-neutral-800" : "text-neutral-500"
                         }`}
                         title="Privacyverklaring & Colofon (AVG/GDPR)"
                     >
                         [PRIVACY_&_LEGAL]
-                    </button>
+                    </Link>
                 </div>
             </footer>
 
@@ -421,7 +440,7 @@ export default function SharpDisplay() {
             {/* Mobile TUI Command Dock (<768px) */}
             <MobileCommandBar
                 activeSection={activeSection}
-                onNavigate={handleSwitchSection}
+                onLinkClick={handleNavLinkClick}
                 isSearchFocused={isSearchFocused}
             />
 

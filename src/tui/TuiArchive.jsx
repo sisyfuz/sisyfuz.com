@@ -1,9 +1,14 @@
 // src/tui/TuiArchive.jsx
 import { useState, useEffect } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import { client } from "../sanityClient";
 import { ASCII_DIVIDER } from "../utils/ascii";
+import { workPath } from "../utils/routing";
 
-export default function TuiArchive({ onSelectWork }) {
+// Each row's ACCESS cell holds a real link (keyboard focusable, middle-click /
+// open-in-new-tab capable); clicking anywhere else on the row follows it too.
+export default function TuiArchive() {
+    const navigate = useNavigate();
     const [items, setItems] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
 
@@ -58,36 +63,48 @@ export default function TuiArchive({ onSelectWork }) {
                             const isExternal = Boolean(item.externalLink && (item.externalLink.startsWith("https://") || item.externalLink.startsWith("http://")));
                             const isWork = item.category === "work";
 
-                            const handleClick = () => {
+                            const handleRowClick = (e) => {
+                                // Clicks on the link itself are handled by the link.
+                                if (e.target.closest("a")) return;
                                 if (isExternal) {
                                     window.open(item.externalLink, "_blank", "noopener,noreferrer");
-                                } else if (isWork && onSelectWork) {
-                                    onSelectWork(item.id);
+                                } else if (isWork) {
+                                    navigate(workPath(item.id));
                                 }
                             };
 
                             return (
                                 <tr
                                     key={idx}
-                                    onClick={handleClick}
-                                    className={`cursor-pointer group hover:bg-white hover:text-black transition-none`}
+                                    onClick={handleRowClick}
+                                    className={`cursor-pointer group hover:bg-white hover:text-black has-[:focus-visible]:bg-white has-[:focus-visible]:text-black transition-none`}
                                 >
-                                    <td className="py-2 sm:py-2.5 pr-2 sm:pr-4 text-neutral-500 group-hover:text-black">{item.year}</td>
-                                    <td className="py-2 sm:py-2.5 px-2 sm:px-4 font-bold uppercase text-white group-hover:text-black">
+                                    <td className="py-2 sm:py-2.5 pr-2 sm:pr-4 text-neutral-500 group-hover:text-black group-has-[:focus-visible]:text-black">{item.year}</td>
+                                    <td className="py-2 sm:py-2.5 px-2 sm:px-4 font-bold uppercase text-white group-hover:text-black group-has-[:focus-visible]:text-black">
                                         {item.title}
                                     </td>
-                                    <td className="py-2.5 px-4 text-neutral-400 group-hover:text-black hidden sm:table-cell uppercase">
+                                    <td className="py-2.5 px-4 text-neutral-400 group-hover:text-black group-has-[:focus-visible]:text-black hidden sm:table-cell uppercase">
                                         [{item.type || "project"}]
                                     </td>
                                     <td className="py-2 sm:py-2.5 pl-2 sm:pl-4 text-right">
                                         {isExternal ? (
-                                            <span className="text-pink-500 group-hover:text-black font-bold uppercase">
+                                            <a
+                                                href={item.externalLink}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                aria-label={`${item.title} (external, opens in new tab)`}
+                                                className="text-pink-500 group-hover:text-black group-has-[:focus-visible]:text-black font-bold uppercase"
+                                            >
                                                 [EXT ↗]
-                                            </span>
+                                            </a>
                                         ) : isWork ? (
-                                            <span className="text-white group-hover:text-black font-bold uppercase">
+                                            <Link
+                                                to={workPath(item.id)}
+                                                aria-label={`View ${item.title}`}
+                                                className="text-white group-hover:text-black group-has-[:focus-visible]:text-black font-bold uppercase"
+                                            >
                                                 [VIEW →]
-                                            </span>
+                                            </Link>
                                         ) : (
                                             <span className="text-neutral-600 group-hover:text-black">—</span>
                                         )}

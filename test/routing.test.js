@@ -1,7 +1,7 @@
 // test/routing.test.js
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { parseRoute, sectionPath, workPath } from "../src/utils/routing.js";
+import { parseRoute, sectionPath, workPath, isPlainLeftClick } from "../src/utils/routing.js";
 
 const view = (section, slug = null, redirect = null) => ({ section, slug, redirect });
 
@@ -89,5 +89,22 @@ describe("path builders", () => {
         assert.equal(workPath("my-slug"), "/work/my-slug");
         assert.equal(workPath("a b"), "/work/a%20b");
         assert.equal(parseRoute(workPath("café")).slug, "café");
+    });
+});
+
+describe("isPlainLeftClick", () => {
+    test("true for an unmodified primary click", () => {
+        assert.equal(isPlainLeftClick({ button: 0 }), true);
+        assert.equal(isPlainLeftClick({}), true);
+    });
+
+    test("false for modified, non-primary or already-handled clicks", () => {
+        assert.equal(isPlainLeftClick({ button: 1 }), false);
+        assert.equal(isPlainLeftClick({ button: 0, metaKey: true }), false);
+        assert.equal(isPlainLeftClick({ button: 0, ctrlKey: true }), false);
+        assert.equal(isPlainLeftClick({ button: 0, shiftKey: true }), false);
+        assert.equal(isPlainLeftClick({ button: 0, altKey: true }), false);
+        assert.equal(isPlainLeftClick({ button: 0, defaultPrevented: true }), false);
+        assert.equal(isPlainLeftClick(null), false);
     });
 });

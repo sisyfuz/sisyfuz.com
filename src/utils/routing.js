@@ -83,3 +83,14 @@ export function parseRoute(pathname, hash = "") {
 
     return { section: "home", slug: null, redirect: null };
 }
+
+/**
+ * True for an unmodified primary-button click, i.e. one a router <Link>
+ * handles in-page (as opposed to open-in-new-tab / new-window / download).
+ * @param {{ button?: number, metaKey?: boolean, altKey?: boolean, ctrlKey?: boolean, shiftKey?: boolean, defaultPrevented?: boolean }} event
+ * @returns {boolean}
+ */
+export function isPlainLeftClick(event) {
+    if (!event || event.defaultPrevented) return false;
+    return (event.button ?? 0) === 0 && !event.metaKey && !event.altKey && !event.ctrlKey && !event.shiftKey;
+}

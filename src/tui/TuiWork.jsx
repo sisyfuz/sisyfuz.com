@@ -1,17 +1,16 @@
 // src/tui/TuiWork.jsx
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { client } from "../sanityClient";
 import AsciiMedia from "../components/AsciiMedia";
 import { getOptimizedImageUrl } from "../components/sanityImage";
 import { useDisco } from "../context/DiscoContext";
 import { ASCII_DIVIDER } from "../utils/ascii";
-import { workPath } from "../utils/routing";
+import { workPath, isPlainLeftClick } from "../utils/routing";
 
 // `selectedId` is the project slug from the URL (/work/<slug>); the URL is the
 // source of truth for which project detail is shown.
 export default function TuiWork({ selectedId = null }) {
-    const navigate = useNavigate();
     const { searchQuery } = useDisco();
     const [projects, setProjects] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
@@ -77,12 +76,12 @@ export default function TuiWork({ selectedId = null }) {
         return (
             <div className="py-20 font-mono text-xs uppercase text-neutral-500 space-y-2">
                 <div>[ PROJECT_NOT_FOUND ]</div>
-                <button
-                    onClick={() => navigate("/work")}
-                    className="uppercase hover:bg-white hover:text-black px-1 -mx-1 font-bold cursor-pointer text-white"
+                <Link
+                    to="/work"
+                    className="inline-block uppercase hover:bg-white hover:text-black px-1 -mx-1 font-bold cursor-pointer text-white"
                 >
                     [← BACK_TO_WORKS]
-                </button>
+                </Link>
             </div>
         );
     }
@@ -94,12 +93,12 @@ export default function TuiWork({ selectedId = null }) {
                     <span className="font-bold uppercase text-white">
                         {activeProject.title} ({activeProject.year})
                     </span>
-                    <button
-                        onClick={() => navigate("/work")}
+                    <Link
+                        to="/work"
                         className="uppercase hover:bg-white hover:text-black px-1 -mx-1 font-bold cursor-pointer"
                     >
                         [← BACK_TO_WORKS]
-                    </button>
+                    </Link>
                 </div>
 
                 <div className="text-neutral-600 select-none overflow-hidden whitespace-nowrap">
@@ -218,11 +217,11 @@ export default function TuiWork({ selectedId = null }) {
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 sm:gap-10 lg:gap-14">
                 {filteredProjects.map((project) => (
-                    <div
+                    <Link
                         key={project.id}
-                        onClick={() => {
-                            window.scrollTo({ top: 0, behavior: "instant" });
-                            navigate(workPath(project.id));
+                        to={workPath(project.id)}
+                        onClick={(e) => {
+                            if (isPlainLeftClick(e)) window.scrollTo({ top: 0, behavior: "instant" });
                         }}
                         className="cursor-pointer group flex flex-col justify-between space-y-3"
                     >
@@ -241,7 +240,7 @@ export default function TuiWork({ selectedId = null }) {
 
                             {/* Title & Metadata */}
                             <div className="flex items-start justify-between gap-2 uppercase mb-1">
-                                <h3 className="font-bold text-white group-hover:bg-white group-hover:text-black px-1 -mx-1 transition-none">
+                                <h3 className="font-bold text-white group-hover:bg-white group-hover:text-black group-focus-visible:bg-white group-focus-visible:text-black px-1 -mx-1 transition-none">
                                     {project.title}
                                 </h3>
                                 <span className="text-neutral-500 shrink-0">{project.year}</span>
@@ -258,11 +257,11 @@ export default function TuiWork({ selectedId = null }) {
                                     <span key={tag}>[{tag}]</span>
                                 ))}
                             </div>
-                            <span className="text-neutral-300 group-hover:bg-pink-500 group-hover:text-black px-1 font-bold">
+                            <span className="text-neutral-300 group-hover:bg-pink-500 group-hover:text-black group-focus-visible:bg-pink-500 group-focus-visible:text-black px-1 font-bold">
                                 [VIEW →]
                             </span>
                         </div>
-                    </div>
+                    </Link>
                 ))}
             </div>
         </div>

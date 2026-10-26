@@ -14,8 +14,12 @@
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com https://cdn.sanity.io https://*.sanity.io data:; img-src 'self' data: blob: https://cdn.sanity.io https://*.sanity.io https://file.garden; media-src 'self' blob: data: https://cdn.sanity.io https://*.sanity.io https://*.trycloudflare.com http://localhost:* http://127.0.0.1:*; connect-src 'self' https://sisyfuz-counter.sisyfuz.workers.dev https://*.api.sanity.io https://*.apicdn.sanity.io https://*.sanity.io https://cdn.sanity.io https://api.sanity.io https://apicdn.sanity.io https://*.trycloudflare.com wss://*.trycloudflare.com http://localhost:* http://127.0.0.1:* ws://localhost:* ws://127.0.0.1:* https://global.relay.metered.ca; object-src 'none'; base-uri 'self';" />
     <meta http-equiv="X-Content-Type-Options" content="nosniff" />
     <meta name="referrer" content="strict-origin-when-cross-origin" />
-    <title>sisyfuz.com</title>
-    <!-- GitHub Pages SPA redirect restoration -->
+    <!-- seo:start -->
+    <title>sisyfuz — Dorus Kleijne</title>
+    <!-- seo:end -->
+    <!-- GitHub Pages SPA redirect restoration (see public/404.html) + trailing-slash
+         normalisation: prerendered routes are served as /route/ by GitHub Pages,
+         the router expects /route. -->
     <script>
       (function(l) {
         if (l.search[1] === '/') {
@@ -24,6 +28,11 @@
           }).join('?');
           window.history.replaceState(null, null,
             l.pathname.slice(0, -1) + decoded + l.hash
+          );
+        }
+        if (l.pathname.length > 1 && l.pathname.slice(-1) === '/') {
+          window.history.replaceState(null, null,
+            l.pathname.replace(/\/+$/, '') + l.search + l.hash
           );
         }
       }(window.location));

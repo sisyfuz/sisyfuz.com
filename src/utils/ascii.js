@@ -1,11 +1,12 @@
 // src/utils/ascii.js
 
-export const SISYFUZ_BANNER = `
+// String.raw keeps the figlet backslashes (a plain template literal swallows them)
+export const SISYFUZ_BANNER = String.raw`
   ____ ___ ______   _______ _   _ _____ 
- / ___|_ _/ ___  / /  ___| | | |__  / 
- ___ | |___ \\ V /| |_  | | | | / /  
+ / ___|_ _/ ___\ \ / /  ___| | | |__  / 
+ \___ \| |\___ \\ V /| |_  | | | | / /  
   ___) | | ___) || | |  _| | |_| |/ /_  
- |____/___|____/ |_| |_|    ___//____| 
+ |____/___|____/ |_| |_|    \___//____| 
 `;
 
 export const ASCII_RAMP = "@%#*+=-:. ";

@@ -4,6 +4,7 @@ import { client } from '../sanityClient';
 
 const builder = createImageUrlBuilder(client);
 
+// eslint-disable-next-line react-refresh/only-export-components -- shared helper used by TUI views
 export function urlFor(source) {
     return builder.image(source);
 }
@@ -12,6 +13,7 @@ export function urlFor(source) {
  * Responsive Sanity image URL builder with automatic modern WebP/AVIF formatting,
  * fit=max boundary, and width bounding to eliminate 4K image over-fetching.
  */
+// eslint-disable-next-line react-refresh/only-export-components -- shared helper used by TUI views
 export function getOptimizedImageUrl(source, baseWidth = 800) {
     if (!source) return "";
 

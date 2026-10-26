@@ -1,8 +1,8 @@
-name: Deploy site naar Pages
+name: Deploy site to Pages
 
 on:
   push:
-    branches: ["main"] # Verander dit naar "master" als je branch zo heet
+    branches: ["main"]
 
 permissions:
   contents: read
@@ -19,11 +19,17 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: 'npm'
 
       - name: Install dependencies
-        run: npm install
+        run: npm ci
+
+      - name: Run tests
+        run: npm test
+
+      - name: Lint
+        run: npm run lint
 
       - name: Build project
         run: npm run build
@@ -31,7 +37,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: ./dist # Vite zet de build standaard in de 'dist' map
+          path: ./dist # Vite writes the production build to dist/
 
       - name: Deploy to GitHub Pages
         id: deployment

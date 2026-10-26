@@ -272,15 +272,21 @@ export default function AsciiMedia({
             console.warn("AsciiMedia renderFrame failed gracefully:", err);
             try {
                 ctx.restore();
-            } catch {}
+            } catch { /* best-effort: ignore */ }
         }
     }, []);
+
+    // Reset the loading state during render whenever the image source or density changes
+    const [loadDeps, setLoadDeps] = useState({ src, cols });
+    if (loadDeps.src !== src || loadDeps.cols !== cols) {
+        setLoadDeps({ src, cols });
+        if (src) setImageLoaded(false);
+    }
 
     // Load image
     useEffect(() => {
         if (!src) return;
 
-        setImageLoaded(false);
         const img = new Image();
         img.crossOrigin = "anonymous";
         img.src = src;

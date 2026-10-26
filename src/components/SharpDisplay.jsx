@@ -45,11 +45,15 @@ export default function SharpDisplay() {
     const [isSearchFocused, setIsSearchFocused] = useState(false);
 
     const inputRef = useRef(null);
-    const bufferRef = useRef(buffer);
 
-    useEffect(() => {
-        bufferRef.current = buffer;
-    }, [buffer]);
+    const isLive = activeSection === "live" || location.pathname.toLowerCase().startsWith("/live");
+
+    // Reset the search buffer + active filter, optionally blurring the input.
+    const clearSearch = useCallback(({ blur = true } = {}) => {
+        setBuffer("");
+        setSearchQuery("");
+        if (blur) inputRef.current?.blur();
+    }, [setSearchQuery]);
 
     // Sync route with active section
     useEffect(() => {
@@ -81,9 +85,7 @@ export default function SharpDisplay() {
     const handleSwitchSection = (sectionKey) => {
         setActiveSection(sectionKey);
         setSelectedWorkId(null);
-        setBuffer("");
-        bufferRef.current = "";
-        setSearchQuery("");
+        clearSearch({ blur: false });
         window.scrollTo({ top: 0, behavior: 'instant' });
         navigate(sectionKey === "home" ? "/" : `/${sectionKey}`);
     };
@@ -91,39 +93,26 @@ export default function SharpDisplay() {
     const processCommand = useCallback((val) => {
         const clean = sanitizeCommand(val, 25);
         setBuffer(clean);
-        bufferRef.current = clean;
 
         const routes = ["work", "archive", "about", "contact", "press", "live", "home", "privacy", "legal"];
 
         if (clean.endsWith("a11y")) {
             toggleA11yToolbar();
-            setBuffer("");
-            bufferRef.current = "";
-            setSearchQuery("");
-            inputRef.current?.blur();
+            clearSearch();
         } else if (clean.endsWith("disco")) {
             setDiscoMode(prev => !prev);
-            setBuffer("");
-            bufferRef.current = "";
-            setSearchQuery("");
-            inputRef.current?.blur();
+            clearSearch();
         } else if (clean.endsWith("ascii")) {
             setAsciiLiveMode(prev => (location.pathname === "/live" ? !prev : true));
             setActiveSection("live");
             navigate("/live");
-            setBuffer("");
-            bufferRef.current = "";
-            setSearchQuery("");
-            inputRef.current?.blur();
+            clearSearch();
         } else if (routes.some(r => clean.endsWith(r))) {
             const matchedRoute = routes.find(r => clean.endsWith(r));
             const targetSection = matchedRoute === "legal" ? "privacy" : matchedRoute;
             setActiveSection(targetSection);
             navigate(targetSection === "home" ? "/" : `/${targetSection}`);
-            setBuffer("");
-            bufferRef.current = "";
-            setSearchQuery("");
-            inputRef.current?.blur();
+            clearSearch();
         } else {
             const q = clean.trim();
             setSearchQuery(q);
@@ -132,22 +121,19 @@ export default function SharpDisplay() {
                 navigate("/work");
             }
         }
-    }, [activeSection, navigate, setDiscoMode, setSearchQuery, toggleA11yToolbar]);
+    }, [activeSection, clearSearch, navigate, setDiscoMode, setSearchQuery, toggleA11yToolbar]);
 
     // Clear search on global Escape key
     useEffect(() => {
         const handleGlobalKeyDown = (e) => {
             if (e.key === "Escape") {
-                setBuffer("");
-                bufferRef.current = "";
-                setSearchQuery("");
-                inputRef.current?.blur();
+                clearSearch();
             }
         };
 
         window.addEventListener("keydown", handleGlobalKeyDown);
         return () => window.removeEventListener("keydown", handleGlobalKeyDown);
-    }, [setSearchQuery]);
+    }, [clearSearch]);
 
     return (
         <div className={`min-h-screen w-full bg-[#050505] text-[#f0f0f0] font-mono text-xs sm:text-[13px] leading-relaxed px-4 sm:px-8 md:px-16 lg:px-24 py-6 sm:py-8 md:py-12 flex flex-col justify-between select-text relative ${
@@ -337,7 +323,7 @@ export default function SharpDisplay() {
                 onClick={() => inputRef.current?.focus()}
             >
                 <div
-                    style={activeSection === "live" || location.pathname.toLowerCase().startsWith("/live") ? { textShadow: '0 1px 3px rgba(0,0,0,0.95)' } : undefined}
+                    style={isLive ? { textShadow: '0 1px 3px rgba(0,0,0,0.95)' } : undefined}
                     className={`w-[285px] xs:w-[320px] sm:w-[380px] font-mono text-xs uppercase transition-colors ${
                         isSearchFocused
                             ? "text-white"
@@ -348,14 +334,14 @@ export default function SharpDisplay() {
                 >
                     {/* Top ASCII border line */}
                     <div className={`flex items-center leading-none select-none overflow-hidden whitespace-nowrap ${
-                        activeSection === "live" || location.pathname.toLowerCase().startsWith("/live") ? "text-neutral-400" : "text-neutral-600"
+                        isLive ? "text-neutral-400" : "text-neutral-600"
                     }`}>
                         <span>+--[</span>
                         <span className="text-[#ff0080] font-bold px-1">&gt;</span>
                         <span className={`font-bold transition-colors ${
                             isSearchFocused
                                 ? "text-white"
-                                : activeSection === "live" || location.pathname.toLowerCase().startsWith("/live")
+                                : isLive
                                 ? "text-neutral-300"
                                 : "text-neutral-400"
                         }`}>
@@ -363,7 +349,7 @@ export default function SharpDisplay() {
                         </span>
                         <span>]</span>
                         <span className={`flex-1 overflow-hidden whitespace-nowrap ${
-                            activeSection === "live" || location.pathname.toLowerCase().startsWith("/live") ? "text-neutral-500" : "text-neutral-700"
+                            isLive ? "text-neutral-500" : "text-neutral-700"
                         }`}>
                             ----------------------------------------------------
                         </span>
@@ -372,14 +358,14 @@ export default function SharpDisplay() {
 
                     {/* Middle ASCII interactive row */}
                     <div className={`flex items-center px-1 py-1 transition-colors ${
-                        activeSection === "live" || location.pathname.toLowerCase().startsWith("/live")
+                        isLive
                             ? "bg-transparent"
                             : "bg-black/95"
                     } ${
                         isSearchFocused ? "text-white" : "text-neutral-300"
                     }`}>
                         <span className={`mr-2 select-none ${
-                            activeSection === "live" || location.pathname.toLowerCase().startsWith("/live") ? "text-neutral-400" : "text-neutral-600"
+                            isLive ? "text-neutral-400" : "text-neutral-600"
                         }`}>|</span>
                         <span className="text-[#ff0080] font-bold mr-1.5 select-none">&gt;</span>
 
@@ -398,14 +384,11 @@ export default function SharpDisplay() {
                                 if (e.key === "Enter") {
                                     e.target.blur();
                                 } else if (e.key === "Escape") {
-                                    setBuffer("");
-                                    bufferRef.current = "";
-                                    setSearchQuery("");
-                                    e.target.blur();
+                                    clearSearch();
                                 }
                             }}
                             className={`bg-transparent text-white font-mono text-xs uppercase tracking-widest outline-none border-none p-0 flex-1 min-w-0 ${
-                                activeSection === "live" || location.pathname.toLowerCase().startsWith("/live")
+                                isLive
                                     ? "placeholder:text-neutral-400"
                                     : "placeholder:text-neutral-600"
                             }`}
@@ -425,10 +408,7 @@ export default function SharpDisplay() {
                                 type="button"
                                 onClick={(e) => {
                                     e.stopPropagation();
-                                    setBuffer("");
-                                    bufferRef.current = "";
-                                    setSearchQuery("");
-                                    inputRef.current?.blur();
+                                    clearSearch();
                                 }}
                                 className="font-mono text-[11px] font-bold uppercase text-neutral-400 hover:bg-[#ff0080] hover:text-black px-1 cursor-pointer select-none transition-none mr-1 shrink-0"
                                 title="Clear query (ESC)"
@@ -438,17 +418,17 @@ export default function SharpDisplay() {
                         )}
 
                         <span className={`ml-auto select-none ${
-                            activeSection === "live" || location.pathname.toLowerCase().startsWith("/live") ? "text-neutral-400" : "text-neutral-600"
+                            isLive ? "text-neutral-400" : "text-neutral-600"
                         }`}>|</span>
                     </div>
 
                     {/* Bottom ASCII border line */}
                     <div className={`flex items-center leading-none select-none overflow-hidden whitespace-nowrap ${
-                        activeSection === "live" || location.pathname.toLowerCase().startsWith("/live") ? "text-neutral-400" : "text-neutral-600"
+                        isLive ? "text-neutral-400" : "text-neutral-600"
                     }`}>
                         <span>+</span>
                         <span className={`flex-1 overflow-hidden whitespace-nowrap ${
-                            activeSection === "live" || location.pathname.toLowerCase().startsWith("/live") ? "text-neutral-500" : "text-neutral-700"
+                            isLive ? "text-neutral-500" : "text-neutral-700"
                         }`}>
                             ----------------------------------------------------
                         </span>

@@ -64,7 +64,7 @@ export default function TuiWork({ selectedId = null }) {
             p.title?.toLowerCase().includes(q) ||
             p.shortDesc?.toLowerCase().includes(q) ||
             p.tags?.some(tag => tag.toLowerCase().includes(q)) ||
-            p.year?.includes(q)
+            String(p.year ?? "").includes(q)
         );
     });
 

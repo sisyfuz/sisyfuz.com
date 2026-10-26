@@ -190,7 +190,7 @@ export default function TuiWork({ selectedId = null }) {
         return (
             <div className="py-20 font-mono text-xs uppercase text-neutral-500 space-y-2">
                 <div>[ NO_PROJECTS_MATCHING "{searchQuery}" ]</div>
-                <div className="text-neutral-600 text-[11px]">PRESS ENTER OR ESC TO CLEAR SEARCH FILTER</div>
+                <div className="text-neutral-600 text-[11px]">PRESS ESC TO CLEAR SEARCH FILTER</div>
             </div>
         );
     }

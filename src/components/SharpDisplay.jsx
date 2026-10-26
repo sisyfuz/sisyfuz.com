@@ -4,7 +4,8 @@ import { useNavigate, useLocation } from "react-router-dom";
 import { useDisco } from "../context/DiscoContext";
 import { useA11y } from "../context/A11yContext";
 import { SISYFUZ_BANNER, ASCII_DIVIDER } from "../utils/ascii";
-import { sanitizeUrlParam, sanitizeCommand } from "../utils/sanitize";
+import { sanitizeUrlParam } from "../utils/sanitize";
+import { parseCommand, isCommandPrefix, normalizeSearchInput } from "../utils/commands";
 import A11yToolbar from "./A11yToolbar";
 import MobileCommandBar from "./MobileCommandBar";
 
@@ -90,38 +91,45 @@ export default function SharpDisplay() {
         navigate(sectionKey === "home" ? "/" : `/${sectionKey}`);
     };
 
-    const processCommand = useCallback((val) => {
-        const clean = sanitizeCommand(val, 25);
+    // While typing, the buffer is always a search filter. Jump to /work to show
+    // results, unless the buffer may still become a command name (e.g. "arch").
+    const handleSearchInput = useCallback((raw) => {
+        const clean = normalizeSearchInput(raw, 25);
         setBuffer(clean);
+        const q = clean.trim();
+        setSearchQuery(q);
+        if (q.length > 0 && activeSection !== "work" && !isCommandPrefix(q)) {
+            setActiveSection("work");
+            navigate("/work");
+        }
+    }, [activeSection, navigate, setSearchQuery]);
 
-        const routes = ["work", "archive", "about", "contact", "press", "live", "home", "privacy", "legal"];
-
-        if (clean.endsWith("a11y")) {
-            toggleA11yToolbar();
-            clearSearch();
-        } else if (clean.endsWith("disco")) {
-            setDiscoMode(prev => !prev);
-            clearSearch();
-        } else if (clean.endsWith("ascii")) {
-            setAsciiLiveMode(prev => (location.pathname === "/live" ? !prev : true));
-            setActiveSection("live");
-            navigate("/live");
-            clearSearch();
-        } else if (routes.some(r => clean.endsWith(r))) {
-            const matchedRoute = routes.find(r => clean.endsWith(r));
-            const targetSection = matchedRoute === "legal" ? "privacy" : matchedRoute;
-            setActiveSection(targetSection);
-            navigate(targetSection === "home" ? "/" : `/${targetSection}`);
-            clearSearch();
-        } else {
-            const q = clean.trim();
-            setSearchQuery(q);
-            if (q.length > 0 && activeSection !== "work") {
+    // On Enter: run the command if the whole buffer is exactly one, else keep the filter.
+    const submitSearch = useCallback(() => {
+        const command = parseCommand(buffer);
+        if (!command) {
+            if (buffer.trim().length > 0 && activeSection !== "work") {
                 setActiveSection("work");
                 navigate("/work");
             }
+            inputRef.current?.blur();
+            return;
         }
-    }, [activeSection, clearSearch, navigate, setDiscoMode, setSearchQuery, toggleA11yToolbar]);
+
+        if (command.type === "toggleA11y") {
+            toggleA11yToolbar();
+        } else if (command.type === "toggleDisco") {
+            setDiscoMode(prev => !prev);
+        } else if (command.type === "ascii") {
+            setAsciiLiveMode(prev => (isLive ? !prev : true));
+            setActiveSection("live");
+            navigate(command.to);
+        } else if (command.type === "navigate") {
+            setActiveSection(command.to === "/" ? "home" : command.to.slice(1));
+            navigate(command.to);
+        }
+        clearSearch();
+    }, [activeSection, buffer, clearSearch, isLive, navigate, setAsciiLiveMode, setDiscoMode, toggleA11yToolbar]);
 
     // Clear search on global Escape key
     useEffect(() => {
@@ -376,13 +384,11 @@ export default function SharpDisplay() {
                             placeholder={isSearchFocused ? "" : "PRESS_TO_SEARCH"}
                             onFocus={() => setIsSearchFocused(true)}
                             onBlur={() => setIsSearchFocused(false)}
-                            onChange={(e) => {
-                                const cleanVal = e.target.value.toLowerCase().replace(/[^a-z0-9 ]/g, '').slice(-25);
-                                processCommand(cleanVal);
-                            }}
+                            onChange={(e) => handleSearchInput(e.target.value)}
                             onKeyDown={(e) => {
                                 if (e.key === "Enter") {
-                                    e.target.blur();
+                                    e.preventDefault();
+                                    submitSearch();
                                 } else if (e.key === "Escape") {
                                     clearSearch();
                                 }

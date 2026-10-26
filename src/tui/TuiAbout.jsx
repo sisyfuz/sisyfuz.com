@@ -4,13 +4,26 @@ import { client } from "../sanityClient";
 import AsciiMedia from "../components/AsciiMedia";
 import { getOptimizedImageUrl } from "../components/sanityImage";
 import { ASCII_DIVIDER } from "../utils/ascii";
+import TuiLoadError from "./TuiLoadError";
 
 export default function TuiAbout({ onNavigate }) {
     const [assets, setAssets] = useState(null);
+    const [loadError, setLoadError] = useState(false);
+    const [reloadKey, setReloadKey] = useState(0);
 
     useEffect(() => {
-        client.fetch(`*[_type == "aboutAssets"][0]`).then(setAssets);
-    }, []);
+        let cancelled = false;
+        client.fetch(`*[_type == "aboutAssets"][0]`)
+            .then((data) => {
+                if (!cancelled) setAssets(data);
+            })
+            .catch((err) => {
+                if (cancelled) return;
+                console.error("Error fetching about assets:", err);
+                setLoadError(true);
+            });
+        return () => { cancelled = true; };
+    }, [reloadKey]);
 
     const rawProfile = assets?.profileImage;
     const imageUrl = rawProfile
@@ -78,6 +91,15 @@ export default function TuiAbout({ onNavigate }) {
                             alt="Dorus Kleijne Portrait"
                             cols={50}
                             aspectRatio="aspect-[3/4]"
+                        />
+                    ) : loadError ? (
+                        <TuiLoadError
+                            label="COULD_NOT_LOAD_PORTRAIT"
+                            onRetry={() => {
+                                setLoadError(false);
+                                setReloadKey(k => k + 1);
+                            }}
+                            className="p-16 justify-center"
                         />
                     ) : (
                         <div className="p-16 text-center text-neutral-600 uppercase">

@@ -28,3 +28,6 @@ dist
 *.key
 scripts/companion/SisyfuzCompanion
 scripts/companion/*.app
+
+# Claude Code agent worktrees
+.claude/worktrees/

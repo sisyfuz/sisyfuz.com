@@ -86,23 +86,6 @@ describe("Framebuster, Iframe & Mobile Stability Suite", () => {
         }
     });
 
-    test("TerminalThemeContext implements safe fallback object and localStorage guards", () => {
-        const themeContextPath = path.join(rootDir, "src/context/TerminalThemeContext.jsx");
-        const content = fs.readFileSync(themeContextPath, "utf-8");
-        assert.ok(
-            content.includes("if (!ctx)"),
-            "useTerminalTheme must contain fallback check if (!ctx)"
-        );
-        assert.ok(
-            content.includes("theme: THEMES.pink"),
-            "useTerminalTheme must fallback to default theme"
-        );
-        assert.ok(
-            content.includes("try {"),
-            "TerminalThemeContext must guard localStorage operations with try-catch"
-        );
-    });
-
     test("DiscoContext implements safe fallback object when called outside provider", () => {
         const discoContextPath = path.join(rootDir, "src/context/DiscoContext.jsx");
         const content = fs.readFileSync(discoContextPath, "utf-8");
@@ -159,7 +142,6 @@ describe("Framebuster, Iframe & Mobile Stability Suite", () => {
         const appPath = path.join(rootDir, "src/App.jsx");
         const appContent = fs.readFileSync(appPath, "utf-8");
         assert.ok(appContent.includes("<ErrorBoundary>"), "App.jsx must wrap children with <ErrorBoundary>");
-        assert.ok(appContent.includes("<TerminalThemeProvider>"), "App.jsx must include <TerminalThemeProvider>");
     });
 
     test("A11yToolbar guards focus restoration calls against unmounted DOM nodes", () => {

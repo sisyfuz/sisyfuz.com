@@ -10,6 +10,7 @@ function stripInvisibleAndControl(str) {
         // Zero-width spaces, joiners, BOM
         .replace(/[\u200B-\u200D\uFEFF]/g, "")
         // ASCII & Latin-1 control characters (0-31, 127-159)
+        // eslint-disable-next-line no-control-regex -- stripping control characters is the point
         .replace(/[\x00-\x1F\x7F-\x9F]/g, "");
 }
 
@@ -57,7 +58,7 @@ export function sanitizeUrlParam(str, maxLen = 100) {
     if (typeof str !== "string") return "";
 
     // Strip leading hash, question marks, and slashes
-    let cleaned = str.replace(/^[#?\/]+/, "");
+    let cleaned = str.replace(/^[#?/]+/, "");
 
     // Attempt URI decoding iteratively to prevent double percent-encoded bypasses (%253C...)
     let decodePasses = 0;

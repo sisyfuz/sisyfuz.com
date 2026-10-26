@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { client } from "../sanityClient";
 import { ASCII_DIVIDER } from "../utils/ascii";
+import TuiLoadError from "./TuiLoadError";
 
 const STORAGE_KEY = "sisyfuz_pressed";
 const COUNTER_ID = "site-button-counter";
@@ -9,18 +10,26 @@ const WORKER_URL = "https://sisyfuz-counter.sisyfuz.workers.dev";
 
 export default function TuiPress() {
     const [count, setCount] = useState(null);
-    const [hasPressed, setHasPressed] = useState(false);
+    const [hasPressed, setHasPressed] = useState(() => !!localStorage.getItem(STORAGE_KEY));
     const [pressing, setPressing] = useState(false);
     const [error, setError] = useState(null);
+    const [countError, setCountError] = useState(false);
+    const [reloadKey, setReloadKey] = useState(0);
 
     useEffect(() => {
-        setHasPressed(!!localStorage.getItem(STORAGE_KEY));
-
+        let cancelled = false;
         client
             .fetch(`*[_id == "${COUNTER_ID}"][0].count`)
-            .then((c) => setCount(c ?? 0))
-            .catch(() => setCount(0));
-    }, []);
+            .then((c) => {
+                if (!cancelled) setCount(c ?? 0);
+            })
+            .catch((err) => {
+                if (cancelled) return;
+                console.error("Error fetching attempt counter:", err);
+                setCountError(true);
+            });
+        return () => { cancelled = true; };
+    }, [reloadKey]);
 
     const handlePress = async () => {
         if (hasPressed || pressing) return;
@@ -35,6 +44,7 @@ export default function TuiPress() {
             if (!res.ok) throw new Error("Worker error");
             const data = await res.json();
             setCount(data.count);
+            setCountError(false);
             localStorage.setItem(STORAGE_KEY, "1");
             setHasPressed(true);
         } catch (err) {
@@ -56,9 +66,20 @@ export default function TuiPress() {
                 <div className="text-neutral-600 select-none overflow-hidden whitespace-nowrap">
                     {ASCII_DIVIDER}
                 </div>
-                <p className="text-neutral-400 uppercase">
-                    TOTAL_RECORDED_ATTEMPTS: <span className="text-white font-bold">[{displayCount}]</span>
-                </p>
+                {countError ? (
+                    <TuiLoadError
+                        label="COULD_NOT_LOAD_COUNTER"
+                        onRetry={() => {
+                            setCountError(false);
+                            setReloadKey(k => k + 1);
+                        }}
+                        className=""
+                    />
+                ) : (
+                    <p className="text-neutral-400 uppercase">
+                        TOTAL_RECORDED_ATTEMPTS: <span className="text-white font-bold">[{displayCount}]</span>
+                    </p>
+                )}
             </div>
 
             <div>

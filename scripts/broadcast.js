@@ -61,6 +61,12 @@ function isLocalRequest(req) {
     if (host.includes("trycloudflare.com") || host.includes("sisyfuz.com")) {
         return false;
     }
+    // A website open in a local browser tab also connects from loopback, so only accept
+    // non-browser clients (Companion URLSession, CLI) or the Companion's file:// HUD
+    const origin = req.headers["origin"];
+    if (origin !== undefined && origin !== "null" && origin !== "file://") {
+        return false;
+    }
     const remote = req.socket?.remoteAddress || "";
     const isLoopbackIp = remote === "127.0.0.1" || remote === "::1" || remote === "::ffff:127.0.0.1";
     const isLocalHost = host.startsWith("localhost") || host.startsWith("127.0.0.1");
@@ -839,8 +845,9 @@ async function main() {
                 }
 
                 // Handle Mode Synchronization between Companion, TouchDesigner, and Web clients
+                // (only the authenticated Companion may change it; viewers just receive it)
                 if (msg.type === "mode" || msg.type === "set_mode") {
-                    if (msg.mode) {
+                    if (msg.mode && clientWs.isHostClient) {
                         activeMode = String(msg.mode);
                         const modePacket = JSON.stringify({ type: "mode", mode: activeMode });
                         for (const c of activeWsClients) {
@@ -855,6 +862,7 @@ async function main() {
 
                 // Handle Storage Guardian Telemetry routing to TouchDesigner & Web clients
                 if (msg.type === "storage_telemetry") {
+                    if (!clientWs.isHostClient) return;
                     for (const c of activeWsClients) {
                         if (c !== clientWs && c.readyState === WebSocket.OPEN) c.send(rawStr);
                     }
@@ -864,8 +872,10 @@ async function main() {
                     return;
                 }
 
-                // Handle Storage Guardian Action triggers
+                // Handle Storage Guardian Action triggers. These move/trash files on this Mac,
+                // so never relay them from public viewers coming in through the tunnel.
                 if (msg.type === "storage_action") {
+                    if (!clientWs.isHostClient) return;
                     for (const c of activeWsClients) {
                         if (c !== clientWs && c.readyState === WebSocket.OPEN) c.send(rawStr);
                     }

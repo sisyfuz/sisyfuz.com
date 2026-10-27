@@ -3,6 +3,7 @@ import { client } from "../sanityClient";
 import { ASCII_DIVIDER, ASCII_RAMP } from "../utils/ascii";
 import { useDisco } from "../context/DiscoContext";
 import { useA11y } from "../context/A11yContext";
+import { useTermCell, rowBaseline } from "../hooks/useTermCell";
 import { sanitizeChat, sanitizeStreamUrl } from "../utils/sanitize";
 
 const isLocalhost = typeof window !== "undefined" && (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
@@ -55,7 +56,7 @@ function AsciiWipeItem({ text, progress, startIndex = 0, totalLength = 110 }) {
             // Active wave front: Hot-pink glitch
             const g = GLITCH_CHARS[(i + glitchOffset) % GLITCH_CHARS.length];
             items.push(
-                <span key={idx} className="text-[#ff0080] font-bold">
+                <span key={idx} className="cell text-[#ff0080] font-bold">
                     {g}
                 </span>
             );
@@ -80,6 +81,8 @@ function AsciiWipeItem({ text, progress, startIndex = 0, totalLength = 110 }) {
 export default function TuiLive({ onNavigate }) {
     const { asciiLiveMode, setAsciiLiveMode, discoMode } = useDisco();
     const { lowPowerMode, reducedMotion } = useA11y();
+    // The full-screen ASCII stream draws on the page's own 1ch x 1lh grid
+    const termCell = useTermCell();
     const scheduleNextAsciiRef = useRef(null);
     const checkLiveStatusRef = useRef(null);
 
@@ -794,25 +797,19 @@ export default function TuiLive({ onNavigate }) {
 
         let lastW = 0;
         let lastH = 0;
-        let cellW = 8;
-        let cellH = 14;
         let cols = 0;
         let rows = 0;
         let rowChars = [];
+        let lastRenderAt = 0;
+        // Low-power mode keeps the grid but halves the frame rate
+        const minFrameMs = lowPowerMode ? 1000 / 30 : 0;
 
         const updateGridMetrics = (width, height) => {
-            const isMobile = width < 768;
-            const fontSize = isMobile ? (lowPowerMode ? 14 : 11) : 13;
-            ctx.font = `${fontSize}px monospace`;
-            ctx.textBaseline = "top";
-
-            const charW = ctx.measureText("M").width || (isMobile ? 7 : 8);
-            cellW = charW;
-            cellH = Math.round(cellW / 0.55);
-            const calculatedCols = Math.floor(width / cellW);
-            // Adaptive resolution scaling: clamp sampling grid to ~38 cols on phone / low-power
-            cols = (isMobile || lowPowerMode) ? Math.min(calculatedCols, 38) : calculatedCols;
-            rows = Math.floor(height / cellH);
+            // Same font and cell as the page text, so glyphs line up with the HUD and header
+            ctx.font = termCell.font;
+            ctx.textBaseline = "alphabetic";
+            cols = Math.floor(width / termCell.w);
+            rows = Math.ceil(height / termCell.h);
 
             if (cols > 0 && (!rowChars || rowChars.length !== cols)) {
                 rowChars = new Array(cols);
@@ -831,6 +828,13 @@ export default function TuiLive({ onNavigate }) {
                 scheduleNext();
                 return;
             }
+
+            const frameStart = performance.now();
+            if (frameStart - lastRenderAt < minFrameMs) {
+                scheduleNext();
+                return;
+            }
+            lastRenderAt = frameStart;
 
             const width = window.innerWidth;
             const height = window.innerHeight;
@@ -899,7 +903,7 @@ export default function TuiLive({ onNavigate }) {
                     const lum = (data[idx] * 77 + data[idx + 1] * 150 + data[idx + 2] * 29) >> 8;
                     rowChars[x] = RAMP_LOOKUP[lum];
                 }
-                ctx.fillText(rowChars.join(""), 0, y * cellH);
+                ctx.fillText(rowChars.join(""), 0, rowBaseline(termCell, y * termCell.h));
             }
 
             // Step 3: Composite exact video colors or disco gradient onto ASCII glyphs
@@ -966,7 +970,7 @@ export default function TuiLive({ onNavigate }) {
             offscreen.width = 0;
             offscreen.height = 0;
         };
-    }, [isLive, asciiLiveMode, lowPowerMode, displayMode, discoMode]);
+    }, [isLive, asciiLiveMode, lowPowerMode, displayMode, discoMode, termCell]);
 
     // Canvas buffer memory cleanup on unmount
     useEffect(() => {
@@ -1305,7 +1309,7 @@ export default function TuiLive({ onNavigate }) {
     return (
         <div
             ref={containerRef}
-            className="fixed inset-0 w-screen h-screen z-40 bg-[#050505] overflow-hidden select-none cursor-crosshair font-mono text-xs sm:text-[13px]"
+            className="fixed inset-0 w-screen h-screen z-40 bg-[#050505] overflow-hidden select-none cursor-crosshair font-mono"
         >
             {/* 1. TOP HOVER / TOUCH TRIGGER ZONE (Top 65px) */}
             <div
@@ -1318,7 +1322,7 @@ export default function TuiLive({ onNavigate }) {
             <button
                 type="button"
                 onClick={handleMobileToggle}
-                className="sm:hidden fixed top-2 left-1/2 -translate-x-1/2 z-40 bg-black/95 text-neutral-300 hover:bg-white hover:text-black px-3 py-1 text-[10px] uppercase font-mono tracking-wider cursor-pointer shadow-lg transition-none"
+                className="sm:hidden fixed top-2 left-1/2 -translate-x-1/2 z-40 bg-black/95 text-neutral-300 hover:bg-white hover:text-black px-[2ch] uppercase font-mono cursor-pointer shadow-lg transition-none"
                 style={{
                     opacity: wipeProgress < 0.2 ? 0.85 : 0,
                     pointerEvents: wipeProgress < 0.2 ? "auto" : "none",
@@ -1334,19 +1338,19 @@ export default function TuiLive({ onNavigate }) {
                     opacity: wipeProgress > 0.01 ? 1 : 0,
                     pointerEvents: wipeProgress > 0.5 ? "auto" : "none",
                 }}
-                className="fixed top-0 left-0 w-full z-50 transition-opacity duration-150 bg-black/95 backdrop-blur-md px-4 sm:px-12 pt-2.5 sm:pt-3 pb-1"
+                className="fixed top-0 left-0 w-full z-50 transition-opacity duration-150 bg-black/95 backdrop-blur-md px-[2ch] sm:px-[6ch] sm:pt-[1lh]"
             >
-                <div className="flex flex-wrap items-center justify-between gap-3 uppercase">
+                <div className="flex flex-wrap items-center justify-between gap-x-[2ch] gap-y-[1lh] uppercase">
                     
                     {/* Left: Site Navigation */}
-                    <div className="flex flex-wrap items-center gap-3 sm:gap-6">
+                    <div className="flex flex-wrap items-center gap-x-[2ch] gap-y-[1lh] sm:gap-x-[3ch] sm:gap-y-[1lh]">
                         {navItems.map((item, idx) => {
                             const isLiveTab = item.key === "live";
                             return (
                                 <button
                                     key={item.key}
                                     onClick={() => onNavigate && onNavigate(item.key)}
-                                    className={`cursor-pointer px-1 -mx-1 transition-colors ${
+                                    className={`cursor-pointer transition-colors ${
                                         isLiveTab
                                             ? "text-[#ff0080] font-bold hover:bg-[#ff0080] hover:text-black"
                                             : "text-white hover:bg-white hover:text-black"
@@ -1364,10 +1368,10 @@ export default function TuiLive({ onNavigate }) {
                     </div>
 
                     {/* Right: Live Telemetry, Audio, Mode, Fullscreen */}
-                    <div className="flex flex-wrap items-center gap-2 sm:gap-4 text-xs">
+                    <div className="flex flex-wrap items-center gap-x-[1ch] sm:gap-x-[2ch] sm:gap-y-[1lh]">
                         
                         {/* Telemetry: LIVE // 60 FPS // N VIEWERS */}
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-x-[1ch]">
                             <span className={`w-2 h-2 inline-block ${
                                 isLive ? "bg-[#ff0080] animate-pulse" : "bg-neutral-600"
                             }`} />
@@ -1395,7 +1399,7 @@ export default function TuiLive({ onNavigate }) {
                                         return next;
                                     });
                                 }}
-                                className={`px-1 uppercase cursor-pointer transition-colors ${
+                                className={`uppercase cursor-pointer transition-colors ${
                                     asciiLiveMode
                                         ? "text-[#ff0080] font-bold hover:bg-[#ff0080] hover:text-black"
                                         : "text-neutral-400 hover:bg-white hover:text-black"
@@ -1415,7 +1419,7 @@ export default function TuiLive({ onNavigate }) {
                         {isLive && (
                             <button
                                 onClick={toggleAudio}
-                                className={`px-1 uppercase cursor-pointer transition-colors ${
+                                className={`uppercase cursor-pointer transition-colors ${
                                     !isMuted
                                         ? "text-[#ff0080] font-bold hover:bg-[#ff0080] hover:text-black"
                                         : "text-neutral-400 hover:bg-white hover:text-black"
@@ -1440,7 +1444,7 @@ export default function TuiLive({ onNavigate }) {
                                     return next;
                                 });
                             }}
-                            className="text-neutral-300 hover:bg-white hover:text-black px-1 uppercase cursor-pointer"
+                            className="text-neutral-300 hover:bg-white hover:text-black uppercase cursor-pointer"
                             title="Press Tab to toggle anytime"
                         >
                             <AsciiWipeItem
@@ -1457,7 +1461,7 @@ export default function TuiLive({ onNavigate }) {
                                 setIsChatOpen(prev => !prev);
                                 setUnreadChatCount(0);
                             }}
-                            className={`px-1 uppercase cursor-pointer transition-colors ${
+                            className={`uppercase cursor-pointer transition-colors ${
                                 isChatOpen
                                     ? "text-[#ff0080] font-bold hover:bg-[#ff0080] hover:text-black"
                                     : unreadChatCount > 0
@@ -1477,7 +1481,7 @@ export default function TuiLive({ onNavigate }) {
                         {/* Fullscreen Toggle */}
                         <button
                             onClick={toggleFullscreen}
-                            className="text-neutral-400 hover:bg-[#ff0080] hover:text-black px-1 uppercase cursor-pointer"
+                            className="text-neutral-400 hover:bg-[#ff0080] hover:text-black uppercase cursor-pointer"
                             title="Press F to toggle fullscreen"
                         >
                             <AsciiWipeItem
@@ -1491,7 +1495,7 @@ export default function TuiLive({ onNavigate }) {
                 </div>
 
                 {/* Raw ASCII character divider replacing modern CSS border */}
-                <div className="text-neutral-700 select-none overflow-hidden whitespace-nowrap leading-none pt-2 font-mono text-[11px]">
+                <div className="text-neutral-700 select-none overflow-hidden whitespace-nowrap font-mono">
                     <AsciiWipeItem
                         text={ASCII_DIVIDER}
                         progress={wipeProgress}
@@ -1530,16 +1534,16 @@ export default function TuiLive({ onNavigate }) {
 
                 {/* STANDBY: PURE PROCEDURAL ASCII OSCILLOSCOPE */}
                 {!isLive && (
-                    <div className="flex flex-col items-center justify-center p-4 sm:p-6 text-center space-y-4 sm:space-y-6 select-none animate-fadeIn max-w-full overflow-hidden">
-                        <pre className="text-[9px] xs:text-[10px] sm:text-xs leading-none text-neutral-400 font-mono overflow-x-auto no-scrollbar">
+                    <div className="flex flex-col items-center justify-center px-[2ch] py-[1lh] sm:px-[3ch] sm:py-[1lh] text-center space-y-[1lh] sm:space-y-[1lh] select-none animate-fadeIn max-w-full overflow-hidden">
+                        <pre className="text-neutral-400 font-mono overflow-x-auto no-scrollbar">
                             {renderOscilloscope(animFrame)}
                         </pre>
 
-                        <div className="space-y-1 uppercase tracking-wider text-xs">
+                        <div className="uppercase">
                             <span className="text-[#ff0080] font-bold block">
                                 [ STANDBY // CARRIER SIGNAL SEARCHING ]
                             </span>
-                            <span className="text-neutral-500 block text-[11px]">
+                            <span className="text-neutral-500 block">
                                 AUTO_RECONNECT: ACTIVE
                             </span>
                         </div>
@@ -1551,18 +1555,18 @@ export default function TuiLive({ onNavigate }) {
             {isChatOpen && (
                 <aside
                     aria-label="Live Stream Chat"
-                    className="absolute top-12 bottom-16 sm:bottom-4 right-2 sm:right-3 z-40 w-80 max-w-[calc(100vw-16px)] sm:max-w-xs bg-[#050505]/95 backdrop-blur-md flex flex-col font-mono text-xs shadow-2xl select-text animate-fadeIn"
+                    className="absolute top-12 bottom-16 sm:bottom-4 right-2 sm:right-3 z-40 w-[40ch] max-w-[calc(100vw-16px)] sm:max-w-[40ch] bg-[#050505]/95 backdrop-blur-md flex flex-col font-mono shadow-2xl select-text animate-fadeIn"
                     onClick={(e) => e.stopPropagation()}
                 >
                     {/* Header Bar */}
-                    <div className="flex items-center justify-between px-3 py-2 text-neutral-300">
-                        <span className="font-bold tracking-wider text-[#ff0080] flex items-center gap-1.5">
+                    <div className="flex items-center justify-between px-[2ch] text-neutral-300">
+                        <span className="font-bold text-[#ff0080] flex items-center gap-x-[1ch]">
                             <span className="inline-block w-2 h-2 bg-[#ff0080] animate-pulse" />
                             LIVE CHAT [{chatMessages.length}]
                         </span>
                         <button
                             onClick={() => setIsChatOpen(false)}
-                            className="text-neutral-400 hover:bg-white hover:text-black px-1.5 py-0.5 cursor-pointer font-bold uppercase transition-none"
+                            className="text-neutral-400 hover:bg-white hover:text-black px-[1ch] cursor-pointer font-bold uppercase transition-none"
                             title="Close Chat (Esc or C)"
                             aria-label="Close Live Chat"
                         >
@@ -1571,13 +1575,13 @@ export default function TuiLive({ onNavigate }) {
                     </div>
 
                     {/* Lineless ASCII Divider */}
-                    <div aria-hidden="true" className="text-neutral-800 select-none overflow-hidden whitespace-nowrap text-[10px] leading-none px-3">
+                    <div aria-hidden="true" className="text-neutral-800 select-none overflow-hidden whitespace-nowrap px-[2ch]">
                         {ASCII_DIVIDER}
                     </div>
 
                     {/* Handle Customization Bar */}
-                    <div className="px-3 py-1.5 flex items-center justify-between text-[11px] text-neutral-400">
-                        <div className="flex items-center gap-1.5 truncate">
+                    <div className="px-[2ch] flex items-center justify-between text-neutral-400">
+                        <div className="flex items-center gap-x-[1ch] truncate">
                             <span className="text-neutral-500 font-bold">&gt; ID:</span>
                             {isEditingUsername ? (
                                 <input
@@ -1605,46 +1609,46 @@ export default function TuiLive({ onNavigate }) {
                                         }
                                         setIsEditingUsername(false);
                                     }}
-                                    className="bg-neutral-900 text-white px-1.5 py-0.5 outline-none border-none text-[11px] font-mono focus:ring-0"
+                                    className="bg-neutral-900 text-white px-[1ch] outline-none border-none font-mono focus:ring-0"
                                 />
                             ) : (
                                 <button
                                     onClick={() => setIsEditingUsername(true)}
-                                    className="text-white hover:bg-white hover:text-black px-1 -mx-1 cursor-pointer truncate max-w-[140px] font-bold uppercase transition-none"
+                                    className="text-white hover:bg-white hover:text-black cursor-pointer truncate max-w-[18ch] font-bold uppercase transition-none"
                                     title="Click to change your username"
                                 >
                                     [{chatUsername}]
                                 </button>
                             )}
                         </div>
-                        <span className="text-[10px] text-neutral-500 uppercase">{transport || "CONNECTED"}</span>
+                        <span className="text-neutral-500 uppercase">{transport || "CONNECTED"}</span>
                     </div>
 
                     {/* Lineless ASCII Divider */}
-                    <div aria-hidden="true" className="text-neutral-800 select-none overflow-hidden whitespace-nowrap text-[10px] leading-none px-3">
+                    <div aria-hidden="true" className="text-neutral-800 select-none overflow-hidden whitespace-nowrap px-[2ch]">
                         {ASCII_DIVIDER}
                     </div>
 
                     {/* Message Stream */}
                     <div
                         ref={chatScrollRef}
-                        className="flex-1 overflow-y-auto p-3 space-y-2 select-text font-mono text-[11px] leading-relaxed no-scrollbar"
+                        className="flex-1 overflow-y-auto px-[2ch] select-text font-mono no-scrollbar"
                     >
                         {chatMessages.length === 0 ? (
-                            <div className="text-neutral-600 italic py-12 text-center text-xs space-y-1 select-none">
+                            <div className="text-neutral-600 italic py-[2lh] text-center select-none">
                                 <div>NO MESSAGES RECORDED.</div>
-                                <div className="text-[10px] text-neutral-700">[ TYPE BELOW TO TRANSMIT ]</div>
+                                <div className="text-neutral-700">[ TYPE BELOW TO TRANSMIT ]</div>
                             </div>
                         ) : (
                             chatMessages.map((m, idx) => (
                                 <div key={m.id || idx} className="break-words">
-                                    <span className="text-neutral-500 text-[10px] mr-1.5 select-none">
+                                    <span className="text-neutral-500 mr-[1ch] select-none">
                                         {m.time ? new Date(m.time * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : ""}
                                     </span>
                                     {m.isHost || m.user?.startsWith("[HOST]") ? (
-                                        <span className="text-[#ff0080] font-bold mr-1.5">[HOST]</span>
+                                        <span className="text-[#ff0080] font-bold mr-[1ch]">[HOST]</span>
                                     ) : (
-                                        <span className="text-neutral-300 font-bold mr-1.5">{m.user}:</span>
+                                        <span className="text-neutral-300 font-bold mr-[1ch]">{m.user}:</span>
                                     )}
                                     <span className={m.isHost ? "text-white font-medium" : "text-neutral-200"}>
                                         {m.text}
@@ -1655,28 +1659,28 @@ export default function TuiLive({ onNavigate }) {
                     </div>
 
                     {/* Lineless ASCII Divider */}
-                    <div aria-hidden="true" className="text-neutral-800 select-none overflow-hidden whitespace-nowrap text-[10px] leading-none px-3">
+                    <div aria-hidden="true" className="text-neutral-800 select-none overflow-hidden whitespace-nowrap px-[2ch]">
                         {ASCII_DIVIDER}
                     </div>
 
                     {/* Chat Input Bar */}
                     <form
                         onSubmit={sendChatMessage}
-                        className="p-2 flex gap-1.5 items-center bg-transparent"
+                        className="px-[1ch] flex gap-x-[1ch] items-center bg-transparent"
                     >
-                        <span className="text-[#ff0080] font-bold select-none pl-1">&gt;</span>
+                        <span className="text-[#ff0080] font-bold select-none">&gt;</span>
                         <input
                             type="text"
                             value={chatInputText}
                             onChange={(e) => setChatInputText(e.target.value)}
                             placeholder="Type a message... (Enter)"
                             maxLength={200}
-                            className="flex-1 bg-transparent text-white px-1.5 py-1 outline-none border-none text-xs placeholder:text-neutral-600 focus:bg-neutral-900/50"
+                            className="flex-1 bg-transparent text-white px-[1ch] outline-none border-none placeholder:text-neutral-600 focus:bg-neutral-900/50"
                         />
                         <button
                             type="submit"
                             disabled={!chatInputText.trim()}
-                            className="px-2 py-1 text-neutral-300 hover:bg-white hover:text-black disabled:text-neutral-700 disabled:hover:bg-transparent disabled:hover:text-neutral-700 cursor-pointer disabled:cursor-not-allowed uppercase text-[11px] font-bold transition-none"
+                            className="px-[1ch] text-neutral-300 hover:bg-white hover:text-black disabled:text-neutral-700 disabled:hover:bg-transparent disabled:hover:text-neutral-700 cursor-pointer disabled:cursor-not-allowed uppercase font-bold transition-none"
                         >
                             [SEND]
                         </button>
@@ -1687,7 +1691,7 @@ export default function TuiLive({ onNavigate }) {
             {/* 4. TAB MODE SWITCH TOAST (Minimal Center Notification) */}
             {modeToast && (
                 <div className="fixed inset-0 pointer-events-none flex items-center justify-center z-50">
-                    <div className="bg-black/95 text-[#ff0080] font-bold px-4 py-2 uppercase tracking-widest text-xs animate-fadeIn shadow-2xl font-mono">
+                    <div className="bg-black/95 text-[#ff0080] font-bold px-[2ch] py-[1lh] uppercase animate-fadeIn shadow-2xl font-mono">
                         [ {modeToast} ]
                     </div>
                 </div>

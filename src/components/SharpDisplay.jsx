@@ -19,7 +19,7 @@ const TuiPrivacy = lazy(() => import("../tui/TuiPrivacy"));
 
 function AsciiSectionLoader() {
     return (
-        <div className="py-20 font-mono text-xs uppercase tracking-widest text-neutral-500 animate-pulse select-none">
+        <div className="py-[4lh] font-mono uppercase text-neutral-500 animate-pulse select-none">
             [ LOADING_VIEW... ]
         </div>
     );
@@ -134,7 +134,7 @@ export default function SharpDisplay() {
     }, [clearSearch]);
 
     return (
-        <div className={`min-h-screen w-full bg-[#050505] text-[#f0f0f0] font-mono text-xs sm:text-[13px] leading-relaxed px-4 sm:px-8 md:px-16 lg:px-24 py-6 sm:py-8 md:py-12 flex flex-col justify-between select-text relative ${
+        <div className={`min-h-[round(down,100dvh,1lh)] w-full bg-[#050505] text-[#f0f0f0] font-mono px-[2ch] sm:px-[4ch] md:px-[8ch] lg:px-[12ch] py-[1lh] sm:py-[2lh] md:py-[2lh] flex flex-col justify-between select-text relative ${
             discoMode ? "animate-disco" : ""
         }`}>
             {/* Keyboard Skip to Content */}
@@ -148,23 +148,23 @@ export default function SharpDisplay() {
                         main.scrollIntoView({ behavior: "smooth" });
                     }
                 }}
-                className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-[9999] focus:bg-[#ff0080] focus:text-black focus:font-mono focus:font-bold focus:px-3 focus:py-2 focus:outline-none"
+                className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-[9999] focus:bg-[#ff0080] focus:text-black focus:font-mono focus:font-bold focus:px-[2ch] focus:py-[0.5lh] focus:outline-none"
             >
                 [SKIP_TO_CONTENT]
             </a>
             
             {/* Top Raw Header */}
-            <div className="space-y-4 pb-8 sm:pb-10 z-10">
-                <header role="banner" className="flex flex-wrap items-center justify-between gap-y-3 gap-x-4 uppercase">
+            <div className="term-snap space-y-[1lh] pb-[2lh] z-10">
+                <header role="banner" className="flex flex-wrap items-center justify-between gap-y-[1lh] gap-x-[2ch] uppercase">
                     <Link
                         to="/"
                         onClick={handleNavLinkClick}
-                        className="font-bold cursor-pointer hover:bg-white hover:text-black px-1 -mx-1"
+                        className="font-bold cursor-pointer hover:bg-white hover:text-black"
                     >
                         sisyfuz
                     </Link>
 
-                    <nav role="navigation" aria-label="Main Navigation" className="flex flex-wrap items-center gap-x-3 sm:gap-x-6 gap-y-1.5">
+                    <nav role="navigation" aria-label="Main Navigation" className="flex flex-wrap items-center gap-x-[2ch] sm:gap-x-[3ch]">
                         {SECTIONS.map((sec) => {
                             const isActive = activeSection === sec.key;
                             return (
@@ -173,7 +173,7 @@ export default function SharpDisplay() {
                                     to={sectionPath(sec.key)}
                                     onClick={handleNavLinkClick}
                                     aria-current={isActive ? "page" : undefined}
-                                    className={`cursor-pointer px-1 -mx-1 font-mono uppercase transition-colors ${
+                                    className={`cursor-pointer font-mono uppercase transition-colors ${
                                         isActive
                                             ? "bg-pink-500 text-black font-bold"
                                             : "text-neutral-400 hover:bg-white hover:text-black"
@@ -188,7 +188,7 @@ export default function SharpDisplay() {
                         <button
                             type="button"
                             onClick={toggleA11yToolbar}
-                            className={`cursor-pointer px-1 -mx-1 font-mono uppercase transition-colors ${
+                            className={`cursor-pointer font-mono uppercase transition-colors ${
                                 isA11yToolbarOpen
                                     ? "bg-[#ff0080] text-black font-bold"
                                     : "text-[#ff0080] hover:bg-[#ff0080] hover:text-black"
@@ -212,17 +212,17 @@ export default function SharpDisplay() {
             </div>
 
             {/* Main Content Body */}
-            <main id="main-content" tabIndex="-1" role="main" className="flex-1 pb-28 md:pb-16 z-10 outline-none">
+            <main id="main-content" tabIndex="-1" role="main" className="term-snap flex-1 pb-[6lh] md:pb-[3lh] z-10 outline-none">
                 {activeSection === "home" && (
-                    <div className="space-y-10 animate-fadeIn max-w-3xl">
+                    <div className="space-y-[2lh] animate-fadeIn max-w-[96ch]">
                         {/* ASCII Banner */}
                         <h1 className="sr-only">SISYFUZ - Dorus Kleijne Portfolio</h1>
-                        <pre aria-hidden="true" className="text-[9px] xs:text-[10px] sm:text-xs leading-none font-bold text-neutral-300 select-none overflow-x-auto whitespace-pre no-scrollbar">
+                        <pre aria-hidden="true" className="font-bold text-neutral-300 select-none overflow-x-auto whitespace-pre no-scrollbar">
                             {SISYFUZ_BANNER}
                         </pre>
 
                         {/* Raw Statement */}
-                        <div className="space-y-4 text-neutral-300">
+                        <div className="space-y-[1lh] text-neutral-300">
                             <p className="font-bold text-white uppercase">
                                 DORUS KLEIJNE (2006)
                             </p>
@@ -235,32 +235,32 @@ export default function SharpDisplay() {
                         </div>
 
                         {/* Raw Jump Links with Reverse-Video */}
-                        <div className="pt-4 flex flex-wrap gap-x-4 gap-y-2 sm:gap-6 uppercase">
+                        <div className="pt-[1lh] flex flex-wrap gap-x-[2ch] sm:gap-x-[3ch] sm:gap-y-[1lh] uppercase">
                             <Link
                                 to="/work"
                                 onClick={handleNavLinkClick}
-                                className="text-white hover:bg-white hover:text-black font-bold px-1 -mx-1 cursor-pointer"
+                                className="text-white hover:bg-white hover:text-black font-bold cursor-pointer"
                             >
                                 [VIEW_SELECTED_WORKS →]
                             </Link>
                             <Link
                                 to="/archive"
                                 onClick={handleNavLinkClick}
-                                className="text-neutral-400 hover:bg-white hover:text-black px-1 -mx-1 cursor-pointer"
+                                className="text-neutral-400 hover:bg-white hover:text-black cursor-pointer"
                             >
                                 [SYSTEM_ARCHIVE →]
                             </Link>
                             <Link
                                 to="/about"
                                 onClick={handleNavLinkClick}
-                                className="text-neutral-400 hover:bg-white hover:text-black px-1 -mx-1 cursor-pointer"
+                                className="text-neutral-400 hover:bg-white hover:text-black cursor-pointer"
                             >
                                 [ABOUT_INFO →]
                             </Link>
                             <Link
                                 to="/contact"
                                 onClick={handleNavLinkClick}
-                                className="text-neutral-400 hover:bg-white hover:text-black px-1 -mx-1 cursor-pointer"
+                                className="text-neutral-400 hover:bg-white hover:text-black cursor-pointer"
                             >
                                 [CONTACT →]
                             </Link>
@@ -300,16 +300,16 @@ export default function SharpDisplay() {
             </main>
 
             {/* Subtle Minimal Footer with Privacy & Legal Notice */}
-            <footer role="contentinfo" className="pt-8 pb-28 md:pb-16 text-neutral-600 flex flex-wrap items-center justify-between gap-y-2 gap-x-4 uppercase z-10 text-[11px] sm:text-xs">
-                <div className="flex items-center gap-3">
+            <footer role="contentinfo" className="term-snap pt-[2lh] pb-[6lh] md:pb-[3lh] text-neutral-600 flex flex-wrap items-center justify-between gap-x-[2ch] uppercase z-10">
+                <div className="flex items-center gap-x-[2ch] gap-y-[1lh]">
                     <span>SISYFUZ // DORUS KLEIJNE</span>
                     <span>UTRECHT, NL</span>
                 </div>
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-x-[2ch] gap-y-[1lh]">
                     <Link
                         to="/privacy"
                         onClick={handleNavLinkClick}
-                        className={`hover:bg-white hover:text-black px-1 -mx-1 cursor-pointer transition-none ${
+                        className={`hover:bg-white hover:text-black cursor-pointer transition-none ${
                             activeSection === "privacy" ? "text-white font-bold bg-neutral-800" : "text-neutral-500"
                         }`}
                         title="Privacyverklaring & Colofon (AVG/GDPR)"
@@ -326,7 +326,7 @@ export default function SharpDisplay() {
             >
                 <div
                     style={isLive ? { textShadow: '0 1px 3px rgba(0,0,0,0.95)' } : undefined}
-                    className={`w-[285px] xs:w-[320px] sm:w-[380px] font-mono text-xs uppercase transition-colors ${
+                    className={`w-[38ch] xs:w-[42ch] sm:w-[48ch] font-mono uppercase transition-colors ${
                         isSearchFocused
                             ? "text-white"
                             : buffer
@@ -335,11 +335,11 @@ export default function SharpDisplay() {
                     }`}
                 >
                     {/* Top ASCII border line */}
-                    <div className={`flex items-center leading-none select-none overflow-hidden whitespace-nowrap ${
+                    <div className={`flex items-center select-none overflow-hidden whitespace-nowrap ${
                         isLive ? "text-neutral-400" : "text-neutral-600"
                     }`}>
                         <span>+--[</span>
-                        <span className="text-[#ff0080] font-bold px-1">&gt;</span>
+                        <span className="text-[#ff0080] font-bold">&gt;</span>
                         <span className={`font-bold transition-colors ${
                             isSearchFocused
                                 ? "text-white"
@@ -359,17 +359,17 @@ export default function SharpDisplay() {
                     </div>
 
                     {/* Middle ASCII interactive row */}
-                    <div className={`flex items-center px-1 py-1 transition-colors ${
+                    <div className={`flex items-center transition-colors ${
                         isLive
                             ? "bg-transparent"
                             : "bg-black/95"
                     } ${
                         isSearchFocused ? "text-white" : "text-neutral-300"
                     }`}>
-                        <span className={`mr-2 select-none ${
+                        <span className={`mr-[1ch] select-none ${
                             isLive ? "text-neutral-400" : "text-neutral-600"
                         }`}>|</span>
-                        <span className="text-[#ff0080] font-bold mr-1.5 select-none">&gt;</span>
+                        <span className="text-[#ff0080] font-bold mr-[1ch] select-none">&gt;</span>
 
                         <input
                             ref={inputRef}
@@ -387,7 +387,7 @@ export default function SharpDisplay() {
                                     clearSearch();
                                 }
                             }}
-                            className={`bg-transparent text-white font-mono text-xs uppercase tracking-widest outline-none border-none p-0 flex-1 min-w-0 ${
+                            className={`bg-transparent text-white font-mono uppercase outline-none border-none p-0 flex-1 min-w-0 ${
                                 isLive
                                     ? "placeholder:text-neutral-400"
                                     : "placeholder:text-neutral-600"
@@ -398,7 +398,7 @@ export default function SharpDisplay() {
                         />
 
                         {/* Blinking Pink ASCII Cursor */}
-                        <span className="animate-pulse text-[#ff0080] font-bold select-none mr-2">
+                        <span className="cell animate-pulse text-[#ff0080] font-bold select-none mr-[1ch]">
                             {isSearchFocused ? "█" : "_"}
                         </span>
 
@@ -410,7 +410,7 @@ export default function SharpDisplay() {
                                     e.stopPropagation();
                                     clearSearch();
                                 }}
-                                className="font-mono text-[11px] font-bold uppercase text-neutral-400 hover:bg-[#ff0080] hover:text-black px-1 cursor-pointer select-none transition-none mr-1 shrink-0"
+                                className="font-mono font-bold uppercase text-neutral-400 hover:bg-[#ff0080] hover:text-black cursor-pointer select-none transition-none shrink-0"
                                 title="Clear query (ESC)"
                             >
                                 [ESC]
@@ -423,7 +423,7 @@ export default function SharpDisplay() {
                     </div>
 
                     {/* Bottom ASCII border line */}
-                    <div className={`flex items-center leading-none select-none overflow-hidden whitespace-nowrap ${
+                    <div className={`flex items-center select-none overflow-hidden whitespace-nowrap ${
                         isLive ? "text-neutral-400" : "text-neutral-600"
                     }`}>
                         <span>+</span>

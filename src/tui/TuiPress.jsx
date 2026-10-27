@@ -58,8 +58,8 @@ export default function TuiPress() {
     const displayCount = count === null ? "..." : count;
 
     return (
-        <div className="space-y-6 max-w-3xl animate-fadeIn text-xs sm:text-[13px] leading-relaxed">
-            <div className="space-y-2">
+        <div className="space-y-[1lh] max-w-[96ch] animate-fadeIn">
+            <div className="">
                 <span className="font-bold uppercase text-white block">
                     ATTEMPT_COUNTER // METRIC
                 </span>
@@ -86,7 +86,7 @@ export default function TuiPress() {
                 <button
                     onClick={handlePress}
                     disabled={hasPressed || pressing}
-                    className={`uppercase font-bold transition-none py-1.5 px-3 -ml-3 cursor-pointer ${
+                    className={`uppercase font-bold transition-none py-[1lh] px-[2ch] -ml-[2ch] cursor-pointer ${
                         hasPressed || pressing
                             ? "text-neutral-600 cursor-not-allowed"
                             : "text-white hover:bg-white hover:text-black"

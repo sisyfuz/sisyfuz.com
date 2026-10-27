@@ -17,10 +17,95 @@ html, body, #root {
     min-height: 100dvh;
 }
 
+/* Terminal character grid: one cell is 1ch x 1lh. Every element inherits the same
+   font size and line height, so vertical spacing in `lh` and horizontal spacing in
+   `ch` keeps all text and ASCII art on a single grid. Integer px line heights keep
+   rows on whole device pixels. */
+:root {
+    --term-size: 12px;
+    --term-lh: 16px;
+}
+@media (min-width: 640px) {
+    :root {
+        --term-size: 13px;
+        --term-lh: 17px;
+    }
+}
+
 @layer base {
     body {
         background: black;
         color: #f0f0f0;
+        font-family: var(--font-mono);
+        font-size: var(--term-size);
+        line-height: var(--term-lh);
+        letter-spacing: 0;
+        font-kerning: none;
+        font-variant-ligatures: none;
+        font-feature-settings: "liga" 0, "calt" 0, "kern" 0;
+    }
+
+    /* Preflight gives these Tailwind's default mono stack; keep them on the grid font */
+    pre, code, kbd, samp {
+        font-family: var(--font-mono);
+        font-size: 1em;
+        line-height: inherit;
+    }
+}
+
+/* A glyph the mono font lacks (e.g. ● █) renders in a fallback font with a different
+   advance; boxing it to exactly one cell keeps the rest of the line on the grid. */
+.cell {
+    display: inline-block;
+    width: 1ch;
+    text-align: center;
+    overflow: hidden;
+    vertical-align: top;
+}
+
+/* Snap a block's width down to whole characters so right-aligned and wrapped text
+   still ends on a column boundary. */
+.term-snap {
+    width: round(down, 100%, 1ch);
+}
+
+/* Card grids with column tracks that are whole characters wide. */
+.term-cards {
+    --term-cols: 1;
+    --term-gap: 4ch;
+    display: grid;
+    column-gap: var(--term-gap);
+    row-gap: 2lh;
+    grid-template-columns: repeat(
+        var(--term-cols),
+        round(down, calc((100% - (var(--term-cols) - 1) * var(--term-gap)) / var(--term-cols)), 1ch)
+    );
+}
+@media (min-width: 768px) {
+    .term-cards { --term-cols: 2; }
+}
+@media (min-width: 1024px) {
+    .term-cards { --term-cols: 3; --term-gap: 6ch; }
+}
+.term-cards.term-cards-2 {
+    --term-gap: 1ch;
+    row-gap: 1lh;
+}
+@media (min-width: 640px) {
+    .term-cards.term-cards-2 { --term-cols: 2; }
+}
+
+/* Two-column media + text layout (7/12 : 5/12) with a character-aligned split. */
+.term-split {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    row-gap: 2lh;
+    column-gap: 4ch;
+    align-items: start;
+}
+@media (min-width: 1024px) {
+    .term-split {
+        grid-template-columns: round(down, calc((100% - 4ch) * 7 / 12), 1ch) minmax(0, 1fr);
     }
 }
 

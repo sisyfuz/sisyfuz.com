@@ -50,7 +50,7 @@ export default function TuiArchive() {
 
     if (isLoading) {
         return (
-            <div className="py-20 font-mono text-xs uppercase tracking-widest text-neutral-500 animate-pulse">
+            <div className="py-[4lh] font-mono uppercase text-neutral-500 animate-pulse">
                 [ LOADING_ARCHIVE_DATA... ]
             </div>
         );
@@ -61,20 +61,20 @@ export default function TuiArchive() {
     }
 
     return (
-        <div className="space-y-4 max-w-4xl text-xs sm:text-[13px] leading-relaxed">
+        <div className="space-y-[1lh] max-w-[112ch]">
             <div className="overflow-x-auto">
-                <table className="w-full text-left font-mono border-collapse">
+                <table className="w-full table-fixed [&_td]:align-top [&_th]:align-top text-left font-mono border-collapse">
                     <thead>
                         <tr className="text-neutral-500 uppercase">
-                            <th className="py-2 pr-2 sm:pr-4 w-14 sm:w-24 font-normal">YEAR</th>
-                            <th className="py-2 px-2 sm:px-4 font-normal">TITLE</th>
-                            <th className="py-2 px-4 w-40 font-normal hidden sm:table-cell">MEDIUM</th>
-                            <th className="py-2 pl-2 sm:pl-4 w-20 sm:w-28 text-right font-normal">ACCESS</th>
+                            <th className="pb-[1lh] pr-[1ch] sm:pr-[2ch] w-[7ch] sm:w-[12ch] font-normal">YEAR</th>
+                            <th className="pb-[1lh] px-[1ch] sm:px-[2ch] font-normal">TITLE</th>
+                            <th className="pb-[1lh] px-[2ch] w-[20ch] font-normal hidden sm:table-cell">MEDIUM</th>
+                            <th className="pb-[1lh] pl-[1ch] sm:pl-[2ch] w-[10ch] sm:w-[14ch] text-right font-normal">ACCESS</th>
                         </tr>
                     </thead>
                     <tbody>
                         <tr>
-                            <td colSpan="4" className="text-neutral-600 select-none overflow-hidden whitespace-nowrap py-1">
+                            <td colSpan="4" className="text-neutral-600 select-none overflow-hidden whitespace-nowrap">
                                 {ASCII_DIVIDER}
                             </td>
                         </tr>
@@ -98,14 +98,14 @@ export default function TuiArchive() {
                                     onClick={handleRowClick}
                                     className={`cursor-pointer group hover:bg-white hover:text-black has-[:focus-visible]:bg-white has-[:focus-visible]:text-black transition-none`}
                                 >
-                                    <td className="py-2 sm:py-2.5 pr-2 sm:pr-4 text-neutral-500 group-hover:text-black group-has-[:focus-visible]:text-black">{item.year}</td>
-                                    <td className="py-2 sm:py-2.5 px-2 sm:px-4 font-bold uppercase text-white group-hover:text-black group-has-[:focus-visible]:text-black">
+                                    <td className="pb-[1lh] sm:pb-0 pr-[1ch] sm:pr-[2ch] text-neutral-500 group-hover:text-black group-has-[:focus-visible]:text-black">{item.year}</td>
+                                    <td className="pb-[1lh] sm:pb-0 px-[1ch] sm:px-[2ch] font-bold uppercase text-white group-hover:text-black group-has-[:focus-visible]:text-black">
                                         {item.title}
                                     </td>
-                                    <td className="py-2.5 px-4 text-neutral-400 group-hover:text-black group-has-[:focus-visible]:text-black hidden sm:table-cell uppercase">
+                                    <td className="pb-[1lh] sm:pb-0 px-[2ch] text-neutral-400 group-hover:text-black group-has-[:focus-visible]:text-black hidden sm:table-cell uppercase">
                                         [{item.type || "project"}]
                                     </td>
-                                    <td className="py-2 sm:py-2.5 pl-2 sm:pl-4 text-right">
+                                    <td className="pb-[1lh] sm:pb-0 pl-[1ch] sm:pl-[2ch] text-right">
                                         {isExternal ? (
                                             <a
                                                 href={item.externalLink}

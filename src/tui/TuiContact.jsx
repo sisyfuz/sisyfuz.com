@@ -3,8 +3,8 @@ import { ASCII_DIVIDER } from "../utils/ascii";
 
 export default function TuiContact() {
     return (
-        <div className="space-y-6 max-w-3xl animate-fadeIn text-xs sm:text-[13px] leading-relaxed">
-            <div className="space-y-2">
+        <div className="space-y-[1lh] max-w-[96ch] animate-fadeIn">
+            <div className="">
                 <span className="font-bold uppercase text-white block">
                     CONTACT // INQUIRIES
                 </span>
@@ -16,12 +16,12 @@ export default function TuiContact() {
                 </p>
             </div>
 
-            <div className="space-y-4 pt-2">
+            <div className="space-y-[1lh]">
                 <div>
-                    <span className="text-neutral-500 uppercase block mb-1">EMAIL DIRECT:</span>
+                    <span className="text-neutral-500 uppercase block">EMAIL DIRECT:</span>
                     <a
                         href="mailto:info@sisyfuz.com"
-                        className="text-white hover:bg-white hover:text-black font-bold uppercase py-1 px-2 -ml-2 inline-block transition-colors"
+                        className="text-white hover:bg-white hover:text-black font-bold uppercase px-[1ch] -ml-[1ch] inline-block transition-colors"
                     >
                         [INFO@SISYFUZ.COM]
                     </a>

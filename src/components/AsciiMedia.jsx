@@ -4,6 +4,18 @@ import { ASCII_RAMP } from "../utils/ascii";
 import { useA11y } from "../context/A11yContext";
 import { useTermCell, rowBaseline } from "../hooks/useTermCell";
 
+// Hover reveal: a cell flashes pink while the sweep is between FLASH_LEAD before and
+// FLASH_TAIL past its threshold, then shows its image slice. Thresholds are spread over
+// [SWEEP_START, SWEEP_END] so no cell is mid-flash at rest and every cell has revealed
+// before the sweep ends.
+const FLASH_LEAD = 0.02;
+const FLASH_TAIL = 0.04;
+const ROW_STAGGER = 0.015;
+const MAX_STAGGER = 4 * ROW_STAGGER;
+const SWEEP_START = FLASH_LEAD + 0.01;
+const SWEEP_END = 1 - FLASH_TAIL - 0.01;
+const TRANSITION_MS = 650;
+
 function setCoverCrop(srcW, srcH, destW, destH, out) {
     if (!srcW || !srcH || !destW || !destH) {
         out.cropX = 0;
@@ -118,10 +130,11 @@ export default function AsciiMedia({
 
         for (let y = 0; y < rows; y++) {
             const rowOffset = y * activeCols;
-            const stagger = ((y * 7) % 5) * 0.015;
+            const stagger = ((y * 7) % 5) * ROW_STAGGER;
             for (let x = 0; x < activeCols; x++) {
                 const cellIdx = rowOffset + x;
-                thresholds[cellIdx] = (x / activeCols) + stagger;
+                const sweep = (activeCols > 1 ? x / (activeCols - 1) : 0) * (1 - MAX_STAGGER) + stagger;
+                thresholds[cellIdx] = SWEEP_START + sweep * (SWEEP_END - SWEEP_START);
 
                 const idx = cellIdx * 4;
                 const r = data[idx];
@@ -239,7 +252,7 @@ export default function AsciiMedia({
                     const cellIdx = rowOffset + x;
                     const delta = progress - thresholds[cellIdx];
 
-                    if (delta > 0.04) {
+                    if (delta > FLASH_TAIL) {
                         // CELL REVEALED: Draw exact unstretched slice from cropped source
                         const sx = cropX + x * srcCellW;
                         const dx = Math.floor(x * cellW);
@@ -248,7 +261,7 @@ export default function AsciiMedia({
                         const char = ramp[rampIndices[cellIdx]];
                         const cellX = x * cellW;
 
-                        if (delta >= -0.02 && delta <= 0.04) {
+                        if (delta >= -FLASH_LEAD) {
                             // ACTIVE TRANSITION FLASH: Hot pink
                             if (activeColor !== "#ff0080") {
                                 ctx.fillStyle = "#ff0080";
@@ -319,6 +332,7 @@ export default function AsciiMedia({
 
         let frameId;
         let lastFrameTime = performance.now();
+        let lastStepTime = lastFrameTime;
         // Throttle to 30 FPS on mobile (<768px) or low-power mode, 60 FPS otherwise
         const isMobileDevice = typeof window !== "undefined" && (window.innerWidth < 768 || (typeof navigator !== "undefined" && /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent)));
         const fpsInterval = (lowPowerMode || isMobileDevice) ? (1000 / 30) : (1000 / 60);
@@ -336,23 +350,20 @@ export default function AsciiMedia({
             }
             lastFrameTime = timestamp - (elapsed % fpsInterval);
 
+            // Constant-speed sweep, independent of frame rate; capped after a stall
+            const step = Math.min(timestamp - lastStepTime, 100) / TRANSITION_MS;
+            lastStepTime = timestamp;
             const current = stateRef.current.progress;
-            const diff = target - current;
-
-            if (Math.abs(diff) < 0.01) {
-                stateRef.current.progress = target;
-                renderFrame();
-                return;
-            }
-
-            stateRef.current.progress = current + diff * 0.16;
+            const next = target > current ? Math.min(target, current + step) : Math.max(target, current - step);
+            stateRef.current.progress = next;
             renderFrame();
-            frameId = requestAnimationFrame(animate);
+            if (next !== target) frameId = requestAnimationFrame(animate);
         };
 
         const startAnimation = () => {
             if (frameId) cancelAnimationFrame(frameId);
             lastFrameTime = performance.now();
+            lastStepTime = lastFrameTime;
             frameId = requestAnimationFrame(animate);
         };
 

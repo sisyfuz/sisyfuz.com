@@ -8,6 +8,7 @@ import { parseRoute, sectionPath, isPlainLeftClick } from "../utils/routing";
 import { parseCommand, isCommandPrefix, normalizeSearchInput } from "../utils/commands";
 import A11yToolbar from "./A11yToolbar";
 import MobileCommandBar from "./MobileCommandBar";
+import TermScrollSnap from "./TermScrollSnap";
 
 const TuiWork = lazy(() => import("../tui/TuiWork"));
 const TuiArchive = lazy(() => import("../tui/TuiArchive"));
@@ -137,6 +138,8 @@ export default function SharpDisplay() {
         <div className={`min-h-[round(down,100dvh,1lh)] w-full bg-[#050505] text-[#f0f0f0] font-mono px-[2ch] sm:px-[4ch] md:px-[8ch] lg:px-[12ch] py-[1lh] sm:py-[2lh] md:py-[2lh] flex flex-col justify-between select-text relative ${
             discoMode ? "animate-disco" : ""
         }`}>
+            <TermScrollSnap />
+
             {/* Keyboard Skip to Content */}
             <a
                 href="#main-content"
@@ -321,12 +324,12 @@ export default function SharpDisplay() {
 
             {/* RAW ASCII FLOATING SEARCH BOX */}
             <div
-                className="fixed z-30 select-none cursor-pointer bottom-[calc(3.75rem+env(safe-area-inset-bottom))] md:bottom-[calc(1.5rem+env(safe-area-inset-bottom))] left-1/2 -translate-x-1/2"
+                className="term-search z-30 select-none cursor-pointer"
                 onClick={() => inputRef.current?.focus()}
             >
                 <div
                     style={isLive ? { textShadow: '0 1px 3px rgba(0,0,0,0.95)' } : undefined}
-                    className={`w-[38ch] xs:w-[42ch] sm:w-[48ch] font-mono uppercase transition-colors ${
+                    className={`font-mono uppercase transition-colors ${
                         isSearchFocused
                             ? "text-white"
                             : buffer

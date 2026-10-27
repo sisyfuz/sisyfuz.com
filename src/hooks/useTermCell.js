@@ -9,7 +9,8 @@ function measureCell() {
     if (typeof document === "undefined" || !document.body) return FALLBACK;
     const probe = document.createElement("div");
     probe.setAttribute("aria-hidden", "true");
-    probe.style.cssText = "position:absolute;visibility:hidden;pointer-events:none;width:1ch;height:1lh;left:-9999px;top:0;";
+    // 100ch wide: layout rounds a single 1ch box to 1/64px, but glyphs advance by the exact width
+    probe.style.cssText = "position:absolute;visibility:hidden;pointer-events:none;width:100ch;height:1lh;left:-9999px;top:0;";
     document.body.appendChild(probe);
     const rect = probe.getBoundingClientRect();
     const cs = window.getComputedStyle(probe);
@@ -30,7 +31,7 @@ function measureCell() {
             descent = m.fontBoundingBoxDescent;
         }
     }
-    return { w: rect.width || FALLBACK.w, h, font, ascent, descent };
+    return { w: rect.width / 100 || FALLBACK.w, h, font, ascent, descent };
 }
 
 function sameCell(a, b) {

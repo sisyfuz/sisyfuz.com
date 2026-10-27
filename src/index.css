@@ -109,6 +109,53 @@ html, body, #root {
     }
 }
 
+/* Scrolling comes to rest on a whole row: TermScrollSnap gives the page one snap
+   point per row, so the page grid lines up with the viewport grid below. */
+html {
+    scroll-snap-type: y proximity;
+}
+/* Pads the document by the viewport's leftover fraction of a row, so the last scroll
+   position is a whole row too. */
+#root {
+    padding-bottom: calc(100dvh - round(down, 100dvh, 1lh));
+}
+.term-snap-rail {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 1px;
+    pointer-events: none;
+}
+.term-snap-rail > div {
+    height: 1lh;
+    scroll-snap-align: start;
+}
+
+/* Fixed overlays on the viewport grid: rows are counted up from the last whole row
+   above the home-indicator inset, columns from the left edge. */
+:root {
+    --term-view-bottom: round(down, calc(100dvh - env(safe-area-inset-bottom, 0px)), 1lh);
+}
+.term-search {
+    --search-w: 38ch;
+    --search-rows: 8; /* 3-row box + 1 blank row + 4-row mobile dock */
+    position: fixed;
+    width: var(--search-w);
+    left: round(down, calc((100% - var(--search-w)) / 2), 1ch);
+    top: calc(var(--term-view-bottom) - var(--search-rows) * 1lh);
+}
+@media (min-width: 640px) {
+    .term-search { --search-w: 48ch; }
+}
+@media (min-width: 768px) {
+    .term-search { --search-rows: 4; } /* no mobile dock */
+}
+.term-dock {
+    position: fixed;
+    top: calc(var(--term-view-bottom) - 4lh);
+    bottom: 0;
+}
+
 /* 44px Minimum Touch Target Bounding Box on Mobile */
 @media (pointer: coarse), (max-width: 768px) {
     .touch-target {

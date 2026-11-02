@@ -17,7 +17,7 @@ export default function AgendaBusySheet({ group, day, people, onClose, onOpen })
                         <button
                             type="button"
                             onClick={() => onOpen(e.id)}
-                            className="flex gap-x-[2ch] w-full min-h-[2lh] items-center text-left cursor-pointer transition-none hover:bg-[#141414]"
+                            className="flex gap-x-[2ch] w-full min-h-[3lh] items-center text-left cursor-pointer transition-none hover:bg-[#141414] focus-visible:outline-none focus-visible:bg-[#262626]"
                         >
                             <span className="text-neutral-400 shrink-0">{timeLabel(e, day)}</span>
                             <span className="text-white min-w-0 truncate">{e.title}</span>

@@ -23,4 +23,4 @@ simple = { limit = 15, period = 10 }
 [[d1_databases]]
 binding = "AGENDA_DB"
 database_name = "sisyfuz-agenda"
-database_id = "REPLACE_WITH_DATABASE_ID"
+database_id = "21306417-5c11-428c-9842-72b9306c1e0e"

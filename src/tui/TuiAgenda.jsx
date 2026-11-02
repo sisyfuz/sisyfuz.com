@@ -5,6 +5,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { ASCII_DIVIDER } from "../utils/ascii";
+import TermScrollSnap from "../components/TermScrollSnap";
 import { AgendaError, agendaClient, clearSession, loadSession } from "../utils/agendaApi";
 import { addDays, daysBetween, monthGrid, monthOf, todayIso, addMonths } from "../utils/agendaDates";
 import { itemState } from "../utils/agendaStatus";
@@ -42,7 +43,9 @@ function isCalendarFile(file) {
     return /\.(ics|ical|icalendar|ifb)$/i.test(file.name) || file.type === "text/calendar";
 }
 
-// Keeps the page out of search engines and the tab title generic.
+// Keeps the page out of search engines and the tab title generic. Fields use the
+// grid's 12px font, so on this page the viewport also stops iOS from zooming in
+// on them (pinch zoom keeps working on iOS).
 function usePrivatePage() {
     useEffect(() => {
         const meta = document.createElement("meta");
@@ -51,9 +54,13 @@ function usePrivatePage() {
         document.head.appendChild(meta);
         const title = document.title;
         document.title = "agenda";
+        const viewport = document.querySelector('meta[name="viewport"]');
+        const viewportBefore = viewport?.getAttribute("content");
+        viewport?.setAttribute("content", "width=device-width, initial-scale=1.0, maximum-scale=1.0");
         return () => {
             meta.remove();
             document.title = title;
+            if (viewport && viewportBefore) viewport.setAttribute("content", viewportBefore);
         };
     }, []);
 }
@@ -93,17 +100,18 @@ function makePeople(profile) {
 
 function Shell({ people, onLogout, status, children, bar, dropProps, dropping }) {
     return (
-        <div className="min-h-[100dvh] w-full bg-[#050505] text-[#f0f0f0] font-mono" {...dropProps}>
+        <div className="agenda-root relative min-h-[100dvh] w-full bg-[#050505] text-[#f0f0f0] font-mono" {...dropProps}>
+            <TermScrollSnap />
             {dropping && (
-                <div aria-hidden="true" className="fixed inset-0 z-[60] bg-black/90 flex items-center justify-center pointer-events-none px-[2ch]">
+                <div aria-hidden="true" className="fixed inset-0 z-[60] bg-black/90 pointer-events-none px-[2ch] pt-[4lh]">
                     <pre className="text-white font-bold">{DROP_BOX}</pre>
                 </div>
             )}
             <header className="sticky top-0 z-30 bg-[#050505]/95 backdrop-blur-md px-[2ch]">
-                <div className="max-w-[72ch] mx-auto">
+                <div className="term-snap max-w-[72ch]">
                     <div className="flex items-center justify-between gap-x-[2ch] min-h-[3lh]">
                         <span className="uppercase font-bold min-w-0 truncate">
-                            <Link to="/" className="hover:bg-white hover:text-black">sisyfuz</Link>
+                            <Link to="/" className="hover:bg-white hover:text-black focus-visible:outline-none focus-visible:bg-white focus-visible:text-black">sisyfuz</Link>
                             <span className="text-neutral-500"> // </span>
                             agenda
                         </span>
@@ -128,15 +136,15 @@ function Shell({ people, onLogout, status, children, bar, dropProps, dropping })
                 tabIndex={-1}
                 className={`px-[2ch] pt-[1lh] outline-none ${bar ? "pb-[calc(6lh+env(safe-area-inset-bottom))]" : "pb-[3lh]"}`}
             >
-                <div className="max-w-[72ch] mx-auto">{children}</div>
+                <div className="term-snap max-w-[72ch]">{children}</div>
             </main>
 
             {bar && (
                 <nav
                     aria-label="Agenda"
-                    className="fixed bottom-0 inset-x-0 z-40 bg-[#050505]/95 backdrop-blur-md px-[2ch] pb-[env(safe-area-inset-bottom)]"
+                    className="term-dock left-0 right-0 z-40 bg-[#050505]/95 backdrop-blur-md px-[2ch]"
                 >
-                    <div className="max-w-[72ch] mx-auto">
+                    <div className="term-snap max-w-[72ch]">
                         <div aria-hidden="true" className="text-neutral-800 overflow-hidden whitespace-nowrap">{ASCII_DIVIDER}</div>
                         {/* Buttons carry their own 1ch padding, so no extra gap; very narrow phones scroll. */}
                         <div className="flex items-center -mx-[1ch] overflow-x-auto no-scrollbar">{bar}</div>

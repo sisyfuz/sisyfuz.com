@@ -3,6 +3,7 @@ import { Fragment, useMemo } from "react";
 import { formatDayShort, indexByDay, monthOf, monthTitle, relativeDay } from "../../utils/agendaDates";
 import { isPeriod, periodsOn } from "../../utils/agendaSpecial";
 import AgendaDayItems from "./AgendaDayItems";
+import AgendaGutter from "./AgendaGutter";
 import { PeriodBanner, PeriodEnd } from "./AgendaPeriod";
 import { BTN_PLAIN } from "./ui";
 
@@ -50,26 +51,28 @@ export default function AgendaList({ events, from, to, today, onEarlier, onLater
                         ))}
                         <section
                             aria-label={`${rel ? `${rel}, ` : ""}${formatDayShort(day)}${zones.length ? `, ${zones.map((p) => p.title).join(", ")}` : ""}`}
-                            className={`space-y-[1lh] ${edge ? "border-l-2 pl-[1ch]" : ""}`}
-                            style={edge ? { borderColor: edge } : undefined}
+                            className="flex gap-x-[1ch]"
                         >
-                            <h3 className={`uppercase font-bold ${day < today ? "text-neutral-500" : "text-white"}`}>
-                                {isToday ? (
-                                    <span className="bg-[#e8e8e8] text-black px-[1ch] -ml-[1ch]">
-                                        <span className="cell">▶</span> {rel}
-                                    </span>
-                                ) : (
-                                    rel
-                                )}
-                                {rel ? " · " : ""}
-                                {formatDayShort(day)}
-                                {ongoing.map((p) => (
-                                    <span key={p.id} className="font-normal" style={{ color: people.colorOf(p.forWho) }}>
-                                        {" "}· ░ {p.title}
-                                    </span>
-                                ))}
-                            </h3>
-                            <AgendaDayItems items={byDay.get(day) ?? []} day={day} today={today} itemProps={itemProps} />
+                            {edge && <AgendaGutter color={edge} glyph="░" />}
+                            <div className="min-w-0 flex-1 space-y-[1lh]">
+                                <h3 className={`uppercase font-bold ${day < today ? "text-neutral-500" : "text-white"}`}>
+                                    {isToday ? (
+                                        <span className="bg-[#e8e8e8] text-black px-[1ch] -ml-[1ch]">
+                                            <span className="cell">▶</span> {rel}
+                                        </span>
+                                    ) : (
+                                        rel
+                                    )}
+                                    {rel ? " · " : ""}
+                                    {formatDayShort(day)}
+                                    {ongoing.map((p) => (
+                                        <span key={p.id} className="font-normal" style={{ color: people.colorOf(p.forWho) }}>
+                                            {" "}· ░ {p.title}
+                                        </span>
+                                    ))}
+                                </h3>
+                                <AgendaDayItems items={byDay.get(day) ?? []} day={day} today={today} itemProps={itemProps} />
+                            </div>
                         </section>
                         {ending.map((p) => (
                             <PeriodEnd key={p.id} period={p} people={people} />

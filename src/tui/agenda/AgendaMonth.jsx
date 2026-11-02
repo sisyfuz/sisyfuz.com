@@ -10,8 +10,12 @@ import { BTN_PRIMARY, BTN_PLAIN } from "./ui";
 const SWIPE_MIN_PX = 50;
 
 // Month grid (Monday first, ISO week numbers) with the selected day's items below.
-// Periods tint their days with a colored bar along the bottom, so a holiday reads
-// as one zone across the weeks; a legend below names them. Swipe to change month.
+// Columns are whole characters and every cell's text starts on a column, so the
+// grid lines up with the rest of the site. Periods tint their days and draw a row
+// of ░ along the bottom, so a holiday reads as one zone across the weeks; a legend
+// below names them. Swipe to change month.
+const GRID_COLUMNS = "3ch repeat(7, round(down, calc((100% - 3ch) / 7), 1ch))";
+const ZONE_FILL = "░".repeat(12);
 export default function AgendaMonth({ events, ym, selected, today, onSelect, onMonth, onToday, onNew, itemProps }) {
     const touch = useRef(null);
     const weeks = monthGrid(ym);
@@ -45,27 +49,27 @@ export default function AgendaMonth({ events, ym, selected, today, onSelect, onM
 
     return (
         <div className="space-y-[1lh]">
-            <div className="flex items-center justify-between">
-                <button type="button" onClick={() => onMonth(-1)} className={`${BTN_PLAIN} -ml-[1ch]`} aria-label="Vorige maand">
+            <div className="flex items-center gap-x-[1ch] -ml-[1ch]">
+                <button type="button" onClick={() => onMonth(-1)} className={BTN_PLAIN} aria-label="Vorige maand">
                     [&lt;]
                 </button>
-                <h2 className="font-bold text-white uppercase text-center" aria-live="polite">{monthTitle(ym)}</h2>
-                <button type="button" onClick={() => onMonth(1)} className={`${BTN_PLAIN} -mr-[1ch]`} aria-label="Volgende maand">
+                <h2 className="font-bold text-white uppercase" aria-live="polite">{monthTitle(ym)}</h2>
+                <button type="button" onClick={() => onMonth(1)} className={BTN_PLAIN} aria-label="Volgende maand">
                     [&gt;]
                 </button>
             </div>
 
             <div onTouchStart={onTouchStart} onTouchEnd={onTouchEnd} className="touch-pan-y">
-                <div role="grid" aria-label={monthTitle(ym)} className="grid grid-cols-[3ch_repeat(7,minmax(0,1fr))]">
+                <div role="grid" aria-label={monthTitle(ym)} className="grid" style={{ gridTemplateColumns: GRID_COLUMNS }}>
                     <div role="row" className="contents">
                         <span role="columnheader" className="text-neutral-600" title="Weeknummer">WK</span>
                         {WEEKDAYS_SHORT.map((d) => (
-                            <span key={d} role="columnheader" className="text-neutral-500 text-center">{d}</span>
+                            <span key={d} role="columnheader" className="text-neutral-500 pl-[1ch]">{d}</span>
                         ))}
                     </div>
                     {weeks.map(({ week, days }) => (
                         <div role="row" key={days[0]} className="contents">
-                            <span role="rowheader" className="text-neutral-600 h-[3lh] border-t border-[#1a1a1a]">{week}</span>
+                            <span role="rowheader" className="text-neutral-600 h-[3lh]">{week}</span>
                             {days.map((day) => {
                                 const items = byDay.get(day) ?? [];
                                 const zone = periodsOn(periods, day)[0];
@@ -86,19 +90,19 @@ export default function AgendaMonth({ events, ym, selected, today, onSelect, onM
                                         aria-current={isToday ? "date" : undefined}
                                         aria-label={`${formatDayLong(day)}${zone ? `, ${zone.title}` : ""}${items.length ? `, ${items.length} ${items.length === 1 ? "item" : "items"}` : ""}${needsAnswer ? ", wacht op jouw antwoord" : ""}`}
                                         onClick={() => onSelect(day)}
-                                        style={zoneColor && !isSelected ? { backgroundColor: tint(zoneColor, 0.16), boxShadow: `inset 0 -3px 0 ${zoneColor}` } : undefined}
-                                        className={`h-[3lh] flex flex-col items-center justify-start cursor-pointer transition-none border-t border-[#1a1a1a] ${
+                                        style={zoneColor && !isSelected ? { backgroundColor: tint(zoneColor, 0.2) } : undefined}
+                                        className={`h-[3lh] flex flex-col items-stretch text-left overflow-hidden cursor-pointer transition-none focus-visible:outline-none focus-visible:bg-[#262626] ${
                                             isSelected
                                                 ? "bg-white text-black font-bold"
                                                 : isToday
-                                                ? "text-white font-bold underline underline-offset-4 hover:bg-[#141414]"
+                                                ? "text-white font-bold hover:bg-[#141414]"
                                                 : inMonth
                                                 ? "text-neutral-200 hover:bg-[#141414]"
                                                 : "text-neutral-700 hover:bg-[#141414]"
                                         }`}
                                     >
-                                        <span>{isToday && !isSelected ? `[${Number(day.slice(8))}]` : Number(day.slice(8))}</span>
-                                        <span aria-hidden="true" className="flex">
+                                        <span className="pl-[1ch]">{isToday && !isSelected ? `[${Number(day.slice(8))}]` : Number(day.slice(8))}</span>
+                                        <span aria-hidden="true" className="flex h-[1lh] pl-[1ch]">
                                             {specials.map((t) => (
                                                 <span key={t.glyph} className="cell" style={{ color: isSelected ? "#000" : t.color }}>{t.glyph}</span>
                                             ))}
@@ -110,6 +114,11 @@ export default function AgendaMonth({ events, ym, selected, today, onSelect, onM
                                             ))}
                                             {needsAnswer && <span className={`cell ${isSelected ? "" : "text-[#f7e463]"}`}>?</span>}
                                         </span>
+                                        {zoneColor && (
+                                            <span aria-hidden="true" className="whitespace-nowrap" style={{ color: isSelected ? "#000" : zoneColor }}>
+                                                {ZONE_FILL}
+                                            </span>
+                                        )}
                                     </button>
                                 );
                             })}
@@ -127,9 +136,9 @@ export default function AgendaMonth({ events, ym, selected, today, onSelect, onM
                                 <button
                                     type="button"
                                     onClick={() => itemProps.onOpen(p.id)}
-                                    className="flex items-center gap-x-[1ch] w-full min-h-[2lh] text-left uppercase cursor-pointer transition-none hover:brightness-125"
+                                    className="flex gap-x-[1ch] w-full text-left uppercase cursor-pointer transition-none hover:brightness-125 focus-visible:outline-none focus-visible:bg-[#262626]"
                                 >
-                                    <span aria-hidden="true" className="w-[3ch] h-[1lh] shrink-0" style={{ backgroundColor: tint(color, 0.16), boxShadow: `inset 0 -3px 0 ${color}` }} />
+                                    <span aria-hidden="true" className="shrink-0" style={{ color, backgroundColor: tint(color, 0.2) }}>░░░</span>
                                     <span className="font-bold shrink-0" style={{ color }}>{p.title}</span>
                                     <span className="text-neutral-500 truncate">{formatDayShort(p.startDate)} – {formatDayShort(p.endDate)}</span>
                                 </button>

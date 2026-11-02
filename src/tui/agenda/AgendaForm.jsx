@@ -267,7 +267,7 @@ export default function AgendaForm({ event, date, kind = "afspraak", people, bus
                 )}
 
                 {showTimes && (
-                    <div className="grid grid-cols-2 gap-x-[2ch]">
+                    <div className="grid gap-x-[2ch]" style={{ gridTemplateColumns: "repeat(2, round(down, calc((100% - 2ch) / 2), 1ch))" }}>
                         <div>
                             <label htmlFor="agenda-start" className={LABEL}>BEGIN</label>
                             <input

@@ -10,7 +10,7 @@ export default function AgendaSpecialRow({ occurrence, isToday, onOpen }) {
             type="button"
             onClick={() => onOpen(occurrence.baseId)}
             aria-label={`${type.label}: ${label}`}
-            className="flex flex-wrap items-center gap-x-[1ch] w-full min-h-[2lh] text-left uppercase cursor-pointer select-none transition-none hover:bg-[#141414]"
+            className="flex flex-wrap gap-x-[1ch] w-full text-left uppercase cursor-pointer select-none transition-none hover:bg-[#141414] focus-visible:outline-none focus-visible:bg-[#262626]"
             style={{ color: type.color }}
         >
             <span className="whitespace-nowrap">

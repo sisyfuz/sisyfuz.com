@@ -10,7 +10,7 @@ export default function AgendaBusyRow({ group, people, onOpen }) {
             type="button"
             onClick={() => onOpen(group)}
             aria-label={`Onbeschikbaar: ${group.reason}, ${people.nameOf(group.forWho)}, ${group.label}${count > 1 ? `, ${count} blokken` : ""}`}
-            className="flex flex-wrap items-center gap-x-[1ch] w-full min-h-[2lh] text-left uppercase cursor-pointer select-none transition-none hover:bg-[#141414]"
+            className="flex flex-wrap gap-x-[1ch] w-full text-left uppercase cursor-pointer select-none transition-none hover:bg-[#141414] focus-visible:outline-none focus-visible:bg-[#262626]"
         >
             <span className="whitespace-nowrap">
                 <span className="text-neutral-600">[</span>

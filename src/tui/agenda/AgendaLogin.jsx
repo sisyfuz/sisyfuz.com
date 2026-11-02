@@ -203,7 +203,7 @@ export default function AgendaLogin({ onLoggedIn, notice }) {
 
     if (step === "code") {
         return (
-            <div className="max-w-[48ch] mx-auto pt-[2lh]">
+            <div className="max-w-[48ch] pt-[2lh]">
                 <h1 className="sr-only">Code</h1>
                 <form onSubmit={submitCode} className="space-y-[1lh]" noValidate>
                     <div>
@@ -242,7 +242,7 @@ export default function AgendaLogin({ onLoggedIn, notice }) {
         const long = passphrase.trim().length >= MIN_PASSWORD_LENGTH;
         const same = repeat.length > 0 && passphrase === repeat;
         return (
-            <div className="max-w-[48ch] mx-auto pt-[2lh]">
+            <div className="max-w-[48ch] pt-[2lh]">
                 <h1 className="font-bold uppercase text-white">HOI {name}!</h1>
                 <p className="text-neutral-500 mb-[2lh]">Kies een wachtwoord. Alleen een hash wordt bewaard; niemand kan het terugzien.</p>
                 <form onSubmit={submitChoose} className="space-y-[1lh]" noValidate>
@@ -289,7 +289,7 @@ export default function AgendaLogin({ onLoggedIn, notice }) {
     }
 
     return (
-        <div className="max-w-[48ch] mx-auto pt-[2lh]">
+        <div className="max-w-[48ch] pt-[2lh]">
             <h1 className="sr-only">Inloggen</h1>
             <form onSubmit={submitLogin} className="space-y-[1lh]" noValidate>
                 <UsernameHint />

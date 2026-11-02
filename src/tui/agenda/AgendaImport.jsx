@@ -172,7 +172,8 @@ export default function AgendaImport({ parsed, today, people, onImport, onClose 
                     <button type="button" onClick={() => setExcluded(new Set(visible.map((e) => e.uid)))} className={BTN_PLAIN}>[NIETS]</button>
                 </div>
 
-                <ul aria-label="Items om te importeren" className="border-y border-[#262626]">
+                <div aria-hidden="true" className="text-neutral-700 overflow-hidden whitespace-nowrap">{"-".repeat(80)}</div>
+                <ul aria-label="Items om te importeren">
                     {visible.slice(0, PREVIEW_LIMIT).map((e) => {
                         const on = !excluded.has(e.uid);
                         return (
@@ -182,7 +183,7 @@ export default function AgendaImport({ parsed, today, people, onImport, onClose 
                                     role="checkbox"
                                     aria-checked={on}
                                     onClick={() => toggle(e.uid)}
-                                    className={`flex gap-x-[1ch] w-full min-h-[2lh] items-center text-left cursor-pointer transition-none hover:bg-[#141414] ${on ? "" : "opacity-40"}`}
+                                    className={`flex gap-x-[1ch] w-full text-left cursor-pointer transition-none hover:bg-[#141414] focus-visible:outline-none focus-visible:bg-[#262626] ${on ? "" : "opacity-40"}`}
                                 >
                                     <span className="shrink-0">[<span className="cell">{on ? "x" : " "}</span>]</span>
                                     <span className="shrink-0 uppercase text-neutral-400 w-[10ch]">{formatDayShort(e.startDate)}</span>
@@ -193,10 +194,11 @@ export default function AgendaImport({ parsed, today, people, onImport, onClose 
                         );
                     })}
                     {visible.length > PREVIEW_LIMIT && (
-                        <li className="text-neutral-500 uppercase min-h-[2lh] flex items-center">+ {visible.length - PREVIEW_LIMIT} MEER</li>
+                        <li className="text-neutral-500 uppercase">+ {visible.length - PREVIEW_LIMIT} MEER</li>
                     )}
-                    {visible.length === 0 && <li className="text-neutral-500 uppercase min-h-[2lh] flex items-center">NIKS TE IMPORTEREN</li>}
+                    {visible.length === 0 && <li className="text-neutral-500 uppercase">NIKS TE IMPORTEREN</li>}
                 </ul>
+                <div aria-hidden="true" className="text-neutral-700 overflow-hidden whitespace-nowrap">{"-".repeat(80)}</div>
 
                 {error && <p role="alert" className="text-[#ff4d4d] uppercase">{error}</p>}
 

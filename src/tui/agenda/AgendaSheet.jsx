@@ -3,7 +3,8 @@ import { useEffect, useId, useRef } from "react";
 import { ASCII_DIVIDER } from "../../utils/ascii";
 import { BTN_PLAIN } from "./ui";
 
-// Full-screen panel on phones, a centered box from md up. Locks page scroll,
+// Full-screen panel at every size, laid out on the same grid as the page (a
+// centered box would sit between columns and need a border). Locks page scroll,
 // closes on Escape and returns focus to whatever opened it.
 export default function AgendaSheet({ title, onClose, children }) {
     const titleId = useId();
@@ -34,27 +35,29 @@ export default function AgendaSheet({ title, onClose, children }) {
     }, [onClose]);
 
     return (
-        <div className="fixed inset-0 z-50 bg-black/80 flex md:items-center md:justify-center animate-fadeIn">
+        <div className="fixed inset-0 z-50 bg-[#050505]">
             <div
                 ref={panelRef}
                 role="dialog"
                 aria-modal="true"
                 aria-labelledby={titleId}
                 tabIndex={-1}
-                className="w-full h-full md:h-auto md:max-h-[90dvh] md:max-w-[64ch] bg-[#050505] md:border md:border-[#333] overflow-y-auto overscroll-contain outline-none px-[2ch] pt-[1lh] pb-[calc(3lh+env(safe-area-inset-bottom))]"
+                className="w-full h-full overflow-y-auto overscroll-contain outline-none px-[2ch] pt-[1lh] pb-[calc(3lh+env(safe-area-inset-bottom))]"
             >
-                <div className="flex items-center justify-between gap-x-[2ch]">
-                    <h2 id={titleId} className="font-bold uppercase text-white min-w-0 break-words">
-                        {title}
-                    </h2>
-                    <button type="button" onClick={onClose} className={BTN_PLAIN} aria-label="Sluiten">
-                        [SLUIT ×]
-                    </button>
+                <div className="term-snap max-w-[64ch]">
+                    <div className="flex items-start justify-between gap-x-[2ch]">
+                        <h2 id={titleId} className="font-bold uppercase text-white min-w-0 break-words pt-[1lh]">
+                            {title}
+                        </h2>
+                        <button type="button" onClick={onClose} className={BTN_PLAIN} aria-label="Sluiten">
+                            [SLUIT ×]
+                        </button>
+                    </div>
+                    <div aria-hidden="true" className="text-neutral-700 overflow-hidden whitespace-nowrap mb-[1lh]">
+                        {ASCII_DIVIDER}
+                    </div>
+                    {children}
                 </div>
-                <div aria-hidden="true" className="text-neutral-700 overflow-hidden whitespace-nowrap mb-[1lh]">
-                    {ASCII_DIVIDER}
-                </div>
-                {children}
             </div>
         </div>
     );

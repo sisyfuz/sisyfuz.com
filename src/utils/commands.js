@@ -13,6 +13,7 @@ const NAVIGATION_COMMANDS = {
     home: "/",
     privacy: "/privacy",
     legal: "/privacy",
+    meepmorp: "/agenda",
 };
 
 const ACTION_COMMANDS = {

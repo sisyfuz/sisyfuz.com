@@ -18,7 +18,11 @@
  *   POST    /      increment the press-button counter (Origin must be allowed)
  *   GET     /live  public live-stream state ({ url, active, ... })
  *   POST    /live  update live-stream state (X-Broadcast-Secret or Bearer auth)
+ *   *       /agenda/*  private shared agenda (see agenda.js)
  */
+
+import { UpstreamError, ALLOWED_ORIGINS, corsHeaders, isRateLimited, json, secretsMatch } from "./http.js";
+import { handleAgenda } from "./agenda.js";
 
 const SANITY_PROJECT_ID = "gt7prmxg";
 const SANITY_DATASET = "production";
@@ -30,90 +34,7 @@ const SANITY_QUERY_URL = `${SANITY_BASE}/query/${SANITY_DATASET}`;
 const COUNTER_ID = "site-button-counter";
 const LIVE_ID = "site-live-stream";
 
-const ALLOWED_ORIGINS = [
-  "https://sisyfuz.com",
-  "http://localhost:5173", // local dev
-  "http://localhost:4173", // vite preview
-];
-
-const RATE_LIMIT = 15;
-const RATE_WINDOW_MS = 10_000;
 const MAX_STREAM_URL_LENGTH = 250;
-
-// -------------------------------------------------------------
-// Helpers
-// -------------------------------------------------------------
-
-function corsHeaders(origin) {
-  const allowedOrigin = ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
-  return {
-    "Access-Control-Allow-Origin": allowedOrigin,
-    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type",
-    Vary: "Origin",
-  };
-}
-
-function json(data, status, origin, extraHeaders = {}) {
-  return new Response(JSON.stringify(data), {
-    status,
-    headers: { ...corsHeaders(origin), "Content-Type": "application/json", ...extraHeaders },
-  });
-}
-
-class UpstreamError extends Error {}
-
-// Best-effort fallback limiter. It is per-isolate, so it only applies when the
-// RATE_LIMITER binding is missing (e.g. local tests or a misconfigured deploy).
-const ipRateLimits = new Map();
-
-function checkMemoryRateLimit(key, limit = RATE_LIMIT, windowMs = RATE_WINDOW_MS) {
-  const now = Date.now();
-  const timestamps = (ipRateLimits.get(key) || []).filter((t) => now - t < windowMs);
-  if (timestamps.length >= limit) {
-    ipRateLimits.set(key, timestamps);
-    return false;
-  }
-  timestamps.push(now);
-  ipRateLimits.set(key, timestamps);
-  if (ipRateLimits.size > 2000) {
-    for (const [k, v] of ipRateLimits.entries()) {
-      if (v.every((t) => now - t >= windowMs)) ipRateLimits.delete(k);
-    }
-  }
-  return true;
-}
-
-async function isRateLimited(request, env) {
-  const key = request.headers.get("CF-Connecting-IP") || "unknown";
-  const binding = env && env.RATE_LIMITER;
-  if (binding && typeof binding.limit === "function") {
-    try {
-      const { success } = await binding.limit({ key });
-      return !success;
-    } catch (err) {
-      console.error("Rate limiter binding failed, using in-memory fallback:", err);
-    }
-  }
-  return !checkMemoryRateLimit(key);
-}
-
-async function sha256(text) {
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
-  return new Uint8Array(digest);
-}
-
-// Constant-time comparison: both inputs are hashed to fixed-length digests,
-// so neither the length nor the content of the secret leaks through timing.
-async function secretsMatch(provided, expected) {
-  const [a, b] = await Promise.all([sha256(provided), sha256(expected)]);
-  if (typeof crypto.subtle.timingSafeEqual === "function") {
-    return crypto.subtle.timingSafeEqual(a, b);
-  }
-  let diff = 0;
-  for (let i = 0; i < a.length; i++) diff |= a[i] ^ b[i];
-  return diff === 0;
-}
 
 function providedBroadcastSecret(request) {
   const header = request.headers.get("X-Broadcast-Secret");
@@ -269,6 +190,10 @@ async function handle(request, env, origin) {
 
   if (request.method === "OPTIONS") {
     return new Response(null, { status: 204, headers: corsHeaders(origin) });
+  }
+
+  if (url.pathname === "/agenda" || url.pathname.startsWith("/agenda/")) {
+    return handleAgenda(request, env, origin, url);
   }
 
   if (url.pathname === "/live") {

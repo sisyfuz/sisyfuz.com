@@ -12,3 +12,15 @@ compatibility_date = "2025-12-01"
 name = "RATE_LIMITER"
 namespace_id = "1001"
 simple = { limit = 15, period = 10 }
+
+# Private agenda (/agenda/*). Create once with `npx wrangler d1 create sisyfuz-agenda`
+# and paste the database_id it prints below. Tables are created on first use.
+# Secrets: AGENDA_SESSION_KEY and AGENDA_ADMIN_KEY (each >= 32 chars; make the
+# admin key with `npm run agenda:admin -- init-key`). Optional fixed passwords:
+# AGENDA_PASS_DORUS, AGENDA_PASS_PARTNER. The partner's name is the secret
+# AGENDA_NAME_PARTNER, so it is never in this repository. People get their own
+# password with a code from `npm run agenda:admin -- reset <dorus|partner>`.
+[[d1_databases]]
+binding = "AGENDA_DB"
+database_name = "sisyfuz-agenda"
+database_id = "REPLACE_WITH_DATABASE_ID"

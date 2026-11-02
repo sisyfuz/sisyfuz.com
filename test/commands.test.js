@@ -15,6 +15,12 @@ describe("parseCommand", () => {
         assert.deepEqual(parseCommand("privacy"), { type: "navigate", to: "/privacy" });
     });
 
+    test("meepmorp opens the hidden agenda", () => {
+        assert.deepEqual(parseCommand("meepmorp"), { type: "navigate", to: "/agenda" });
+        assert.deepEqual(parseCommand(" MeepMorp "), { type: "navigate", to: "/agenda" });
+        assert.equal(parseCommand("meep"), null);
+    });
+
     test("legal is an alias for privacy", () => {
         assert.deepEqual(parseCommand("legal"), { type: "navigate", to: "/privacy" });
     });
@@ -51,7 +57,7 @@ describe("parseCommand", () => {
 
     test("exposes every command name", () => {
         assert.deepEqual([...COMMAND_NAMES].sort(), [
-            "a11y", "about", "archive", "ascii", "contact", "disco", "home", "legal", "live", "press", "privacy", "work",
+            "a11y", "about", "archive", "ascii", "contact", "disco", "home", "legal", "live", "meepmorp", "press", "privacy", "work",
         ]);
     });
 });

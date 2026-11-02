@@ -12,7 +12,9 @@
     "test": "node --test test/*.test.js",
     "live": "node scripts/broadcast.js",
     "companion": "open scripts/companion/SisyfuzCompanion.app",
-    "build:companion": "./scripts/companion/build.sh"
+    "build:companion": "./scripts/companion/build.sh",
+    "dev:agenda": "node scripts/agenda-dev.mjs",
+    "agenda:admin": "node scripts/agenda-admin.mjs"
   },
   "dependencies": {
     "@sanity/client": "^7.21.0",

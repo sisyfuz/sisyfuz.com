@@ -31,3 +31,6 @@ scripts/companion/*.app
 
 # Claude Code agent worktrees
 .claude/worktrees/
+
+# Local worker secrets (scripts/agenda-dev.mjs, wrangler dev)
+.dev.vars

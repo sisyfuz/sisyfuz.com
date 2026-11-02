@@ -8,6 +8,9 @@ export const SECTION_KEYS = Object.freeze(["work", "archive", "about", "contact"
 
 const SECTION_ALIASES = { privacy: "privacy", legal: "privacy" };
 
+// Sections with a route but no link anywhere (nav, dock, sitemap, prerender).
+export const HIDDEN_SECTION_KEYS = Object.freeze(["agenda"]);
+
 // In-page anchors that are never project slugs.
 const RESERVED_HASHES = new Set(["main-content", "terminal-main-content"]);
 
@@ -77,7 +80,7 @@ export function parseRoute(pathname, hash = "") {
         }
     }
 
-    if (SECTION_KEYS.includes(head) && segments.length === 1) {
+    if ((SECTION_KEYS.includes(head) || HIDDEN_SECTION_KEYS.includes(head)) && segments.length === 1) {
         return { section: head, slug: null, redirect: null };
     }
 

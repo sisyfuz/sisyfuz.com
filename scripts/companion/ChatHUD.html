@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SISYFUZ // HOST CHAT &amp; TELEMETRY HUD</title>
+    <title>SISYFUZ // STUDIO ENGINE &amp; STORAGE GUARDIAN HUD</title>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400;1,700&display=swap');
 
@@ -26,27 +26,26 @@
             overflow: hidden;
             user-select: none;
             -webkit-user-select: none;
-            border: 1px solid #262626;
+            border: none; /* Lineless raw boundary */
             position: relative;
         }
 
-        /* Draggable Window Header */
+        /* Draggable Lineless Window Header */
         .window-bar {
             display: flex;
             align-items: center;
             justify-content: space-between;
             padding: 6px 10px;
             background: #000000;
-            border-bottom: 1px solid #262626;
+            border: none;
             -webkit-app-region: drag;
             font-weight: 700;
             letter-spacing: 0.05em;
-            transition: background 0.2s, border-color 0.2s;
+            transition: background 0.15s;
         }
 
         .window-bar.flash-alert {
             background: #2a0014;
-            border-bottom: 1px solid #ff0080;
         }
 
         .window-title {
@@ -67,7 +66,7 @@
 
         .btn-ctrl {
             background: transparent;
-            border: 1px solid #333333;
+            border: none;
             color: #888888;
             font-family: inherit;
             font-size: 10px;
@@ -75,37 +74,34 @@
             padding: 1px 6px;
             cursor: pointer;
             text-transform: uppercase;
-            transition: none;
+            transition: none !important;
         }
 
         .btn-ctrl:hover {
-            background: #ffffff;
-            color: #000000;
-            border-color: #ffffff;
+            background: #ffffff !important;
+            color: #000000 !important;
         }
 
         .btn-ctrl.active-pink {
             background: #ff0080;
             color: #000000;
-            border-color: #ff0080;
         }
 
         .btn-close:hover {
-            background: #ff0055;
-            color: #ffffff;
-            border-color: #ff0055;
+            background: #ff0055 !important;
+            color: #ffffff !important;
         }
 
-        /* Toast Feedback Banner */
+        /* Toast Feedback Banner - Lineless Brutalist */
         .hud-toast {
             position: absolute;
-            top: 29px;
+            top: 28px;
             left: 10px;
             right: 10px;
             background: #000000;
-            border: 1px solid #00ff66;
+            border: none;
             color: #00ff66;
-            padding: 3px 8px;
+            padding: 4px 8px;
             font-weight: 700;
             font-size: 10px;
             text-align: center;
@@ -115,33 +111,41 @@
             letter-spacing: 0.05em;
         }
 
-        /* Studio Control Decks */
+        /* Studio Control Decks - Lineless */
         .deck {
-            background: #0a0a0a;
-            border-bottom: 1px solid #262626;
-            padding: 6px 10px;
+            background: transparent;
+            border: none;
+            padding: 5px 10px;
             display: flex;
             flex-direction: column;
-            gap: 5px;
+            gap: 4px;
             font-size: 10px;
         }
 
         .deck-header {
-            color: #777777;
+            color: #666666;
             font-weight: 700;
             text-transform: uppercase;
             font-size: 9.5px;
             display: flex;
             align-items: center;
             justify-content: space-between;
+            padding-top: 2px;
         }
 
         .deck-row {
             display: flex;
             align-items: center;
             justify-content: space-between;
-            gap: 6px;
+            gap: 5px;
             overflow: hidden;
+        }
+
+        .target-deck-row {
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 4px;
         }
 
         .status-badge {
@@ -181,77 +185,121 @@
             50% { opacity: 0.2; }
         }
 
+        /* Deck Action Buttons - Pure Lineless */
         .deck-btn {
             background: transparent;
-            border: 1px solid #444444;
+            border: none;
             color: #ffffff;
             font-family: inherit;
             font-size: 9.5px;
             font-weight: 700;
-            padding: 2px 6px;
+            padding: 2px 5px;
             cursor: pointer;
             text-transform: uppercase;
-            transition: none;
+            transition: none !important;
             white-space: nowrap;
         }
 
         .deck-btn:hover {
-            background: #ffffff;
-            color: #000000;
-            border-color: #ffffff;
+            background: #ffffff !important;
+            color: #000000 !important;
         }
 
         .deck-btn.btn-broadcast-start {
-            border-color: #ff0080;
             color: #ff0080;
         }
 
         .deck-btn.btn-broadcast-start:hover {
-            background: #ff0080;
-            color: #000000;
+            background: #ff0080 !important;
+            color: #000000 !important;
         }
 
         .deck-btn.btn-broadcast-stop {
-            background: #2a0014;
-            border-color: #ff0080;
-            color: #ff0080;
+            background: #ff0080;
+            color: #000000;
         }
 
         .deck-btn.btn-broadcast-stop:hover {
-            background: #ff0080;
-            color: #000000;
+            background: #ffffff !important;
+            color: #000000 !important;
+        }
+
+        .deck-btn.btn-sort-primary {
+            color: #00ff66;
+        }
+
+        .deck-btn.btn-sort-primary:hover {
+            background: #00ff66 !important;
+            color: #000000 !important;
+        }
+
+        .deck-btn.btn-sort-open {
+            color: #ff0080;
+        }
+
+        .deck-btn.btn-sort-open:hover {
+            background: #ff0080 !important;
+            color: #000000 !important;
         }
 
         /* Mode Switcher Buttons */
         .mode-btn {
             flex: 1;
-            padding: 3px 2px;
+            padding: 2px 2px;
             font-size: 9.5px;
             font-weight: 700;
             text-align: center;
             background: transparent;
-            border: 1px solid #333333;
-            color: #888888;
+            border: none;
+            color: #777777;
             cursor: pointer;
             font-family: inherit;
+            transition: none !important;
         }
 
         .mode-btn:hover {
-            background: #ffffff;
-            color: #000000;
-            border-color: #ffffff;
+            background: #ffffff !important;
+            color: #000000 !important;
         }
 
         .mode-btn.active-mode {
             background: #00ff66;
             color: #000000;
-            border-color: #00ff66;
         }
 
         .mode-btn.active-live {
             background: #ff0080;
             color: #000000;
-            border-color: #ff0080;
+        }
+
+        /* Target Directory Selector Buttons */
+        .target-btn {
+            background: transparent;
+            border: none;
+            color: #777777;
+            font-family: inherit;
+            font-size: 9px;
+            font-weight: 700;
+            padding: 2px 4px;
+            cursor: pointer;
+            text-transform: uppercase;
+            transition: none !important;
+            white-space: nowrap;
+        }
+
+        .target-btn:hover {
+            background: #ffffff !important;
+            color: #000000 !important;
+        }
+
+        .target-btn.active-target {
+            background: #ffffff;
+            color: #000000;
+        }
+
+        .target-btn.active-target-pink {
+            background: #ff0080;
+            color: #000000;
         }
 
         /* Telemetry & Badges */
@@ -291,16 +339,17 @@
 
         .result-drawer {
             display: none;
-            background: #000000;
-            border: 1px solid #333333;
-            padding: 4px 6px;
+            background: #0a0a0a;
+            border: none;
+            padding: 5px 8px;
             font-size: 9.5px;
-            color: #d4d4d4;
-            line-height: 1.3;
+            color: #00ff66;
+            line-height: 1.4;
+            word-break: break-all;
         }
 
         .stream-url-display {
-            color: #a3a3a3;
+            color: #888888;
             font-family: inherit;
             font-size: 10px;
             overflow: hidden;
@@ -313,32 +362,32 @@
             color: #ff0080;
         }
 
-        /* ASCII Divider Line */
+        /* Lineless Monospace ASCII Divider Line */
         .ascii-divider {
-            color: #333333;
+            color: #1f1f1f;
             white-space: nowrap;
             overflow: hidden;
-            font-size: 10px;
+            font-size: 9.5px;
             line-height: 1;
             user-select: none;
-            padding: 0 10px;
+            padding: 2px 10px;
         }
 
         /* Message Stream */
         .messages {
             flex: 1;
             overflow-y: auto;
-            padding: 8px 10px;
+            padding: 6px 10px;
             display: flex;
             flex-direction: column;
-            gap: 5px;
+            gap: 4px;
             user-select: text;
             -webkit-user-select: text;
             background: #050505;
         }
 
         .messages::-webkit-scrollbar {
-            width: 4px;
+            width: 3px;
         }
 
         .messages::-webkit-scrollbar-track {
@@ -346,7 +395,7 @@
         }
 
         .messages::-webkit-scrollbar-thumb {
-            background: #262626;
+            background: #1f1f1f;
         }
 
         .message-row {
@@ -356,7 +405,7 @@
         }
 
         .msg-time {
-            color: #555555;
+            color: #444444;
             font-size: 9.5px;
             margin-right: 5px;
             user-select: none;
@@ -374,13 +423,13 @@
         }
 
         .author-viewer {
-            color: #d4d4d4;
+            color: #cccccc;
             font-weight: 700;
             margin-right: 5px;
         }
 
         .msg-content {
-            color: #f5f5f5;
+            color: #e0e0e0;
         }
 
         .msg-content.host-content {
@@ -390,18 +439,18 @@
 
         .empty-state {
             margin: auto;
-            color: #444444;
+            color: #333333;
             text-align: center;
-            font-size: 10.5px;
+            font-size: 10px;
             text-transform: uppercase;
             letter-spacing: 0.05em;
         }
 
-        /* Terminal Input Row */
+        /* Terminal Input Row - Lineless */
         .terminal-bar {
             padding: 5px 10px;
             background: #000000;
-            border-top: 1px solid #262626;
+            border: none;
             display: flex;
             align-items: center;
             gap: 6px;
@@ -443,49 +492,49 @@
         }
 
         .btn-send {
-            background: #ff0080;
-            color: #000000;
-            border: 1px solid #ff0080;
+            background: transparent;
+            color: #ff0080;
+            border: none;
             padding: 2px 7px;
             font-weight: 700;
             font-family: inherit;
             font-size: 9.5px;
             cursor: pointer;
             text-transform: uppercase;
-            transition: none;
+            transition: none !important;
         }
 
         .btn-send:hover {
-            background: #ffffff;
-            color: #000000;
-            border-color: #ffffff;
+            background: #ffffff !important;
+            color: #000000 !important;
         }
 
         .btn-send:disabled {
-            opacity: 0.3;
+            opacity: 0.25;
             cursor: not-allowed;
-            background: #222222;
-            color: #555555;
-            border-color: #333333;
+            color: #444444;
         }
     </style>
 </head>
 <body>
 
-    <!-- Draggable Brutalist Window Bar -->
+    <!-- Draggable Lineless Window Bar -->
     <div id="windowBar" class="window-bar">
         <div class="window-title">
             <span id="headerDot" class="dot standby"></span>
-            <span>+--[ &gt; SISYFUZ // STUDIO ENGINE &amp; BRIDGE ]</span>
+            <span>[ &gt; SISYFUZ // STUDIO ENGINE &amp; BRIDGE ]</span>
         </div>
         <div class="window-actions">
             <button id="btnSfxToggle" class="btn-ctrl" title="Toggle audio alert chime">[SFX: ON]</button>
-            <button id="btnClose" class="btn-ctrl btn-close" title="Close window (Cmd+K)">[X]</button>
+            <button id="btnClose" class="btn-ctrl btn-close" title="Close window (Cmd+K)">[✕]</button>
         </div>
     </div>
 
     <!-- Feedback Toast -->
     <div id="hudToast" class="hud-toast">[ ACTION COMPLETED ]</div>
+
+    <!-- Lineless ASCII Divider -->
+    <div class="ascii-divider">--------------------------------------------------------------------------------</div>
 
     <!-- Integrated Studio Control Deck -->
     <div class="deck">
@@ -493,10 +542,10 @@
             <div id="statusBadge" class="status-badge standby">
                 [○ STANDBY / IDLE]
             </div>
-            <div id="uptimeDisplay" class="text-neutral-400 font-mono text-[10px]">
+            <div id="uptimeDisplay" class="text-neutral-500 font-mono text-[9.5px]">
                 UPTIME: [--:--:--]
             </div>
-            <div id="viewersBadge" class="text-neutral-400 font-mono text-[10px]">
+            <div id="viewersBadge" class="text-neutral-500 font-mono text-[9.5px]">
                 VIEWERS: [00]
             </div>
         </div>
@@ -518,10 +567,13 @@
         </div>
     </div>
 
+    <!-- Lineless ASCII Divider -->
+    <div class="ascii-divider">--------------------------------------------------------------------------------</div>
+
     <!-- Mode Synchronization Deck -->
     <div class="deck">
         <div class="deck-header">
-            <span>+--[ MODE SYNCHRONIZATION ]--+</span>
+            <span>[ &gt; MODE SYNCHRONIZATION ]</span>
             <span id="activeModeLabel" style="color: #00ff66;">[AUTO]</span>
         </div>
         <div class="deck-row" style="margin-top: 1px;">
@@ -529,35 +581,58 @@
             <button class="mode-btn" data-mode="Work">[WORK]</button>
             <button class="mode-btn" data-mode="Personal">[PERSONAL]</button>
             <button class="mode-btn" data-mode="Live">[LIVE]</button>
-            <button class="mode-btn" data-mode="AUTO">[AUTO]</button>
+            <button class="mode-btn active-mode" data-mode="AUTO">[AUTO]</button>
         </div>
     </div>
 
-    <!-- Storage Guardian & Stage Telemetry Deck -->
+    <!-- Lineless ASCII Divider -->
+    <div class="ascii-divider">--------------------------------------------------------------------------------</div>
+
+    <!-- Storage Guardian & File Sorter Deck (Lineless & Customizable) -->
     <div class="deck">
         <div class="deck-header">
-            <span>+--[ STORAGE GUARDIAN // TELEMETRY ]--+</span>
-            <span id="sorterStatusBadge" class="badge-offline">[SORTER: OFFLINE]</span>
+            <span>[ &gt; STORAGE GUARDIAN // FILE SORTER ]</span>
+            <span id="sorterStatusBadge" class="badge-online">[SORTER: ONLINE]</span>
         </div>
 
-        <!-- ASCII Disk Bar Meter -->
-        <div class="deck-row">
+        <!-- Target Selector Row (Dynamic Wrapping) -->
+        <div class="target-deck-row" id="targetSelectorRow" style="margin-top: 1px;">
+            <button class="target-btn active-target-pink" data-target="open_files" title="Sort files or folder open in frontmost app or Finder (Cmd+D)">[OPEN FILES]</button>
+            <button class="target-btn" data-target="downloads" title="Sort ~/Downloads folder">[DOWNLOADS]</button>
+            <button class="target-btn" data-target="documents" title="Sort ~/Documents folder">[DOCUMENTS]</button>
+            <button class="target-btn" data-target="desktop" title="Sort ~/Desktop folder">[DESKTOP]</button>
+            <button class="target-btn" id="btnCustomFolder" data-target="custom" title="Choose custom target folder">[+ FOLDER]</button>
+            <button class="target-btn" id="btnEditConfig" data-target="config" title="Edit guardian_config.json in default editor">[CONFIG]</button>
+        </div>
+
+        <!-- Active Target Status & Detected Files -->
+        <div class="deck-row" style="margin-top: 1px;">
+            <span id="activeTargetLabel" style="color: #ffffff; font-weight: 700; font-size: 9.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 290px;">
+                TARGET: [OPEN FILES // FINDER]
+            </span>
+            <span id="rulesModeTag" style="color: #888888; font-size: 9px;">RULES: [AUTO]</span>
+        </div>
+
+        <!-- Storage Guardian Primary Actions -->
+        <div class="deck-row" style="margin-top: 2px;">
+            <button id="btnSortTarget" class="deck-btn btn-sort-primary" style="flex: 1.3;" title="Sort files in currently active target folder (Cmd+S)">[▶ SORT TARGET]</button>
+            <button id="btnSortOpenQuick" class="deck-btn btn-sort-open" style="flex: 1.1;" title="Instantly sort files or folder open in frontmost app (Cmd+D)">[SORT OPEN]</button>
+            <button id="btnScanDisk" class="deck-btn" title="Scan for disposable ephemeral installers">[SCAN]</button>
+            <button id="btnCleanTrash" class="deck-btn" title="Purge disposable files to Trash">[CLEAN]</button>
+            <button id="btnUndoLast" class="deck-btn" title="Undo last file operation (Cmd+Z)">[UNDO]</button>
+        </div>
+
+        <!-- ASCII Disk Bar Meter & Frontmost App -->
+        <div class="deck-row" style="margin-top: 2px;">
             <span id="diskMeterText" class="disk-meter">DISK: [░░░░░░░░░░░░░░░░] --% (--/-- GB)</span>
             <span id="frontmostAppText" style="color: #888888; font-size: 9.5px;">APP: [Finder]</span>
         </div>
 
         <!-- Bridge & Recording Indicators -->
         <div class="deck-row">
-            <span id="tdRecBadge" class="text-neutral-400 font-mono text-[9.5px]">TD REC: [○ IDLE]</span>
-            <span id="oscPortsBadge" class="badge-cyan text-[9.5px]">[OSC: 7000/7001]</span>
-        </div>
-
-        <!-- Storage Guardian Actions -->
-        <div class="deck-row" style="margin-top: 1px;">
-            <button id="btnSortRenders" class="deck-btn" style="flex: 1;" title="Sort ~/Downloads into mode folders">[SORT RENDERS]</button>
-            <button id="btnScanDisk" class="deck-btn" style="flex: 1;" title="Scan for disposable ephemeral installers">[SCAN DISK]</button>
-            <button id="btnCleanTrash" class="deck-btn" style="flex: 1;" title="Purge disposable files to Trash">[CLEAN TRASH]</button>
-            <button id="btnUndoLast" class="deck-btn" title="Undo last file operation">[UNDO]</button>
+            <span id="tdRecBadge" class="text-neutral-500 font-mono text-[9px]">TD REC: [○ IDLE]</span>
+            <span id="oscPortsBadge" class="badge-cyan text-[9px]">[OSC: 7000/7001]</span>
+            <span id="historyCountBadge" class="text-neutral-500 font-mono text-[9px]">HISTORY: [0 OPS]</span>
         </div>
 
         <!-- Expandable Results Drawer -->
@@ -566,9 +641,8 @@
         </div>
     </div>
 
-    <div class="ascii-divider">
-        +--------------------------------------------------------------------------------+
-    </div>
+    <!-- Lineless ASCII Divider -->
+    <div class="ascii-divider">--------------------------------------------------------------------------------</div>
 
     <!-- Live Audience Chat Stream -->
     <div id="messagesContainer" class="messages">
@@ -576,6 +650,9 @@
             [ CONNECTING TO STREAM CHAT HUB... ]
         </div>
     </div>
+
+    <!-- Lineless ASCII Divider -->
+    <div class="ascii-divider">--------------------------------------------------------------------------------</div>
 
     <!-- Terminal Reply Input -->
     <form id="chatForm" class="terminal-bar">
@@ -596,6 +673,7 @@
     <script>
         const WS_URL = "ws://127.0.0.1:9988/ws";
         const HTTP_BASE = "http://127.0.0.1:9988";
+        const SORTER_BASE = "http://127.0.0.1:7479";
 
         let ws = null;
         let isConnected = false;
@@ -605,6 +683,10 @@
         let broadcastStartTime = null;
         let uptimeInterval = null;
         let sfxEnabled = localStorage.getItem("sisyfuz_hud_sfx") !== "0";
+
+        // Active Sorter Target
+        let activeTargetId = "open_files";
+        let activeModeName = "AUTO";
 
         // DOM elements
         const windowBar = document.getElementById("windowBar");
@@ -625,12 +707,19 @@
         // Mode & Storage elements
         const activeModeLabel = document.getElementById("activeModeLabel");
         const modeButtons = document.querySelectorAll(".mode-btn");
+        const targetButtons = document.querySelectorAll(".target-btn");
+        const activeTargetLabel = document.getElementById("activeTargetLabel");
+        const rulesModeTag = document.getElementById("rulesModeTag");
+        const btnCustomFolder = document.getElementById("btnCustomFolder");
+        const btnEditConfig = document.getElementById("btnEditConfig");
+        const btnSortTarget = document.getElementById("btnSortTarget");
+        const btnSortOpenQuick = document.getElementById("btnSortOpenQuick");
         const sorterStatusBadge = document.getElementById("sorterStatusBadge");
         const diskMeterText = document.getElementById("diskMeterText");
         const frontmostAppText = document.getElementById("frontmostAppText");
         const tdRecBadge = document.getElementById("tdRecBadge");
         const oscPortsBadge = document.getElementById("oscPortsBadge");
-        const btnSortRenders = document.getElementById("btnSortRenders");
+        const historyCountBadge = document.getElementById("historyCountBadge");
         const btnScanDisk = document.getElementById("btnScanDisk");
         const btnCleanTrash = document.getElementById("btnCleanTrash");
         const btnUndoLast = document.getElementById("btnUndoLast");
@@ -705,11 +794,91 @@
             });
         });
 
+        // Target Selector Dynamic Rendering & Handlers
+        let knownTargets = [];
+
+        function bindTargetButtons() {
+            const btns = document.querySelectorAll("#targetSelectorRow .target-btn");
+            btns.forEach(btn => {
+                btn.onclick = () => {
+                    const target = btn.getAttribute("data-target");
+                    if (target === "custom") {
+                        callNative("chooseCustomFolder");
+                        playChime();
+                        return;
+                    }
+                    if (target === "config") {
+                        callNative("openConfig");
+                        playChime();
+                        showToast("OPENING CONFIG FILE...");
+                        return;
+                    }
+                    activeTargetId = target;
+                    updateTargetUI();
+                    callNative("setSortTarget", { target });
+                    playChime();
+                };
+            });
+        }
+
+        function renderTargets(targetsList) {
+            if (!Array.isArray(targetsList) || targetsList.length === 0) return;
+            const container = document.getElementById("targetSelectorRow");
+            if (!container) return;
+
+            // Check if targets changed
+            const listKey = targetsList.map(t => t.id + ":" + t.label).join("|");
+            if (container.dataset.renderedKey === listKey) {
+                updateTargetUI();
+                return;
+            }
+            container.dataset.renderedKey = listKey;
+
+            let html = "";
+            targetsList.forEach(t => {
+                const isActive = (t.id === activeTargetId);
+                const cls = isActive ? (t.id === "open_files" ? "target-btn active-target-pink" : "target-btn active-target") : "target-btn";
+                html += `<button class="${cls}" data-target="${escapeHtml(t.id)}">[${escapeHtml(t.label.toUpperCase())}]</button>`;
+            });
+            html += `<button class="target-btn" data-target="custom" id="btnCustomFolder" title="Choose custom target folder">[+ FOLDER]</button>`;
+            html += `<button class="target-btn" data-target="config" id="btnEditConfig" title="Edit guardian_config.json">[CONFIG]</button>`;
+            container.innerHTML = html;
+            bindTargetButtons();
+            updateTargetUI();
+        }
+
+        bindTargetButtons();
+
+        function updateTargetUI() {
+            const btns = document.querySelectorAll("#targetSelectorRow .target-btn");
+            btns.forEach(btn => {
+                const t = btn.getAttribute("data-target");
+                if (t === "config" || t === "custom") return;
+                if (t === activeTargetId) {
+                    btn.className = (t === "open_files") ? "target-btn active-target-pink" : "target-btn active-target";
+                } else {
+                    btn.className = "target-btn";
+                }
+            });
+
+            if (activeTargetId === "open_files") {
+                btnSortTarget.textContent = "[▶ SORT OPEN FILES]";
+            } else {
+                btnSortTarget.textContent = `[▶ SORT ${activeTargetId.toUpperCase()}]`;
+            }
+        }
+
         // Storage Guardian Action Handlers
-        btnSortRenders.addEventListener("click", () => {
-            callNative("triggerSort");
+        btnSortTarget.addEventListener("click", () => {
+            callNative("triggerSortTarget", { target: activeTargetId });
             playChime();
-            showToast("SORT TRIGGERED ON DOWNLOADS");
+            showToast(`SORT TRIGGERED ON ${activeTargetId.toUpperCase()}`);
+        });
+
+        btnSortOpenQuick.addEventListener("click", () => {
+            callNative("triggerSortOpen");
+            playChime();
+            showToast("SORTING CURRENT OPEN FILES...");
         });
 
         btnScanDisk.addEventListener("click", () => {
@@ -730,6 +899,36 @@
             showToast("REVERTING LAST OPERATION...");
         });
 
+        // Global Keyboard Shortcuts (Cmd+K, Cmd+S, Cmd+D, Cmd+Z, Esc)
+        window.addEventListener("keydown", (e) => {
+            const isInput = (document.activeElement === chatInput);
+            if (e.key === "Escape") {
+                if (isInput && chatInput.value) {
+                    chatInput.value = "";
+                } else {
+                    callNative("closeHud");
+                }
+                return;
+            }
+            if (e.metaKey || e.ctrlKey) {
+                if (isInput) return; // Allow standard text editing (Undo/Redo/Select) in chat input
+                const k = e.key.toLowerCase();
+                if (k === "k") {
+                    e.preventDefault();
+                    callNative("closeHud");
+                } else if (k === "s") {
+                    e.preventDefault();
+                    btnSortTarget.click();
+                } else if (k === "d") {
+                    e.preventDefault();
+                    btnSortOpenQuick.click();
+                } else if (k === "z") {
+                    e.preventDefault();
+                    btnUndoLast.click();
+                }
+            }
+        });
+
         // Toast Helper
         let toastTimeout = null;
         function showToast(text) {
@@ -738,7 +937,7 @@
             if (toastTimeout) clearTimeout(toastTimeout);
             toastTimeout = setTimeout(() => {
                 hudToast.style.display = "none";
-            }, 2400);
+            }, 2600);
         }
         window.showHudToast = showToast;
 
@@ -759,7 +958,7 @@
                 osc.type = "sine";
                 const now = audioCtx.currentTime;
                 osc.frequency.setValueAtTime(880, now);
-                osc.frequency.exponentialRampToValueAtTime(587.33, now + 0.08); // A5 -> D5
+                osc.frequency.exponentialRampToValueAtTime(587.33, now + 0.08);
 
                 gain.gain.setValueAtTime(0.12, now);
                 gain.gain.exponentialRampToValueAtTime(0.001, now + 0.09);
@@ -850,7 +1049,9 @@
 
             // Mode synchronization
             if (state.currentMode) {
+                activeModeName = state.currentMode;
                 activeModeLabel.textContent = `[${state.currentMode.toUpperCase()}]`;
+                rulesModeTag.textContent = `RULES: [${state.currentMode.toUpperCase()}]`;
                 modeButtons.forEach(btn => {
                     const m = btn.getAttribute("data-mode");
                     const isCurrent = (m.toLowerCase() === state.currentMode.toLowerCase());
@@ -873,6 +1074,31 @@
                 }
             }
 
+            // Active Target & Open Files Status
+            if (state.activeTarget) {
+                activeTargetId = state.activeTarget;
+                updateTargetUI();
+            }
+
+            if (state.targetSummary) {
+                activeTargetLabel.textContent = `TARGET: [${state.targetSummary}]`;
+            } else if (state.openFilesInfo) {
+                const info = state.openFilesInfo;
+                if (activeTargetId === "open_files") {
+                    activeTargetLabel.textContent = `TARGET: [OPEN: ${info.app || "Finder"} // ${info.count || 0} FILES]`;
+                }
+            }
+
+            // Custom target label update if active
+            if (state.customTargetName) {
+                btnCustomFolder.textContent = `[${state.customTargetName.toUpperCase()}]`;
+            }
+
+            // History counter
+            if (typeof state.historyCount === "number") {
+                historyCountBadge.textContent = `HISTORY: [${state.historyCount} OPS]`;
+            }
+
             // Disk gauge
             if (typeof state.diskPercent === "number") {
                 const pct = Math.round(state.diskPercent);
@@ -890,24 +1116,49 @@
             // TouchDesigner Record state
             if (typeof state.isTdRecording === "boolean") {
                 if (state.isTdRecording) {
-                    tdRecBadge.className = "badge-rec font-mono text-[9.5px]";
+                    tdRecBadge.className = "badge-rec font-mono text-[9px]";
                     tdRecBadge.textContent = "TD REC: [● RECORDING]";
                 } else {
-                    tdRecBadge.className = "text-neutral-400 font-mono text-[9.5px]";
+                    tdRecBadge.className = "text-neutral-500 font-mono text-[9px]";
                     tdRecBadge.textContent = "TD REC: [○ IDLE]";
                 }
             }
 
-            // Scan Results Drawer
-            if (state.scanResult) {
+            // Render dynamic targets if sent from Swift
+            if (Array.isArray(state.targets)) {
+                renderTargets(state.targets);
+            }
+
+            // Scan / Sort / Clean / Undo Results Drawer (Priority to latestAction)
+            const act = state.latestAction || (state.sortResult ? "sort" : (state.undoResult ? "undo" : (state.cleanResult ? "clean" : (state.scanResult ? "scan" : null))));
+
+            if (act === "undo" && state.undoResult) {
+                const u = state.undoResult;
+                drawerContent.innerHTML = `<div>&gt; [UNDO RESULT: ${escapeHtml(u.message || "OPERATION REVERTED")}]</div>`;
+                resultsDrawer.style.display = "block";
+            } else if (act === "sort" && state.sortResult) {
+                const r = state.sortResult;
+                const count = r.sorted_count ?? 0;
+                let html = `<div>&gt; [SORT RESULT: ${escapeHtml(r.message || "COMPLETED")}]</div>`;
+                if (Array.isArray(r.items) && r.items.length > 0) {
+                    const fileLines = r.items.slice(0, 5).map(it => {
+                        const name = escapeHtml(it.name || "file");
+                        const cat = escapeHtml(it.category || "General");
+                        return `  • ${name} &rarr; [${cat}]`;
+                    }).join("<br>");
+                    html += `<div style="color: #888888; font-size: 9px; margin-top: 2px;">${fileLines}${r.items.length > 5 ? `<br>  ...and ${r.items.length - 5} more` : ""}</div>`;
+                }
+                drawerContent.innerHTML = html;
+                resultsDrawer.style.display = "block";
+            } else if (act === "scan" && state.scanResult) {
                 const cnt = state.scanResult.count || (state.scanResult.items && state.scanResult.items.length) || 0;
                 const mb = Math.round(state.scanResult.size_mb || state.scanResult.reclaimable_mb || 0);
-                drawerContent.innerHTML = `SCAN RESULT: [${cnt} FILES FOUND // ${mb} MB RECLAIMABLE]`;
+                drawerContent.innerHTML = `&gt; SCAN RESULT: [${cnt} FILES FOUND // ${mb} MB RECLAIMABLE]`;
                 resultsDrawer.style.display = "block";
-            } else if (state.cleanResult) {
+            } else if (act === "clean" && state.cleanResult) {
                 const cnt = state.cleanResult.purged_count || state.cleanResult.count || 0;
                 const mb = Math.round(state.cleanResult.freed_mb || 0);
-                drawerContent.innerHTML = `PURGE RESULT: [${cnt} ITEMS REMOVED // ${mb} MB RECLAIMED TO TRASH]`;
+                drawerContent.innerHTML = `&gt; PURGE RESULT: [${cnt} ITEMS REMOVED // ${mb} MB RECLAIMED TO TRASH]`;
                 resultsDrawer.style.display = "block";
             }
         };
@@ -1046,6 +1297,7 @@
         });
 
         // Initialize UI & Connections
+        updateTargetUI();
         updateDeckUI();
         connectWS();
     </script>

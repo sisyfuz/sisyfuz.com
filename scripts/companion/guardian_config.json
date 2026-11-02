@@ -1,0 +1,219 @@
+{
+  "activeTargetId" : "open_files",
+  "ephemeralExtensions" : [
+    "crdownload",
+    "dmg",
+    "iso",
+    "part",
+    "pkg",
+    "tmp"
+  ],
+  "rules" : [
+    {
+      "categoryName" : "Video & Renders",
+      "destinations" : {
+        "default" : "Sorted\/Video",
+        "live" : "Live\/Renders",
+        "personal" : "Personal\/Videos",
+        "school" : "School\/Media",
+        "work" : "Work\/Renders"
+      },
+      "extensions" : [
+        "mov",
+        "mp4",
+        "mkv",
+        "avi",
+        "prores",
+        "webm",
+        "m4v",
+        "gif"
+      ],
+      "id" : "media_renders"
+    },
+    {
+      "categoryName" : "Images & Stills",
+      "destinations" : {
+        "default" : "Sorted\/Images",
+        "live" : "Live\/Stills",
+        "personal" : "Personal\/Photos",
+        "school" : "School\/Images",
+        "work" : "Work\/Assets"
+      },
+      "extensions" : [
+        "png",
+        "jpg",
+        "jpeg",
+        "tiff",
+        "exr",
+        "psd",
+        "svg",
+        "webp",
+        "bmp",
+        "heic",
+        "raw"
+      ],
+      "id" : "images_stills"
+    },
+    {
+      "categoryName" : "Creative Projects",
+      "destinations" : {
+        "default" : "Sorted\/Creative",
+        "live" : "Live\/Projects",
+        "personal" : "Personal\/Projects",
+        "school" : "School\/Projects",
+        "work" : "Work\/Projects"
+      },
+      "extensions" : [
+        "toe",
+        "tox",
+        "blend",
+        "c4d",
+        "aep",
+        "prproj",
+        "max",
+        "hip",
+        "fbx",
+        "obj",
+        "usd"
+      ],
+      "id" : "creative_projects"
+    },
+    {
+      "categoryName" : "Audio & Stems",
+      "destinations" : {
+        "default" : "Sorted\/Audio",
+        "live" : "Live\/Audio",
+        "personal" : "Personal\/Music",
+        "school" : "School\/Audio",
+        "work" : "Work\/Audio"
+      },
+      "extensions" : [
+        "wav",
+        "aif",
+        "aiff",
+        "mp3",
+        "flac",
+        "m4a",
+        "ogg",
+        "mid",
+        "midi"
+      ],
+      "id" : "audio_stems"
+    },
+    {
+      "categoryName" : "Documents & PDFs",
+      "destinations" : {
+        "default" : "Sorted\/Documents",
+        "live" : "Live\/Documents",
+        "personal" : "Personal\/Documents",
+        "school" : "School\/Readings",
+        "work" : "Work\/Documents"
+      },
+      "extensions" : [
+        "pdf",
+        "doc",
+        "docx",
+        "txt",
+        "md",
+        "rtf",
+        "pages",
+        "keynote",
+        "numbers",
+        "xls",
+        "xlsx",
+        "ppt",
+        "pptx",
+        "epub"
+      ],
+      "id" : "documents_readings"
+    },
+    {
+      "categoryName" : "Code & Dev",
+      "destinations" : {
+        "default" : "Sorted\/Code",
+        "live" : "Live\/Code",
+        "personal" : "Personal\/Code",
+        "school" : "School\/Assignments",
+        "work" : "Work\/Code"
+      },
+      "extensions" : [
+        "swift",
+        "py",
+        "js",
+        "ts",
+        "jsx",
+        "tsx",
+        "html",
+        "css",
+        "json",
+        "yaml",
+        "yml",
+        "sh",
+        "cpp",
+        "c",
+        "h",
+        "rs",
+        "go",
+        "sql",
+        "ipynb"
+      ],
+      "id" : "code_dev"
+    },
+    {
+      "categoryName" : "Archives",
+      "destinations" : {
+        "default" : "Sorted\/Archives",
+        "personal" : "Personal\/Archives",
+        "school" : "School\/Archives",
+        "work" : "Work\/Archives"
+      },
+      "extensions" : [
+        "zip",
+        "tar",
+        "gz",
+        "7z",
+        "rar",
+        "bz2",
+        "xz"
+      ],
+      "id" : "archives"
+    },
+    {
+      "categoryName" : "Installers",
+      "destinations" : {
+        "default" : "Sorted\/Installers"
+      },
+      "extensions" : [
+        "dmg",
+        "pkg",
+        "iso"
+      ],
+      "id" : "ephemeral_installers"
+    }
+  ],
+  "targets" : [
+    {
+      "id" : "open_files",
+      "isDynamic" : true,
+      "label" : "CURRENT OPEN FILES"
+    },
+    {
+      "id" : "downloads",
+      "isDynamic" : false,
+      "label" : "DOWNLOADS",
+      "path" : "~\/Downloads"
+    },
+    {
+      "id" : "documents",
+      "isDynamic" : false,
+      "label" : "DOCUMENTS",
+      "path" : "~\/Documents"
+    },
+    {
+      "id" : "desktop",
+      "isDynamic" : false,
+      "label" : "DESKTOP",
+      "path" : "~\/Desktop"
+    }
+  ]
+}

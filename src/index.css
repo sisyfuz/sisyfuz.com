@@ -156,6 +156,12 @@ html {
     bottom: 0;
 }
 
+/* Private agenda: focus shows as reverse video or a darker cell, never as an
+   outline, so no line ever falls off the character grid. */
+.agenda-root :focus-visible {
+    outline: none;
+}
+
 /* 44px Minimum Touch Target Bounding Box on Mobile */
 @media (pointer: coarse), (max-width: 768px) {
     .touch-target {

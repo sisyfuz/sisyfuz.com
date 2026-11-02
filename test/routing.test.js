@@ -20,6 +20,13 @@ describe("parseRoute", () => {
         }
     });
 
+    test("the hidden agenda section", () => {
+        assert.deepEqual(parseRoute("/agenda"), view("agenda"));
+        assert.deepEqual(parseRoute("/agenda/"), view("agenda"));
+        assert.deepEqual(parseRoute("/Agenda"), view("agenda"));
+        assert.deepEqual(parseRoute("/agenda/extra"), view("home"));
+    });
+
     test("section names are case-insensitive", () => {
         assert.deepEqual(parseRoute("/WORK"), view("work"));
         assert.deepEqual(parseRoute("/About/"), view("about"));

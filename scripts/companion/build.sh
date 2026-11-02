@@ -19,6 +19,9 @@ mkdir -p "$APP_NAME/Contents/Resources"
 # Move binary to Contents/MacOS
 cp SisyfuzCompanion "$APP_NAME/Contents/MacOS/SisyfuzCompanion"
 cp ChatHUD.html "$APP_NAME/Contents/Resources/ChatHUD.html"
+if [ -f guardian_config.json ]; then
+    cp guardian_config.json "$APP_NAME/Contents/Resources/guardian_config.json"
+fi
 
 # Create minimal Info.plist
 cat << 'EOF' > "$APP_NAME/Contents/Info.plist"
@@ -40,6 +43,8 @@ cat << 'EOF' > "$APP_NAME/Contents/Info.plist"
     <true/>
     <key>NSHighResolutionCapable</key>
     <true/>
+    <key>NSAppleEventsUsageDescription</key>
+    <string>Sisyfuz Companion queries frontmost applications to detect open files for automated sorting.</string>
 </dict>
 </plist>
 EOF

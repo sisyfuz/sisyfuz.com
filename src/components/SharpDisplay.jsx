@@ -17,6 +17,7 @@ const TuiContact = lazy(() => import("../tui/TuiContact"));
 const TuiPress = lazy(() => import("../tui/TuiPress"));
 const TuiLive = lazy(() => import("../tui/TuiLive"));
 const TuiPrivacy = lazy(() => import("../tui/TuiPrivacy"));
+const TuiAgenda = lazy(() => import("../tui/TuiAgenda"));
 
 function AsciiSectionLoader() {
     return (
@@ -133,6 +134,15 @@ export default function SharpDisplay() {
         window.addEventListener("keydown", handleGlobalKeyDown);
         return () => window.removeEventListener("keydown", handleGlobalKeyDown);
     }, [clearSearch]);
+
+    // The private agenda has its own full-screen layout: no site nav, search box or dock.
+    if (activeSection === "agenda") {
+        return (
+            <Suspense fallback={<AsciiSectionLoader />}>
+                <TuiAgenda />
+            </Suspense>
+        );
+    }
 
     return (
         <div className={`min-h-[round(down,100dvh,1lh)] w-full bg-[#050505] text-[#f0f0f0] font-mono px-[2ch] sm:px-[4ch] md:px-[8ch] lg:px-[12ch] py-[1lh] sm:py-[2lh] md:py-[2lh] flex flex-col justify-between select-text relative ${

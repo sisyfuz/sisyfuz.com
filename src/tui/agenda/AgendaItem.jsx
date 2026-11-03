@@ -5,7 +5,6 @@ import { itemState, stateGlyph, stateLabel, stateTone } from "../../utils/agenda
 import { tint } from "../../utils/agendaSpecial";
 import { logoOf } from "../../utils/agendaStyle";
 import AgendaGutter from "./AgendaGutter";
-import { positionAt } from "../../utils/agendaStickerPlace";
 import AgendaStickers from "./AgendaStickers";
 import StickerImage from "./StickerImage";
 import { BTN_GREEN, BTN_RED } from "./ui";
@@ -14,14 +13,11 @@ import { BTN_GREEN, BTN_RED } from "./ui";
 // screen, counts as having read the item. Scrolling cancels a hold (pointercancel).
 const HOVER_READ_MS = 1500;
 const HOLD_READ_MS = 600;
-// Three taps on a stuck sticker within this long (each) pick it up to move it;
-// fewer count as a tap on the card.
-const STICKER_TAP_MS = 450;
 
 // One item on one day. Tapping the card opens it; when the other person made
 // the last change, the answer buttons sit right on the card. While choosing items
-// a tap ticks it instead, and while a sticker on it is being moved it follows the
-// finger or mouse.
+// a tap ticks it instead. Pressing a sticker on it goes to `onStickerPress`.
+
 export default function AgendaItem({
     event,
     day,
@@ -35,9 +31,9 @@ export default function AgendaItem({
     stickersById = {},
     selection = null,
     onToggleSelect,
-    placing = null,
-    onPlaceMove,
-    onStartMove,
+    stickerHiddenId = null,
+    stickerLiftedId = null,
+    onStickerPress,
 }) {
     const isNew = newIds.has(event.id);
     const state = itemState(event, people.me, people.ids);
@@ -45,9 +41,6 @@ export default function AgendaItem({
     const unseenByMe = event.updatedBy !== people.me && !event.status?.[people.me]?.seenAt;
     const unreadByMe = event.updatedBy !== people.me && !event.status?.[people.me]?.readAt;
     const dwell = useRef(null);
-    const cardRef = useRef(null);
-    const dragging = useRef(false);
-    const taps = useRef({ id: null, count: 0, timer: null });
 
     const stopDwell = () => {
         clearTimeout(dwell.current);
@@ -60,83 +53,33 @@ export default function AgendaItem({
             if (document.visibilityState === "visible") onRead(event.id);
         }, ms);
     };
-    useEffect(
-        () => () => {
-            stopDwell();
-            clearTimeout(taps.current.timer);
-        },
-        []
-    );
+    useEffect(() => stopDwell, []);
 
-    const ghost = placing?.eventId === event.id ? placing : null;
     const selecting = selection !== null;
     const selected = selecting && selection.has(event.id);
     const bigLogo = logoOf(event, stickersById, "groot");
     const smallLogo = logoOf(event, stickersById, "klein");
 
     const tapCard = () => (selecting ? onToggleSelect(event.id) : onOpen(event.id));
-    const tapSticker = (placement) => {
-        const t = taps.current;
-        clearTimeout(t.timer);
-        t.count = t.id === placement.id ? t.count + 1 : 1;
-        t.id = placement.id;
-        if (t.count >= 3 && !selecting) {
-            t.count = 0;
-            onStartMove(event.id, placement);
-            return;
-        }
-        t.timer = setTimeout(() => {
-            t.count = 0;
-            tapCard();
-        }, STICKER_TAP_MS);
-    };
-
-    // Moving a sticker: the card catches the pointer instead of opening.
-    const moveGhost = (e) => {
-        if (!ghost || !cardRef.current) return;
-        onPlaceMove(positionAt(cardRef.current, e.clientX, e.clientY));
-    };
-    const ghostHandlers = ghost
-        ? {
-              onPointerDown: (e) => {
-                  dragging.current = true;
-                  e.currentTarget.setPointerCapture?.(e.pointerId);
-                  moveGhost(e);
-              },
-              onPointerMove: (e) => dragging.current && moveGhost(e),
-              onPointerUp: (e) => {
-                  if (dragging.current) moveGhost(e);
-                  dragging.current = false;
-              },
-              onPointerCancel: () => {
-                  dragging.current = false;
-              },
-          }
-        : {
-              onPointerEnter: (e) => e.pointerType !== "touch" && startDwell(HOVER_READ_MS),
-              onPointerLeave: stopDwell,
-              onPointerDown: (e) => e.pointerType === "touch" && startDwell(HOLD_READ_MS),
-              onPointerUp: (e) => e.pointerType === "touch" && stopDwell(),
-              onPointerCancel: stopDwell,
-          };
 
     return (
         <article
-            ref={(el) => {
-                cardRef.current = el;
-                if (unseenByMe && el) trackSeen(el);
-            }}
+            ref={unseenByMe ? trackSeen : undefined}
             data-seen-id={event.id}
             data-item-id={event.id}
-            className={`relative flex gap-x-[1ch] ${ghost ? "touch-none cursor-crosshair" : ""}`}
+            className="relative flex gap-x-[1ch]"
             style={{ WebkitTouchCallout: "none" }}
-            {...ghostHandlers}
+            onPointerEnter={(e) => e.pointerType !== "touch" && startDwell(HOVER_READ_MS)}
+            onPointerLeave={stopDwell}
+            onPointerDown={(e) => e.pointerType === "touch" && startDwell(HOLD_READ_MS)}
+            onPointerUp={(e) => e.pointerType === "touch" && stopDwell()}
+            onPointerCancel={stopDwell}
         >
             <AgendaGutter color={forColor} />
             <div className="min-w-0 flex-1">
                 <button
                     type="button"
-                    onClick={() => (ghost ? null : tapCard())}
+                    onClick={tapCard}
                     aria-pressed={selecting ? selected : undefined}
                     className={`block w-full text-left cursor-pointer select-none transition-none focus-visible:outline-none focus-visible:bg-[#262626] ${
                         event.color ? "hover:brightness-125" : "hover:bg-[#141414]"
@@ -164,7 +107,7 @@ export default function AgendaItem({
                     </span>
                 </button>
 
-                {state.needsMyAnswer && !selecting && !ghost && (
+                {state.needsMyAnswer && !selecting && (
                     <div className="flex flex-wrap gap-x-[1ch]">
                         <button type="button" disabled={busy} onClick={() => onRespond(event.id, "akkoord")} className={BTN_GREEN}>
                             [✓ AKKOORD]
@@ -176,7 +119,13 @@ export default function AgendaItem({
                 )}
             </div>
             {bigLogo && <StickerImage sticker={bigLogo} />}
-            <AgendaStickers placements={event.placements} stickersById={stickersById} ghost={ghost} onTap={tapSticker} />
+            <AgendaStickers
+                placements={event.placements}
+                stickersById={stickersById}
+                hiddenId={stickerHiddenId}
+                liftedId={stickerLiftedId}
+                onPress={(e, p) => onStickerPress?.(e, { kind: "item", eventId: event.id, id: p.id, stickerId: p.stickerId }, tapCard)}
+            />
         </article>
     );
 }

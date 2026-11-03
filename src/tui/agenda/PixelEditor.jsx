@@ -333,7 +333,7 @@ export default function PixelEditor({ initial, busy, error, onSave, onClose }) {
                             </button>
                         ))}
                         <button type="button" aria-pressed={mirror} onClick={() => setMirror((m) => !m)} className={toolBtn(mirror)}>
-                            [<span className="cell">⇋</span> SPIEGEL]
+                            <span>[<span className="cell">⇋</span> SPIEGEL]</span>
                         </button>
                     </div>
                     <div className="flex flex-wrap gap-x-[1ch] -ml-[1ch]">
@@ -352,7 +352,7 @@ export default function PixelEditor({ initial, busy, error, onSave, onClose }) {
                             [↷]
                         </button>
                         <button type="button" onClick={flip} disabled={isBlank(target)} className={BTN_PLAIN}>
-                            [<span className="cell">⇄</span> OMKLAPPEN]
+                            <span>[<span className="cell">⇄</span> OMKLAPPEN]</span>
                         </button>
                         <button type="button" onClick={clearAll} disabled={isBlank(target)} className={BTN_PLAIN}>
                             [WIS ALLES]

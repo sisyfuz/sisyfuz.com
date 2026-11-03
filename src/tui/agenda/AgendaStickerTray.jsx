@@ -6,14 +6,18 @@ import { BTN_PLAIN, BTN_PRIMARY } from "./ui";
 // The sticker tray in the bottom bar: drag a sticker out of it and drop it anywhere
 // in the agenda (an item, a day in the month or in the list). The dragging itself
 // is useStickerDrag's (`onStart`); `draggingId` dims the sticker being dragged.
-export default function AgendaStickerTray({ stickers, busy, draggingId, onStart, onDraw, onImport, onClose }) {
+// [✎ MAKEN] opens the library to draw, load or edit them (`onManage`).
+export default function AgendaStickerTray({ stickers, busy, draggingId, onStart, onDraw, onImport, onManage, onClose }) {
     const [hint, setHint] = useState("");
 
     return (
         <div className="w-full min-w-0 px-[1ch]">
             <div className="flex items-center gap-x-[1ch]">
                 <span className="text-neutral-400 uppercase min-w-0 truncate">{hint || "SLEEP EEN STICKER WAAR JE WILT"}</span>
-                <button type="button" onClick={onClose} className={`${BTN_PRIMARY} ml-auto -mr-[1ch]`}>
+                <button type="button" onClick={onManage} className={`${BTN_PLAIN} ml-auto`}>
+                    <span>[<span className="cell">✎</span> MAKEN]</span>
+                </button>
+                <button type="button" onClick={onClose} className={`${BTN_PRIMARY} -mr-[1ch]`}>
                     [KLAAR]
                 </button>
             </div>

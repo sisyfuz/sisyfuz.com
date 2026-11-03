@@ -656,6 +656,80 @@ describe("Agenda stickers: colour and logo", () => {
     });
 });
 
+describe("Agenda stickers: on days", () => {
+    const stick = (token, stickerId, extra = {}) =>
+        call("/agenda/day-stickers", { method: "POST", body: { view: "maand", day: "2026-11-12", stickerId, dx: -3, dy: -1, ...extra }, token });
+    const list = (token, from = "2026-11-01", to = "2026-11-30") => call(`/agenda/day-stickers?from=${from}&to=${to}`, { token });
+
+    test("a sticker on a day shows for both people, only in its range", async () => {
+        const { dorus, partner } = await tokens();
+        const s = await addSticker(dorus);
+        const made = await stick(dorus, s.id);
+        assert.equal(made.res.status, 201);
+        assert.deepEqual(
+            { ...made.data.daySticker, id: undefined, createdAt: undefined },
+            { id: undefined, view: "maand", day: "2026-11-12", stickerId: s.id, dx: -3, dy: -1, placedBy: "dorus", createdAt: undefined }
+        );
+        await stick(partner, s.id, { view: "lijst", day: "2026-12-01", dx: 20, dy: 0 });
+        const nov = await list(partner);
+        assert.deepEqual(nov.data.daySticks.map((d) => d.day), ["2026-11-12"]);
+        assert.equal(nov.data.rev, await rev(dorus));
+        assert.equal((await list(dorus, "2026-11-01", "2026-12-31")).data.daySticks.length, 2);
+    });
+
+    test("either person can move a day sticker, also to another day or view", async () => {
+        const { dorus, partner } = await tokens();
+        const s = await addSticker(dorus);
+        const made = (await stick(dorus, s.id)).data.daySticker;
+        const moved = await call(`/agenda/day-stickers/${made.id}`, { method: "PATCH", body: { view: "lijst", day: "2026-11-13", dx: 5, dy: 2, placedBy: "partner" }, token: partner });
+        assert.equal(moved.res.status, 200);
+        assert.deepEqual(moved.data.daySticker, { ...made, view: "lijst", day: "2026-11-13", dx: 5, dy: 2 });
+        const removed = await call(`/agenda/day-stickers/${made.id}`, { method: "DELETE", token: partner });
+        assert.equal(removed.res.status, 200);
+        assert.deepEqual((await list(dorus)).data.daySticks, []);
+        assert.equal((await call(`/agenda/day-stickers/${made.id}`, { method: "DELETE", token: dorus })).res.status, 404);
+        assert.equal((await call(`/agenda/day-stickers/${made.id}`, { method: "PATCH", body: { view: "maand", day: "2026-11-13", dx: 0, dy: 0 }, token: dorus })).res.status, 404);
+    });
+
+    test("spots, days, views and pictures are checked", async () => {
+        const { dorus } = await tokens();
+        const s = await addSticker(dorus);
+        for (const bad of [{ view: "week" }, { day: "2026-02-30" }, { dx: 81 }, { dx: -13 }, { dy: 41 }, { dy: -9 }, { dx: 1.5 }, { dy: "1" }]) {
+            assert.equal((await stick(dorus, s.id, bad)).res.status, 400, JSON.stringify(bad));
+        }
+        assert.equal((await stick(dorus, "00000000-0000-0000-0000-000000000000")).res.status, 404);
+        await call(`/agenda/stickers/${s.id}`, { method: "DELETE", token: dorus });
+        assert.equal((await stick(dorus, s.id)).res.status, 404, "archived pictures can't be stuck on");
+        assert.equal((await list(dorus, "2026-11-30", "2026-11-01")).res.status, 400);
+        assert.equal((await list(dorus, "2026-01-01", "2027-12-31")).res.status, 400);
+    });
+
+    test("at most 8 per day per person per view", async () => {
+        const { dorus, partner } = await tokens();
+        const s = await addSticker(dorus);
+        for (let i = 0; i < 8; i++) assert.equal((await stick(dorus, s.id, { dx: i })).res.status, 201);
+        assert.equal((await stick(dorus, s.id)).res.status, 400);
+        assert.equal((await stick(partner, s.id)).res.status, 201, "the other person has their own 8");
+        assert.equal((await stick(dorus, s.id, { view: "lijst" })).res.status, 201, "the list has its own 8");
+    });
+
+    test("sticking, moving and removing bump the revision", async () => {
+        const { dorus } = await tokens();
+        const s = await addSticker(dorus);
+        let last = await rev(dorus);
+        const made = await stick(dorus, s.id);
+        assert.ok(made.data.rev > last);
+        last = made.data.rev;
+        const moved = await call(`/agenda/day-stickers/${made.data.daySticker.id}`, { method: "PATCH", body: { view: "maand", day: "2026-11-12", dx: 1, dy: 1 }, token: dorus });
+        assert.ok(moved.data.rev > last);
+        last = moved.data.rev;
+        const removed = await call(`/agenda/day-stickers/${made.data.daySticker.id}`, { method: "DELETE", token: dorus });
+        assert.ok(removed.data.rev > last);
+        await list(dorus);
+        assert.equal(await rev(dorus), removed.data.rev, "reading is free");
+    });
+});
+
 describe("Agenda stickers: revision counter", () => {
     test("every change bumps the revision; reading does not", async () => {
         const { dorus, partner } = await tokens();
@@ -720,6 +794,7 @@ describe("Agenda stickers: database migration", () => {
     }
     const columns = () => rows("PRAGMA table_info(agenda_events)").map((c) => c.name);
     const schemaVersion = () => rows("SELECT value FROM agenda_meta WHERE key = 'schema'")[0]?.value;
+    const LATEST = 3;
 
     test("a database from before stickers gets the new columns and tables, and keeps its items", async () => {
         oldDatabase();
@@ -727,7 +802,7 @@ describe("Agenda stickers: database migration", () => {
         const { dorus } = await tokens();
 
         for (const name of ["color", "logo_id", "logo_size"]) assert.ok(columns().includes(name), name);
-        assert.equal(schemaVersion(), 2);
+        assert.equal(schemaVersion(), LATEST);
         const tables = rows("SELECT name FROM sqlite_master WHERE type = 'table'").map((t) => t.name);
         assert.ok(tables.includes("agenda_stickers") && tables.includes("agenda_placements"));
         assert.equal(rows("SELECT value FROM agenda_meta WHERE key = 'rev'")[0].value, 41, "the revision carries on");
@@ -744,9 +819,21 @@ describe("Agenda stickers: database migration", () => {
         assert.equal((await place(dorus, old.id, s.id)).res.status, 201);
     });
 
+    test("the live database (schema 2) only gets the day sticker table", async () => {
+        await tokens();
+        db.sqlite.exec("DROP TABLE agenda_day_stickers");
+        db.sqlite.exec("UPDATE agenda_meta SET value = 2 WHERE key = 'schema'");
+        const { dorus } = await tokens(env({ AGENDA_DB: { ...db } }));
+        assert.equal(schemaVersion(), LATEST);
+        const tables = rows("SELECT name FROM sqlite_master WHERE type = 'table'").map((t) => t.name);
+        assert.ok(tables.includes("agenda_day_stickers"));
+        const { res } = await call("/agenda/day-stickers?from=2026-11-01&to=2026-11-30", { token: dorus });
+        assert.equal(res.status, 200);
+    });
+
     test("a fresh database ends up the same way", async () => {
         await tokens();
-        assert.equal(schemaVersion(), 2);
+        assert.equal(schemaVersion(), LATEST);
         assert.deepEqual(columns().slice(-3), ["color", "logo_id", "logo_size"]);
     });
 
@@ -774,7 +861,7 @@ describe("Agenda stickers: database migration", () => {
         assert.equal(one.res.status, 401);
         assert.equal(two.res.status, 401);
         assert.equal(columns().filter((c) => c === "color").length, 1);
-        assert.equal(schemaVersion(), 2);
+        assert.equal(schemaVersion(), LATEST);
 
         const { dorus } = await tokens(eb);
         assert.equal((await call("/agenda/events?from=2026-11-01&to=2026-11-30", { token: dorus }, ea)).res.status, 200);
@@ -786,7 +873,7 @@ describe("Agenda stickers: database migration", () => {
         db.sqlite.exec("ALTER TABLE agenda_events ADD COLUMN logo_id TEXT");
         const { dorus } = await tokens();
         assert.ok(columns().includes("logo_size"));
-        assert.equal(schemaVersion(), 2);
+        assert.equal(schemaVersion(), LATEST);
         const { data } = await call("/agenda/events?from=2026-11-01&to=2026-11-30", { token: dorus });
         assert.equal(data.events[0].title, "Oud item");
     });

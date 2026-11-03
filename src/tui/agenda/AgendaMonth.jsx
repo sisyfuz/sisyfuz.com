@@ -5,6 +5,7 @@ import { itemState } from "../../utils/agendaStatus";
 import { busyGroups, isBusy } from "../../utils/agendaBusy";
 import { isAppointment, isPeriod, isSpecial, periodsOn, specialShortLabel, specialType, tint } from "../../utils/agendaSpecial";
 import AgendaDayItems from "./AgendaDayItems";
+import AgendaDayStickers from "./AgendaDayStickers";
 import { BTN_PRIMARY, BTN_PLAIN } from "./ui";
 
 const SWIPE_MIN_PX = 50;
@@ -67,7 +68,7 @@ function CellLines({ items, day, people, room, selected }) {
     );
 }
 
-export default function AgendaMonth({ events, ym, selected, today, onSelect, onMonth, onToday, onNew, itemProps, wide = false }) {
+export default function AgendaMonth({ events, ym, selected, today, onSelect, onMonth, onToday, onNew, itemProps, dayStickers, wide = false }) {
     const touch = useRef(null);
     const weeks = monthGrid(ym);
     const { people } = itemProps;
@@ -83,6 +84,20 @@ export default function AgendaMonth({ events, ym, selected, today, onSelect, onM
         .filter((p) => p.startDate <= gridTo && p.endDate >= gridFrom)
         .sort((a, b) => a.startDate.localeCompare(b.startDate));
     const selectedZones = periodsOn(periods, selected);
+
+    // Day stickers sit over the grid, from their day's top-left corner: the week
+    // column is 3ch, then 7 day columns (as in GRID_COLUMNS), under a 1lh header.
+    const gridDays = weeks.flatMap((w) => w.days);
+    const rowLh = wide ? 4 : 3;
+    const column = wide ? "11ch" : "round(down, calc((100% - 3ch) / 7), 1ch)";
+    const stickersHere = (dayStickers?.items ?? []).filter((d) => d.view === "maand" && gridDays.includes(d.day));
+    const placeOnGrid = (d) => {
+        const i = gridDays.indexOf(d.day);
+        return {
+            left: `calc(3ch + ${i % 7} * ${column} + ${d.dx} * 1ch)`,
+            top: `calc(${1 + Math.floor(i / 7) * rowLh + d.dy} * 1lh)`,
+        };
+    };
 
     const onTouchStart = (e) => {
         const t = e.touches[0];
@@ -111,7 +126,7 @@ export default function AgendaMonth({ events, ym, selected, today, onSelect, onM
             </div>
 
             <div onTouchStart={onTouchStart} onTouchEnd={onTouchEnd} className="touch-pan-y">
-                <div role="grid" aria-label={monthTitle(ym)} className="grid" style={{ gridTemplateColumns: wide ? GRID_COLUMNS_WIDE : GRID_COLUMNS }}>
+                <div role="grid" aria-label={monthTitle(ym)} className="relative grid" style={{ gridTemplateColumns: wide ? GRID_COLUMNS_WIDE : GRID_COLUMNS }}>
                     <div role="row" className="contents">
                         <span role="columnheader" className="text-neutral-600" title="Weeknummer">WK</span>
                         {WEEKDAYS_SHORT.map((d) => (
@@ -141,6 +156,8 @@ export default function AgendaMonth({ events, ym, selected, today, onSelect, onM
                                         aria-current={isToday ? "date" : undefined}
                                         aria-label={`${formatDayLong(day)}${zone ? `, ${zone.title}` : ""}${items.length ? `, ${items.length} ${items.length === 1 ? "item" : "items"}` : ""}${needsAnswer ? ", wacht op jouw antwoord" : ""}`}
                                         onClick={() => onSelect(day)}
+                                        data-sticker-day={day}
+                                        data-sticker-view="maand"
                                         style={zoneColor && !isSelected ? { backgroundColor: tint(zoneColor, 0.2) } : undefined}
                                         className={`${wide ? "h-[4lh]" : "h-[3lh]"} flex flex-col items-stretch text-left overflow-hidden cursor-pointer transition-none focus-visible:outline-none focus-visible:bg-[#262626] ${
                                             isSelected
@@ -179,6 +196,16 @@ export default function AgendaMonth({ events, ym, selected, today, onSelect, onM
                             })}
                         </div>
                     ))}
+                    {dayStickers && (
+                        <AgendaDayStickers
+                            items={stickersHere}
+                            stickersById={dayStickers.stickersById}
+                            place={placeOnGrid}
+                            movingId={dayStickers.movingId}
+                            onTap={dayStickers.onTap}
+                            onGrab={dayStickers.onGrab}
+                        />
+                    )}
                 </div>
             </div>
 

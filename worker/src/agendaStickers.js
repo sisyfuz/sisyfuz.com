@@ -12,6 +12,7 @@
  *   PATCH  /agenda/stickers/:id          any of { name, png, pngSmall } -> { sticker, rev }
  *   DELETE /agenda/stickers/:id          archives it -> { ok, rev }
  *   POST   /agenda/placements            { eventId, stickerId, occurrenceDate, x, y } -> { placement, rev }
+ *   PATCH  /agenda/placements/:id        { x, y } (moves it) -> { placement, rev }
  *   DELETE /agenda/placements/:id        -> { ok, rev }
  *   POST   /agenda/events/style          { ids, color?, logoId?, logoSize? } -> { events, rev }
  *
@@ -312,16 +313,21 @@ async function archiveSticker(env, origin, id, tools) {
 // Placements
 // -------------------------------------------------------------
 
+// x is a fraction of the card's width, y a whole row from its top.
+function isValidSpot(body) {
+  return (
+    typeof body.x === "number" && Number.isFinite(body.x) && body.x >= 0 && body.x <= 1 &&
+    Number.isInteger(body.y) && body.y >= 0 && body.y <= MAX_PLACEMENT_ROW
+  );
+}
+
 async function createPlacement(request, env, origin, person, tools) {
   const { body, error } = await tools.readBody(request);
   if (error) return tools.reply({ error }, 400, origin);
   const { eventId, stickerId } = body;
   if (typeof eventId !== "string" || !eventId || eventId.length > 64) return tools.reply({ error: "Ongeldig item." }, 400, origin);
   if (typeof stickerId !== "string" || !stickerId || stickerId.length > 64) return tools.reply({ error: "Ongeldig plaatje." }, 400, origin);
-  if (typeof body.x !== "number" || !Number.isFinite(body.x) || body.x < 0 || body.x > 1) {
-    return tools.reply({ error: "Ongeldige plek." }, 400, origin);
-  }
-  if (!Number.isInteger(body.y) || body.y < 0 || body.y > MAX_PLACEMENT_ROW) return tools.reply({ error: "Ongeldige plek." }, 400, origin);
+  if (!isValidSpot(body)) return tools.reply({ error: "Ongeldige plek." }, 400, origin);
 
   const db = env.AGENDA_DB;
   const [eventRes, stickerRes] = await db.batch([
@@ -356,6 +362,18 @@ async function createPlacement(request, env, origin, person, tools) {
   if (!result.meta || result.meta.changes === 0) return tools.reply(limit, 400, origin);
   const row = await db.prepare("SELECT * FROM agenda_placements WHERE id = ?").bind(id).first();
   return tools.reply({ placement: toPlacement(row), rev: await tools.readRev(db) }, 201, origin);
+}
+
+// Either person can move any sticker, like removing one.
+async function movePlacement(request, env, origin, id, tools) {
+  const { body, error } = await tools.readBody(request);
+  if (error) return tools.reply({ error }, 400, origin);
+  if (!isValidSpot(body)) return tools.reply({ error: "Ongeldige plek." }, 400, origin);
+  const db = env.AGENDA_DB;
+  const result = await db.prepare("UPDATE agenda_placements SET x = ?, y = ? WHERE id = ?").bind(body.x, body.y, id).run();
+  if (!result.meta || result.meta.changes === 0) return tools.reply({ error: "Dit plaatje zit er niet meer op." }, 404, origin);
+  const [, rowRes] = await db.batch([tools.bumpRev(db), db.prepare("SELECT * FROM agenda_placements WHERE id = ?").bind(id)]);
+  return tools.reply({ placement: toPlacement(rowRes.results[0]), rev: await tools.readRev(db) }, 200, origin);
 }
 
 async function deletePlacement(env, origin, id, tools) {
@@ -442,7 +460,11 @@ export async function handleStickers(request, env, origin, url, person, path, to
     return notAllowed("PATCH, DELETE");
   }
   const placement = PLACEMENT_PATH.exec(path);
-  if (placement) return method === "DELETE" ? deletePlacement(env, origin, placement[1], tools) : notAllowed("DELETE");
+  if (placement) {
+    if (method === "PATCH") return movePlacement(request, env, origin, placement[1], tools);
+    if (method === "DELETE") return deletePlacement(env, origin, placement[1], tools);
+    return notAllowed("PATCH, DELETE");
+  }
 
   return tools.reply({ error: "Not found" }, 404, origin);
 }

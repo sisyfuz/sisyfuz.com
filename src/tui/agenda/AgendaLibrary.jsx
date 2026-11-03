@@ -4,10 +4,10 @@ import AgendaSheet from "./AgendaSheet";
 import StickerImage from "./StickerImage";
 import { BTN, BTN_PLAIN, BTN_PRIMARY, BTN_RED, BTN_RED_ON } from "./ui";
 
-// The shared library of pictures (stickers and logos), newest first. "pick" hands
-// the tapped one back (to stick it on an item); "manage" lets you edit or remove
-// one. Removing only hides it from here: stickers already stuck on stay.
-export default function AgendaLibrary({ mode = "manage", stickers, busy, error, onPick, onDraw, onImport, onEdit, onArchive, onClose }) {
+// The shared library of pictures (stickers and logos), newest first: tap one to
+// edit or remove it. Removing only hides it from here: stickers already stuck on
+// stay. Sticking them on goes through the tray (AgendaStickerTray).
+export default function AgendaLibrary({ stickers, busy, error, onDraw, onImport, onEdit, onArchive, onClose }) {
     const [chosen, setChosen] = useState(null);
     const [confirm, setConfirm] = useState(false);
     const current = stickers.find((s) => s.id === chosen) ?? null;
@@ -19,13 +19,12 @@ export default function AgendaLibrary({ mode = "manage", stickers, busy, error, 
     }, [confirm]);
 
     const tap = (s) => {
-        if (mode === "pick") return onPick(s);
         setConfirm(false);
         setChosen(chosen === s.id ? null : s.id);
     };
 
     return (
-        <AgendaSheet title={mode === "pick" ? "KIES EEN STICKER" : "PLAATJES"} onClose={onClose} wide>
+        <AgendaSheet title="PLAATJES" onClose={onClose} wide>
             <div className="space-y-[1lh]">
                 <div className="flex flex-wrap gap-x-[1ch] -ml-[1ch]">
                     <button type="button" onClick={onDraw} className={BTN_PRIMARY}>
@@ -43,7 +42,7 @@ export default function AgendaLibrary({ mode = "manage", stickers, busy, error, 
                         <button
                             key={s.id}
                             type="button"
-                            aria-pressed={mode === "manage" ? chosen === s.id : undefined}
+                            aria-pressed={chosen === s.id}
                             aria-label={s.name || "Plaatje"}
                             onClick={() => tap(s)}
                             className={`${BTN} flex-col items-start justify-start py-[1lh] min-h-[7lh] w-[11ch] normal-case ${
@@ -56,7 +55,7 @@ export default function AgendaLibrary({ mode = "manage", stickers, busy, error, 
                     ))}
                 </div>
 
-                {current && mode === "manage" && (
+                {current && (
                     <div>
                         <p className="uppercase text-white font-bold">{current.name || "ZONDER NAAM"}</p>
                         <div className="flex flex-wrap gap-x-[1ch] -ml-[1ch]">

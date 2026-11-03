@@ -442,6 +442,34 @@ describe("Agenda stickers: placements", () => {
         const lib = (await call("/agenda/stickers", { token: dorus })).data.stickers;
         assert.ok(lib.find((x) => x.id === s.id).png, "its pixels are still there");
     });
+
+    test("either person can move a sticker, and only its spot changes", async () => {
+        const { dorus, partner } = await tokens();
+        const event = await addEvent(dorus);
+        const s = await addSticker(dorus);
+        const placed = (await place(dorus, event.id, s.id, { x: 0.25, y: 3 })).data.placement;
+
+        const moved = await call(`/agenda/placements/${placed.id}`, { method: "PATCH", body: { x: 0.75, y: 0, stickerId: "x", placedBy: "partner" }, token: partner });
+        assert.equal(moved.res.status, 200);
+        assert.deepEqual(moved.data.placement, { ...placed, x: 0.75, y: 0 });
+        const e = (await call("/agenda/events?from=2026-11-01&to=2026-11-30", { token: dorus })).data.events[0];
+        assert.deepEqual(e.placements, [{ ...placed, x: 0.75, y: 0 }]);
+        assert.equal(e.version, 1, "moving is cosmetic");
+    });
+
+    test("moving checks the spot and the sticker", async () => {
+        const { dorus } = await tokens();
+        const event = await addEvent(dorus);
+        const s = await addSticker(dorus);
+        const placed = (await place(dorus, event.id, s.id)).data.placement;
+        for (const spot of [{ x: 1.5, y: 0 }, { x: 0.5, y: 21 }, { x: 0.5, y: 1.5 }, { x: "0.5", y: 1 }, {}]) {
+            const r = await call(`/agenda/placements/${placed.id}`, { method: "PATCH", body: spot, token: dorus });
+            assert.equal(r.res.status, 400, JSON.stringify(spot));
+        }
+        await call(`/agenda/placements/${placed.id}`, { method: "DELETE", token: dorus });
+        const gone = await call(`/agenda/placements/${placed.id}`, { method: "PATCH", body: { x: 0, y: 0 }, token: dorus });
+        assert.equal(gone.res.status, 404);
+    });
 });
 
 describe("Agenda stickers: colour and logo", () => {
@@ -640,6 +668,7 @@ describe("Agenda stickers: revision counter", () => {
             ["create stickers", () => call("/agenda/stickers", { method: "POST", body: { stickers: [picture()] }, token: partner })],
             ["patch sticker", () => call(`/agenda/stickers/${s.id}`, { method: "PATCH", body: { name: "Nieuw" }, token: partner })],
             ["place", () => place(partner, event.id, s.id)],
+            ["move", () => call(`/agenda/placements/${p.data.placement.id}`, { method: "PATCH", body: { x: 0.2, y: 1 }, token: partner })],
             ["unplace", () => call(`/agenda/placements/${p.data.placement.id}`, { method: "DELETE", token: partner })],
             ["style", () => call("/agenda/events/style", { method: "POST", body: { ids: [event.id], color: "#ffffff" }, token: partner })],
             ["archive", () => call(`/agenda/stickers/${s.id}`, { method: "DELETE", token: partner })],

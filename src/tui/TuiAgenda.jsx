@@ -18,13 +18,14 @@ import AgendaForm from "./agenda/AgendaForm";
 import AgendaBusySheet from "./agenda/AgendaBusySheet";
 import AgendaImport from "./agenda/AgendaImport";
 import AgendaLibrary from "./agenda/AgendaLibrary";
+import AgendaStickerTray from "./agenda/AgendaStickerTray";
 import AgendaStyleSheet from "./agenda/AgendaStyleSheet";
 import PixelEditor from "./agenda/PixelEditor";
 import PixelImport from "./agenda/PixelImport";
 import useStickers, { clearStickerCache } from "./agenda/useStickers";
 import { base64PngToPixels, SMALL_SIZE, STICKER_SIZE, stickerPayload } from "../utils/agendaPixelFormat";
 import { styleChanges } from "../utils/agendaStyle";
-import { BTN_ACTIVE, BTN_ATTENTION, BTN_PRIMARY, BTN_PLAIN, SAMEN_COLOR } from "./agenda/ui";
+import { BTN_ACTIVE, BTN_ATTENTION, BTN_PRIMARY, BTN_PLAIN, BTN_RED, SAMEN_COLOR, TRAY_ROWS } from "./agenda/ui";
 
 const REFRESH_MS = 60_000;
 // Dividers are clipped to their container, so make them long enough for desktop.
@@ -127,7 +128,8 @@ function makePeople(profile) {
     };
 }
 
-function Shell({ people, onLogout, status, children, bar, actions, dropProps, dropping }) {
+// `barRows` is how tall the bottom bar is (the sticker tray needs more than 4).
+function Shell({ people, onLogout, status, children, bar, barRows = 4, actions, dropProps, dropping }) {
     return (
         <div className="agenda-root relative min-h-[100dvh] w-full bg-[#050505] text-[#f0f0f0] font-mono" {...dropProps}>
             <TermScrollSnap />
@@ -164,7 +166,8 @@ function Shell({ people, onLogout, status, children, bar, actions, dropProps, dr
             <main
                 id="main-content"
                 tabIndex={-1}
-                className={`px-[2ch] lg:px-[4ch] pt-[1lh] outline-none ${bar ? "pb-[calc(6lh+env(safe-area-inset-bottom))]" : "pb-[3lh]"}`}
+                className="px-[2ch] lg:px-[4ch] pt-[1lh] outline-none"
+                style={{ paddingBottom: bar ? `calc(${barRows + 2}lh + env(safe-area-inset-bottom))` : "3lh" }}
             >
                 <div className="term-snap max-w-[72ch] lg:max-w-none">{children}</div>
             </main>
@@ -173,6 +176,7 @@ function Shell({ people, onLogout, status, children, bar, actions, dropProps, dr
                 <nav
                     aria-label="Agenda"
                     className="term-dock left-0 right-0 z-40 bg-[#050505]/95 backdrop-blur-md px-[2ch]"
+                    style={barRows === 4 ? undefined : { top: `calc(var(--term-view-bottom) - ${barRows}lh)` }}
                 >
                     <div className="term-snap max-w-[72ch]">
                         <div aria-hidden="true" className="text-neutral-800 overflow-hidden whitespace-nowrap">{RULE}</div>
@@ -259,7 +263,10 @@ function AgendaApp({ token, initialProfile, onLogout }) {
     const [studio, setStudio] = useState(null);
     const [studioBusy, setStudioBusy] = useState(false);
     const [studioError, setStudioError] = useState("");
-    // Sticking a sticker on: { eventId, stickerId, x, y } while it follows the finger.
+    // The sticker tray (drag a sticker onto an item) is open.
+    const [tray, setTray] = useState(false);
+    // Moving a stuck sticker: { eventId, placementId, stickerId, x, y } while it
+    // follows the finger.
     const [placing, setPlacing] = useState(null);
     // Choosing items to give a colour or logo: a Set of ids, or null.
     const [selection, setSelection] = useState(null);
@@ -736,25 +743,56 @@ function AgendaApp({ token, initialProfile, onLogout }) {
         }
     };
 
-    // Picked a sticker for an item: close the panels and let it follow the finger
-    // on the card itself, which is scrolled into view.
-    const startPlacing = (eventId, sticker) => {
-        setPicker(null);
+    // Puts the changed placement into its item (or drops it when `placement` is null).
+    const setPlacement = (eventId, placementId, placement) =>
+        setEvents((prev) => {
+            const e = prev[eventId];
+            if (!e) return prev;
+            const rest = (e.placements ?? []).filter((p) => p.id !== placementId);
+            return { ...prev, [eventId]: { ...e, placements: placement ? [...rest, placement].sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1)) : rest } };
+        });
+
+    // Opens the tray; from an item, that item is scrolled into view to drop on.
+    const openTray = (eventId = null) => {
         setSheet(null);
-        setPlacing({ eventId, stickerId: sticker.id, x: 0.5, y: 0 });
-        window.requestAnimationFrame(() =>
-            document.querySelector(`[data-item-id="${eventId}"]`)?.scrollIntoView({ block: "center", behavior: "smooth" })
-        );
+        setPicker(null);
+        setSelection(null);
+        setTray(true);
+        if (eventId) {
+            window.requestAnimationFrame(() =>
+                document.querySelector(`[data-item-id="${eventId}"]`)?.scrollIntoView({ block: "center", behavior: "smooth" })
+            );
+        }
     };
 
-    const stick = async () => {
+    const dropSticker = async (eventId, sticker, spot) => {
         setBusy(true);
         try {
-            const { placement } = await api.place({ eventId: placing.eventId, stickerId: placing.stickerId, occurrenceDate: null, x: placing.x, y: placing.y });
-            setEvents((prev) => {
-                const e = prev[placing.eventId];
-                return e ? { ...prev, [e.id]: { ...e, placements: [...(e.placements ?? []), placement] } } : prev;
-            });
+            const { placement } = await api.place({ eventId, stickerId: sticker.id, occurrenceDate: null, ...spot });
+            setPlacement(eventId, placement.id, placement);
+            setSyncError("");
+        } catch (err) {
+            if (!handleAuth(err)) setSyncError(err.message.toUpperCase());
+        } finally {
+            setBusy(false);
+        }
+    };
+
+    const startMove = useCallback((eventId, p) => {
+        setTray(false);
+        setPlacing({ eventId, placementId: p.id, stickerId: p.stickerId, x: p.x, y: p.y, from: { x: p.x, y: p.y } });
+    }, []);
+
+    const finishMove = async () => {
+        const { eventId, placementId, x, y, from } = placing;
+        if (x === from.x && y === from.y) {
+            setPlacing(null);
+            return;
+        }
+        setBusy(true);
+        try {
+            const { placement } = await api.movePlacement(placementId, { x, y });
+            setPlacement(eventId, placementId, placement);
             setPlacing(null);
             setSyncError("");
         } catch (err) {
@@ -768,10 +806,8 @@ function AgendaApp({ token, initialProfile, onLogout }) {
         setBusy(true);
         try {
             await api.unplace(placementId);
-            setEvents((prev) => {
-                const e = prev[eventId];
-                return e ? { ...prev, [eventId]: { ...e, placements: (e.placements ?? []).filter((p) => p.id !== placementId) } } : prev;
-            });
+            setPlacement(eventId, placementId, null);
+            setPlacing(null);
         } catch (err) {
             fail(err);
         } finally {
@@ -841,9 +877,10 @@ function AgendaApp({ token, initialProfile, onLogout }) {
         if (!profile) return undefined;
         const onKey = (e) => {
             if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey || sheet || picker || studio || isTyping(e.target)) return;
-            if (e.key === "Escape" && (placing || selection)) {
+            if (e.key === "Escape" && (placing || selection || tray)) {
                 setPlacing(null);
                 setSelection(null);
+                setTray(false);
                 return;
             }
             if (placing) return;
@@ -899,6 +936,7 @@ function AgendaApp({ token, initialProfile, onLogout }) {
         onToggleSelect: toggleSelect,
         placing,
         onPlaceMove: (pos) => setPlacing((prev) => (prev ? { ...prev, ...pos } : prev)),
+        onStartMove: startMove,
     };
     const sheetEvent = sheet?.id ? events[sheet.id] : null;
 
@@ -939,14 +977,26 @@ function AgendaApp({ token, initialProfile, onLogout }) {
     // desktop) holds just that.
     const modeBar = placing ? (
         <>
-            <span className="text-neutral-400 uppercase px-[1ch] whitespace-nowrap">SLEEP OF TIK OP DE PLEK</span>
-            <button type="button" disabled={busy} onClick={stick} className={`${BTN_PRIMARY} ml-auto`}>
-                {busy ? "[ BEZIG... ]" : "[ PLAK ]"}
+            <span className="text-neutral-400 uppercase px-[1ch] whitespace-nowrap">SLEEP DE STICKER</span>
+            <button type="button" disabled={busy} onClick={finishMove} className={`${BTN_PRIMARY} ml-auto`}>
+                {busy ? "[ BEZIG... ]" : "[KLAAR]"}
+            </button>
+            <button type="button" disabled={busy} onClick={() => unstick(placing.eventId, placing.placementId)} className={BTN_RED}>
+                [ER AF]
             </button>
             <button type="button" onClick={() => setPlacing(null)} className={BTN_PLAIN}>
-                [ANNULEREN]
+                [TERUG]
             </button>
         </>
+    ) : tray ? (
+        <AgendaStickerTray
+            stickers={library.choices}
+            busy={busy}
+            onDrop={dropSticker}
+            onDraw={() => openStudio("editor")}
+            onImport={() => openStudio("import")}
+            onClose={() => setTray(false)}
+        />
     ) : selection ? (
         <>
             <span className="text-neutral-400 uppercase px-[1ch] whitespace-nowrap">{selection.size} GEKOZEN</span>
@@ -969,6 +1019,9 @@ function AgendaApp({ token, initialProfile, onLogout }) {
 
     const toolbar = !modeBar && (
         <div className="flex flex-wrap gap-x-[1ch] -ml-[1ch] mb-[1lh]">
+            <button type="button" onClick={() => openTray()} className={BTN_PLAIN} title="Sleep stickers op je afspraken">
+                [STICKERS]
+            </button>
             <button type="button" onClick={() => setSelection(new Set())} className={BTN_PLAIN} title="Kies items om ze een kleur of logo te geven">
                 [KIES]
             </button>
@@ -1032,6 +1085,7 @@ function AgendaApp({ token, initialProfile, onLogout }) {
             onLogout={onLogout}
             status={status}
             bar={modeBar ?? (isDesktop ? null : bar)}
+            barRows={tray && !placing ? TRAY_ROWS : 4}
             actions={isDesktop ? actions : null}
             dropProps={dropProps}
             dropping={dropping}
@@ -1130,7 +1184,7 @@ function AgendaApp({ token, initialProfile, onLogout }) {
                     onRespond={respond}
                     onDelete={remove}
                     stickersById={library.byId}
-                    onAddSticker={(eventId) => setPicker({ mode: "pick", eventId })}
+                    onAddSticker={openTray}
                     onRemoveSticker={unstick}
                 />
             )}
@@ -1190,11 +1244,9 @@ function AgendaApp({ token, initialProfile, onLogout }) {
             )}
             {picker && (
                 <AgendaLibrary
-                    mode={picker.mode}
                     stickers={library.choices}
                     busy={busy}
                     error={sheetError}
-                    onPick={(sticker) => startPlacing(picker.eventId, sticker)}
                     onDraw={() => openStudio("editor")}
                     onImport={() => openStudio("import")}
                     onEdit={editSticker}

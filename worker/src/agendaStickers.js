@@ -15,6 +15,10 @@
  *   PATCH  /agenda/placements/:id        { x, y } (moves it) -> { placement, rev }
  *   DELETE /agenda/placements/:id        -> { ok, rev }
  *   POST   /agenda/events/style          { ids, color?, logoId?, logoSize? } -> { events, rev }
+ *   GET    /agenda/day-stickers?from=&to= -> { daySticks, rev } stuck on days in [from, to]
+ *   POST   /agenda/day-stickers          { view, day, stickerId, dx, dy } -> { daySticker, rev }
+ *   PATCH  /agenda/day-stickers/:id      { view, day, dx, dy } (moves it) -> { daySticker, rev }
+ *   DELETE /agenda/day-stickers/:id      -> { ok, rev }
  *
  * The routes need a few helpers from agenda.js; they come in through `tools`
  * so the two files do not import each other.
@@ -31,6 +35,13 @@ const SMALL_SIZE = 16;
 const MAX_BIG_BYTES = 20 * 1024;
 const MAX_SMALL_BYTES = 4 * 1024;
 const MAX_PLACEMENT_ROW = 20;
+// Day stickers sit on a day in the month grid ("maand") or the list ("lijst"),
+// `dx` columns and `dy` rows from that day's top-left corner (may be negative,
+// so a ring can go around the day number).
+const DAY_VIEWS = ["maand", "lijst"];
+const DAY_DX = [-12, 80];
+const DAY_DY = [-8, 40];
+const MAX_DAY_RANGE_DAYS = 400;
 
 const COLOR_RE = /^#[0-9a-fA-F]{6}$/;
 const BASE64_RE = /^[A-Za-z0-9+/]+={0,2}$/;
@@ -41,6 +52,7 @@ const PNG_SIGNATURE = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
 
 const STICKER_PATH = /^\/agenda\/stickers\/([0-9a-f-]{36})$/;
 const PLACEMENT_PATH = /^\/agenda\/placements\/([0-9a-f-]{36})$/;
+const DAY_STICKER_PATH = /^\/agenda\/day-stickers\/([0-9a-f-]{36})$/;
 
 export const STICKER_MIGRATION = {
   version: 2,
@@ -73,6 +85,24 @@ export const STICKER_MIGRATION = {
       created_at TEXT NOT NULL
     )`,
     `CREATE INDEX IF NOT EXISTS agenda_placements_event ON agenda_placements (event_id)`,
+  ],
+};
+
+export const DAY_STICKER_MIGRATION = {
+  version: 3,
+  alter: [],
+  create: [
+    `CREATE TABLE IF NOT EXISTS agenda_day_stickers (
+      id TEXT PRIMARY KEY,
+      view TEXT NOT NULL,
+      day TEXT NOT NULL,
+      sticker_id TEXT NOT NULL,
+      dx INTEGER NOT NULL,
+      dy INTEGER NOT NULL,
+      placed_by TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    )`,
+    `CREATE INDEX IF NOT EXISTS agenda_day_stickers_day ON agenda_day_stickers (day)`,
   ],
 };
 
@@ -429,12 +459,104 @@ async function styleEvents(request, env, origin, tools) {
 }
 
 // -------------------------------------------------------------
+// Day stickers
+// -------------------------------------------------------------
+
+function toDaySticker(row) {
+  return { id: row.id, view: row.view, day: row.day, stickerId: row.sticker_id, dx: row.dx, dy: row.dy, placedBy: row.placed_by, createdAt: row.created_at };
+}
+
+const inRange = (n, [min, max]) => Number.isInteger(n) && n >= min && n <= max;
+
+function checkDaySpot(body) {
+  if (!DAY_VIEWS.includes(body.view)) return "Ongeldige plek.";
+  if (!isValidDate(body.day)) return "Ongeldige datum.";
+  if (!inRange(body.dx, DAY_DX) || !inRange(body.dy, DAY_DY)) return "Ongeldige plek.";
+  return "";
+}
+
+async function listDayStickers(url, env, origin, tools) {
+  const from = url.searchParams.get("from");
+  const to = url.searchParams.get("to");
+  if (!isValidDate(from) || !isValidDate(to) || from > to) return tools.reply({ error: "Ongeldige periode." }, 400, origin);
+  if ((Date.parse(to) - Date.parse(from)) / 864e5 > MAX_DAY_RANGE_DAYS) return tools.reply({ error: "Die periode is te lang." }, 400, origin);
+  const db = env.AGENDA_DB;
+  const [listRes, revRes] = await db.batch([
+    db.prepare("SELECT * FROM agenda_day_stickers WHERE day >= ?1 AND day <= ?2 ORDER BY created_at, id").bind(from, to),
+    db.prepare("SELECT value FROM agenda_meta WHERE key = 'rev'"),
+  ]);
+  return tools.reply({ daySticks: listRes.results.map(toDaySticker), rev: revRes.results[0]?.value ?? 0 }, 200, origin);
+}
+
+async function createDaySticker(request, env, origin, person, tools) {
+  const { body, error } = await tools.readBody(request);
+  if (error) return tools.reply({ error }, 400, origin);
+  const problem = checkDaySpot(body);
+  if (problem) return tools.reply({ error: problem }, 400, origin);
+  if (typeof body.stickerId !== "string" || !body.stickerId || body.stickerId.length > 64) return tools.reply({ error: "Ongeldig plaatje." }, 400, origin);
+  const db = env.AGENDA_DB;
+  const sticker = await db.prepare("SELECT archived FROM agenda_stickers WHERE id = ?").bind(body.stickerId).first();
+  if (!sticker || sticker.archived === 1) return tools.reply({ error: "Dit plaatje bestaat niet meer." }, 404, origin);
+
+  const id = crypto.randomUUID();
+  const now = new Date().toISOString();
+  const [result] = await db.batch([
+    db
+      .prepare(
+        `INSERT INTO agenda_day_stickers (id, view, day, sticker_id, dx, dy, placed_by, created_at)
+         SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8
+         WHERE (SELECT COUNT(*) FROM agenda_day_stickers WHERE view = ?2 AND day = ?3 AND placed_by = ?7) < ?9`
+      )
+      .bind(id, body.view, body.day, body.stickerId, body.dx, body.dy, person, now, MAX_PLACEMENTS_PER_PERSON),
+    tools.bumpRev(db),
+  ]);
+  if (!result.meta || result.meta.changes === 0) {
+    return tools.reply({ error: `Je kunt maximaal ${MAX_PLACEMENTS_PER_PERSON} plaatjes per dag plakken.` }, 400, origin);
+  }
+  const row = await db.prepare("SELECT * FROM agenda_day_stickers WHERE id = ?").bind(id).first();
+  return tools.reply({ daySticker: toDaySticker(row), rev: await tools.readRev(db) }, 201, origin);
+}
+
+// Moving can take it to another day (or from the month to the list); either person
+// can move or remove any day sticker.
+async function moveDaySticker(request, env, origin, id, tools) {
+  const { body, error } = await tools.readBody(request);
+  if (error) return tools.reply({ error }, 400, origin);
+  const problem = checkDaySpot(body);
+  if (problem) return tools.reply({ error: problem }, 400, origin);
+  const db = env.AGENDA_DB;
+  const result = await db
+    .prepare("UPDATE agenda_day_stickers SET view = ?, day = ?, dx = ?, dy = ? WHERE id = ?")
+    .bind(body.view, body.day, body.dx, body.dy, id)
+    .run();
+  if (!result.meta || result.meta.changes === 0) return tools.reply({ error: "Dit plaatje zit er niet meer op." }, 404, origin);
+  const [, rowRes] = await db.batch([tools.bumpRev(db), db.prepare("SELECT * FROM agenda_day_stickers WHERE id = ?").bind(id)]);
+  return tools.reply({ daySticker: toDaySticker(rowRes.results[0]), rev: await tools.readRev(db) }, 200, origin);
+}
+
+async function deleteDaySticker(env, origin, id, tools) {
+  const db = env.AGENDA_DB;
+  const result = await db.prepare("DELETE FROM agenda_day_stickers WHERE id = ?").bind(id).run();
+  if (!result.meta || result.meta.changes === 0) return tools.reply({ error: "Dit plaatje zit er niet meer op." }, 404, origin);
+  await tools.bumpRev(db).run();
+  return tools.reply({ ok: true, rev: await tools.readRev(db) }, 200, origin);
+}
+
+// -------------------------------------------------------------
 // Router
 // -------------------------------------------------------------
 
 /** True for the paths this module answers. */
 export function isStickerPath(path) {
-  return path === "/agenda/stickers" || path === "/agenda/placements" || path === "/agenda/events/style" || STICKER_PATH.test(path) || PLACEMENT_PATH.test(path);
+  return (
+    path === "/agenda/stickers" ||
+    path === "/agenda/placements" ||
+    path === "/agenda/events/style" ||
+    path === "/agenda/day-stickers" ||
+    STICKER_PATH.test(path) ||
+    PLACEMENT_PATH.test(path) ||
+    DAY_STICKER_PATH.test(path)
+  );
 }
 
 export async function handleStickers(request, env, origin, url, person, path, tools) {
@@ -457,6 +579,17 @@ export async function handleStickers(request, env, origin, url, person, path, to
   if (sticker) {
     if (method === "PATCH") return updateSticker(request, env, origin, sticker[1], tools);
     if (method === "DELETE") return archiveSticker(env, origin, sticker[1], tools);
+    return notAllowed("PATCH, DELETE");
+  }
+  if (path === "/agenda/day-stickers") {
+    if (method === "GET") return listDayStickers(url, env, origin, tools);
+    if (method === "POST") return createDaySticker(request, env, origin, person, tools);
+    return notAllowed("GET, POST");
+  }
+  const daySticker = DAY_STICKER_PATH.exec(path);
+  if (daySticker) {
+    if (method === "PATCH") return moveDaySticker(request, env, origin, daySticker[1], tools);
+    if (method === "DELETE") return deleteDaySticker(env, origin, daySticker[1], tools);
     return notAllowed("PATCH, DELETE");
   }
   const placement = PLACEMENT_PATH.exec(path);

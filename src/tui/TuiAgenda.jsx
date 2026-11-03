@@ -3,6 +3,7 @@
 // a login screen until the worker accepts a passphrase, and every item comes
 // from the worker after that. See worker/src/agenda.js.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Link } from "react-router-dom";
 import TermScrollSnap from "../components/TermScrollSnap";
 import { AgendaError, agendaClient, clearSession, loadSession } from "../utils/agendaApi";
@@ -23,6 +24,8 @@ import AgendaStyleSheet from "./agenda/AgendaStyleSheet";
 import PixelEditor from "./agenda/PixelEditor";
 import PixelImport from "./agenda/PixelImport";
 import useStickers, { clearStickerCache } from "./agenda/useStickers";
+import useStickerDrag from "./agenda/useStickerDrag";
+import StickerImage from "./agenda/StickerImage";
 import { base64PngToPixels, SMALL_SIZE, STICKER_SIZE, stickerPayload } from "../utils/agendaPixelFormat";
 import { styleChanges } from "../utils/agendaStyle";
 import { BTN_ACTIVE, BTN_ATTENTION, BTN_PRIMARY, BTN_PLAIN, BTN_RED, SAMEN_COLOR, TRAY_ROWS } from "./agenda/ui";
@@ -40,6 +43,8 @@ const IMPORT_MAX_BYTES = 5 * 1024 * 1024;
 const IMPORT_RANGE_DAYS = 365;
 // The worker takes at most this many new pictures per request.
 const STICKER_BATCH = 10;
+// Three taps on a stuck sticker within this long (each) pick it up to move it.
+const STICKER_TAP_MS = 450;
 
 const DROP_BOX = [
     "+------------------------------+",
@@ -268,6 +273,9 @@ function AgendaApp({ token, initialProfile, onLogout }) {
     // Moving a stuck sticker: { eventId, placementId, stickerId, x, y } while it
     // follows the finger.
     const [placing, setPlacing] = useState(null);
+    // Stickers stuck on days (month grid or list), by id; and the one picked up to move.
+    const [daySticks, setDaySticks] = useState({});
+    const [movingDay, setMovingDay] = useState(null);
     // Choosing items to give a colour or logo: a Set of ids, or null.
     const [selection, setSelection] = useState(null);
 
@@ -325,10 +333,16 @@ function AgendaApp({ token, initialProfile, onLogout }) {
         async (from, to) => {
             setLoading((n) => n + 1);
             try {
-                const parts = await Promise.all(chunks(from, to).map(([a, b]) => api.events(a, b)));
-                applyRange(from, to, parts.flatMap((p) => p.events));
+                const parts = await Promise.all(chunks(from, to).map(([a, b]) => Promise.all([api.events(a, b), api.daySticks(a, b)])));
+                applyRange(from, to, parts.flatMap(([p]) => p.events));
+                setDaySticks((prev) => {
+                    const next = {};
+                    for (const [id, d] of Object.entries(prev)) if (d.day < from || d.day > to) next[id] = d;
+                    for (const [, p] of parts) for (const d of p.daySticks) next[d.id] = d;
+                    return next;
+                });
                 setSyncError("");
-                return Math.min(...parts.map((p) => p.rev ?? 0));
+                return Math.min(...parts.flatMap(([a, b]) => [a.rev ?? 0, b.rev ?? 0]));
             } catch (err) {
                 if (!handleAuth(err)) setSyncError(err.message);
                 return null;
@@ -765,11 +779,33 @@ function AgendaApp({ token, initialProfile, onLogout }) {
         }
     };
 
-    const dropSticker = async (eventId, sticker, spot) => {
+    const setDaySticker = (id, d) =>
+        setDaySticks((prev) => {
+            const next = { ...prev };
+            if (d) next[id] = d;
+            else delete next[id];
+            return next;
+        });
+
+    // A sticker let go somewhere: from the tray it sticks there; a picked-up day
+    // sticker moves there (onto an item it becomes that item's sticker).
+    const dropSticker = async (target, sticker, payload) => {
+        const moving = payload?.dayStickerId;
         setBusy(true);
         try {
-            const { placement } = await api.place({ eventId, stickerId: sticker.id, occurrenceDate: null, ...spot });
-            setPlacement(eventId, placement.id, placement);
+            if (target.kind === "day") {
+                const spot = { view: target.view, day: target.day, dx: target.dx, dy: target.dy };
+                const { daySticker } = moving ? await api.moveDaySticker(moving, spot) : await api.stickDay({ ...spot, stickerId: sticker.id });
+                setDaySticker(daySticker.id, daySticker);
+            } else {
+                const { placement } = await api.place({ eventId: target.eventId, stickerId: sticker.id, occurrenceDate: null, ...target.spot });
+                setPlacement(target.eventId, placement.id, placement);
+                if (moving) {
+                    await api.unstickDay(moving);
+                    setDaySticker(moving, null);
+                }
+            }
+            if (moving) setMovingDay(null);
             setSyncError("");
         } catch (err) {
             if (!handleAuth(err)) setSyncError(err.message.toUpperCase());
@@ -777,9 +813,46 @@ function AgendaApp({ token, initialProfile, onLogout }) {
             setBusy(false);
         }
     };
+    const { drag: dragging, start: startDrag, ghostRef: dragGhostRef } = useStickerDrag(dropSticker);
+
+    const unstickDay = async (id) => {
+        setBusy(true);
+        try {
+            await api.unstickDay(id);
+            setDaySticker(id, null);
+            setMovingDay(null);
+        } catch (err) {
+            if (!handleAuth(err)) setSyncError(err.message.toUpperCase());
+        } finally {
+            setBusy(false);
+        }
+    };
+
+    // Taps on a day sticker: three pick it up; fewer act like a tap on the day.
+    const dayTaps = useRef({ id: null, count: 0, timer: null });
+    useEffect(() => () => clearTimeout(dayTaps.current.timer), []);
+    const tapDaySticker = (d) => {
+        const t = dayTaps.current;
+        clearTimeout(t.timer);
+        t.count = t.id === d.id ? t.count + 1 : 1;
+        t.id = d.id;
+        if (t.count >= 3) {
+            t.count = 0;
+            setTray(false);
+            setPlacing(null);
+            setSelection(null);
+            setMovingDay(d.id);
+            return;
+        }
+        t.timer = setTimeout(() => {
+            t.count = 0;
+            if (d.view === "maand") selectDay(d.day);
+        }, STICKER_TAP_MS);
+    };
 
     const startMove = useCallback((eventId, p) => {
         setTray(false);
+        setMovingDay(null);
         setPlacing({ eventId, placementId: p.id, stickerId: p.stickerId, x: p.x, y: p.y, from: { x: p.x, y: p.y } });
     }, []);
 
@@ -877,10 +950,11 @@ function AgendaApp({ token, initialProfile, onLogout }) {
         if (!profile) return undefined;
         const onKey = (e) => {
             if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey || sheet || picker || studio || isTyping(e.target)) return;
-            if (e.key === "Escape" && (placing || selection || tray)) {
+            if (e.key === "Escape" && (placing || selection || tray || movingDay)) {
                 setPlacing(null);
                 setSelection(null);
                 setTray(false);
+                setMovingDay(null);
                 return;
             }
             if (placing) return;
@@ -938,6 +1012,13 @@ function AgendaApp({ token, initialProfile, onLogout }) {
         onPlaceMove: (pos) => setPlacing((prev) => (prev ? { ...prev, ...pos } : prev)),
         onStartMove: startMove,
     };
+    const dayStickers = {
+        items: Object.values(daySticks),
+        stickersById: library.byId,
+        movingId: movingDay,
+        onTap: tapDaySticker,
+        onGrab: (e, d) => startDrag(e, library.byId[d.stickerId], { now: true, payload: { dayStickerId: d.id } }),
+    };
     const sheetEvent = sheet?.id ? events[sheet.id] : null;
 
     const status = syncError ? (
@@ -975,7 +1056,17 @@ function AgendaApp({ token, initialProfile, onLogout }) {
 
     // While sticking a sticker on or choosing items, the bar at the bottom (also on
     // desktop) holds just that.
-    const modeBar = placing ? (
+    const modeBar = movingDay ? (
+        <>
+            <span className="text-neutral-400 uppercase px-[1ch] min-w-0 truncate">SLEEP HEM NAAR EEN NIEUWE PLEK</span>
+            <button type="button" disabled={busy} onClick={() => unstickDay(movingDay)} className={`${BTN_RED} ml-auto`}>
+                [ER AF]
+            </button>
+            <button type="button" onClick={() => setMovingDay(null)} className={BTN_PLAIN}>
+                [TERUG]
+            </button>
+        </>
+    ) : placing ? (
         <>
             <span className="text-neutral-400 uppercase px-[1ch] whitespace-nowrap">SLEEP DE STICKER</span>
             <button type="button" disabled={busy} onClick={finishMove} className={`${BTN_PRIMARY} ml-auto`}>
@@ -992,7 +1083,8 @@ function AgendaApp({ token, initialProfile, onLogout }) {
         <AgendaStickerTray
             stickers={library.choices}
             busy={busy}
-            onDrop={dropSticker}
+            draggingId={dragging?.sticker?.id}
+            onStart={startDrag}
             onDraw={() => openStudio("editor")}
             onImport={() => openStudio("import")}
             onClose={() => setTray(false)}
@@ -1085,7 +1177,7 @@ function AgendaApp({ token, initialProfile, onLogout }) {
             onLogout={onLogout}
             status={status}
             bar={modeBar ?? (isDesktop ? null : bar)}
-            barRows={tray && !placing ? TRAY_ROWS : 4}
+            barRows={tray && !placing && !movingDay ? TRAY_ROWS : 4}
             actions={isDesktop ? actions : null}
             dropProps={dropProps}
             dropping={dropping}
@@ -1101,6 +1193,7 @@ function AgendaApp({ token, initialProfile, onLogout }) {
                             selected={selected}
                             today={today}
                             itemProps={itemProps}
+                            dayStickers={dayStickers}
                             onSelect={selectDay}
                             wide={isDesktop}
                             onMonth={changeMonth}
@@ -1118,6 +1211,7 @@ function AgendaApp({ token, initialProfile, onLogout }) {
                             today={today}
                             loading={loading > 0}
                             itemProps={itemProps}
+                            dayStickers={dayStickers}
                             focusDay={isDesktop ? selected : null}
                             onEarlier={() => {
                                 const from = addDays(listRange.from, -30);
@@ -1135,7 +1229,7 @@ function AgendaApp({ token, initialProfile, onLogout }) {
             ) : (
                 <>
                     {notices}
-                    {view === "lijst" && toolbar}
+                    {toolbar}
                     {view === "lijst" ? (
                     <AgendaList
                         events={list}
@@ -1144,6 +1238,7 @@ function AgendaApp({ token, initialProfile, onLogout }) {
                         today={today}
                         loading={loading > 0}
                         itemProps={itemProps}
+                        dayStickers={dayStickers}
                         focusDay={isDesktop ? selected : null}
                         onEarlier={() => {
                             const from = addDays(listRange.from, -30);
@@ -1163,6 +1258,7 @@ function AgendaApp({ token, initialProfile, onLogout }) {
                         selected={selected}
                         today={today}
                         itemProps={itemProps}
+                        dayStickers={dayStickers}
                         onSelect={selectDay}
                         wide={isDesktop}
                         onMonth={changeMonth}
@@ -1254,6 +1350,19 @@ function AgendaApp({ token, initialProfile, onLogout }) {
                     onClose={() => setPicker(null)}
                 />
             )}
+            {/* In <body>: the bottom bar's backdrop blur would make `fixed` count from the bar. */}
+            {dragging &&
+                createPortal(
+                    <span
+                        ref={dragGhostRef}
+                        aria-hidden="true"
+                        className="pointer-events-none fixed z-[70] -translate-x-1/2 -translate-y-1/2"
+                        style={{ left: dragging.x, top: dragging.y }}
+                    >
+                        <StickerImage sticker={dragging.sticker} />
+                    </span>,
+                    document.body
+                )}
             {studio?.type === "editor" && (
                 <PixelEditor
                     key={`editor-${studio.sticker?.id || "new"}`}

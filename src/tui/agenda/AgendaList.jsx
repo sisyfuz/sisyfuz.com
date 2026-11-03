@@ -3,6 +3,7 @@ import { Fragment, useEffect, useMemo, useRef } from "react";
 import { formatDayShort, indexByDay, monthOf, monthTitle, relativeDay } from "../../utils/agendaDates";
 import { isPeriod, periodsOn } from "../../utils/agendaSpecial";
 import AgendaDayItems from "./AgendaDayItems";
+import AgendaDayStickers from "./AgendaDayStickers";
 import AgendaGutter from "./AgendaGutter";
 import { PeriodBanner, PeriodEnd } from "./AgendaPeriod";
 import { BTN_PLAIN } from "./ui";
@@ -12,7 +13,10 @@ import { BTN_PLAIN } from "./ui";
 // colored edge along the days inside, and an end line on their last day.
 // `focusDay` (desktop: the day picked in the month) always shows, is marked and
 // is scrolled to whenever it changes.
-export default function AgendaList({ events, from, to, today, onEarlier, onLater, loading, itemProps, focusDay = null }) {
+// A day sticker sits `dx` columns and `dy` rows from its day's top-left corner.
+const placeOnDay = (d) => ({ left: `calc(${d.dx} * 1ch)`, top: `calc(${d.dy} * 1lh)` });
+
+export default function AgendaList({ events, from, to, today, onEarlier, onLater, loading, itemProps, dayStickers, focusDay = null }) {
     const periods = useMemo(() => events.filter(isPeriod), [events]);
     const byDay = useMemo(() => indexByDay(events.filter((e) => !isPeriod(e)), from, to), [events, from, to]);
     const days = useMemo(() => {
@@ -64,7 +68,9 @@ export default function AgendaList({ events, from, to, today, onEarlier, onLater
                         <section
                             id={`agenda-day-${day}`}
                             aria-current={day === focusDay ? "date" : undefined}
-                            className="flex gap-x-[1ch] scroll-mt-[5lh]"
+                            className="relative flex gap-x-[1ch] scroll-mt-[5lh]"
+                            data-sticker-day={day}
+                            data-sticker-view="lijst"
                             aria-label={`${rel ? `${rel}, ` : ""}${formatDayShort(day)}${zones.length ? `, ${zones.map((p) => p.title).join(", ")}` : ""}`}
                         >
                             {edge && <AgendaGutter color={edge} glyph="░" />}
@@ -91,6 +97,16 @@ export default function AgendaList({ events, from, to, today, onEarlier, onLater
                                 </h3>
                                 <AgendaDayItems items={byDay.get(day) ?? []} day={day} today={today} itemProps={itemProps} />
                             </div>
+                            {dayStickers && (
+                                <AgendaDayStickers
+                                    items={dayStickers.items.filter((d) => d.view === "lijst" && d.day === day)}
+                                    stickersById={dayStickers.stickersById}
+                                    place={placeOnDay}
+                                    movingId={dayStickers.movingId}
+                                    onTap={dayStickers.onTap}
+                                    onGrab={dayStickers.onGrab}
+                                />
+                            )}
                         </section>
                         {ending.map((p) => (
                             <PeriodEnd key={p.id} period={p} people={people} />

@@ -113,6 +113,10 @@ export function agendaClient(token) {
         archiveSticker: (id) => request(`/agenda/stickers/${id}`, { method: "DELETE", token }),
         /** Sticks an image on an item: { eventId, stickerId, occurrenceDate, x, y }. */
         place: (placement) => request("/agenda/placements", { method: "POST", body: placement, token }),
+        daySticks: (from, to) => request(`/agenda/day-stickers?from=${from}&to=${to}`, { token }),
+        stickDay: (spot) => request("/agenda/day-stickers", { method: "POST", body: spot, token }),
+        moveDaySticker: (id, spot) => request(`/agenda/day-stickers/${id}`, { method: "PATCH", body: spot, token }),
+        unstickDay: (id) => request(`/agenda/day-stickers/${id}`, { method: "DELETE", token }),
         movePlacement: (id, spot) => request(`/agenda/placements/${id}`, { method: "PATCH", body: spot, token }),
         unplace: (id) => request(`/agenda/placements/${id}`, { method: "DELETE", token }),
         /** Colour and logo for several items: { ids, color?, logoId?, logoSize? }. Never counts as an edit. */

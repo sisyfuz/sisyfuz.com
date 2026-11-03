@@ -43,8 +43,10 @@ const IMPORT_MAX_BYTES = 5 * 1024 * 1024;
 const IMPORT_RANGE_DAYS = 365;
 // The worker takes at most this many new pictures per request.
 const STICKER_BATCH = 10;
-// Three taps on a stuck sticker within this long (each) pick it up to move it.
-const STICKER_TAP_MS = 450;
+// A stuck sticker is picked up by holding it this long (touch) or by three taps,
+// each within STICKER_TAP_MS of the last; a mouse just drags it.
+const STICKER_HOLD_MS = 300;
+const STICKER_TAP_MS = 350;
 
 const DROP_BOX = [
     "+------------------------------+",
@@ -134,7 +136,7 @@ function makePeople(profile) {
 }
 
 // `barRows` is how tall the bottom bar is (the sticker tray needs more than 4).
-function Shell({ people, onLogout, status, children, bar, barRows = 4, actions, dropProps, dropping }) {
+function Shell({ people, onLogout, status, children, bar, barRows = 4, bin = false, actions, dropProps, dropping }) {
     return (
         <div className="agenda-root relative min-h-[100dvh] w-full bg-[#050505] text-[#f0f0f0] font-mono" {...dropProps}>
             <TermScrollSnap />
@@ -182,6 +184,7 @@ function Shell({ people, onLogout, status, children, bar, barRows = 4, actions, 
                     aria-label="Agenda"
                     className="term-dock left-0 right-0 z-40 bg-[#050505]/95 backdrop-blur-md px-[2ch]"
                     style={barRows === 4 ? undefined : { top: `calc(var(--term-view-bottom) - ${barRows}lh)` }}
+                    data-sticker-bin={bin || undefined}
                 >
                     <div className="term-snap max-w-[72ch]">
                         <div aria-hidden="true" className="text-neutral-800 overflow-hidden whitespace-nowrap">{RULE}</div>
@@ -270,12 +273,11 @@ function AgendaApp({ token, initialProfile, onLogout }) {
     const [studioError, setStudioError] = useState("");
     // The sticker tray (drag a sticker onto an item) is open.
     const [tray, setTray] = useState(false);
-    // Moving a stuck sticker: { eventId, placementId, stickerId, x, y } while it
-    // follows the finger.
-    const [placing, setPlacing] = useState(null);
-    // Stickers stuck on days (month grid or list), by id; and the one picked up to move.
+    // Stickers stuck on days (month grid or list), by id.
     const [daySticks, setDaySticks] = useState({});
-    const [movingDay, setMovingDay] = useState(null);
+    // A stuck sticker picked up with three taps, waiting to be dragged:
+    // { kind: "item", eventId, id, stickerId } or { kind: "day", id, stickerId }.
+    const [lifted, setLifted] = useState(null);
     // Choosing items to give a colour or logo: a Set of ids, or null.
     const [selection, setSelection] = useState(null);
 
@@ -787,105 +789,99 @@ function AgendaApp({ token, initialProfile, onLogout }) {
             return next;
         });
 
-    // A sticker let go somewhere: from the tray it sticks there; a picked-up day
-    // sticker moves there (onto an item it becomes that item's sticker).
-    const dropSticker = async (target, sticker, payload) => {
-        const moving = payload?.dayStickerId;
-        setBusy(true);
+    // Puts a stuck sticker in place (or takes it away with null). `ref` says where
+    // it lives: { kind: "item", eventId, id } or { kind: "day", id }.
+    const putStuck = (ref, obj) => (ref.kind === "item" ? setPlacement(ref.eventId, ref.id, obj) : setDaySticker(ref.id, obj));
+
+    // Sticker changes show at once and are saved after; when saving fails, say so
+    // and reload what is on screen, which puts the sticker back where it was.
+    const stickerFailed = (err) => {
+        if (handleAuth(err)) return;
+        // A notice, not the sync error: the reload below clears that one when it works.
+        setNotice(`STICKER NIET OPGESLAGEN (${err.message.toUpperCase().replace(/\.$/, "")}). HIJ IS TERUGGEZET.`);
+        const cur = loadedRef.current;
+        if (cur) fetchRange(cur.from, cur.to);
+    };
+
+    const removeStuck = async (ref) => {
+        setLifted(null);
+        putStuck(ref, null);
         try {
-            if (target.kind === "day") {
-                const spot = { view: target.view, day: target.day, dx: target.dx, dy: target.dy };
-                const { daySticker } = moving ? await api.moveDaySticker(moving, spot) : await api.stickDay({ ...spot, stickerId: sticker.id });
-                setDaySticker(daySticker.id, daySticker);
-            } else {
-                const { placement } = await api.place({ eventId: target.eventId, stickerId: sticker.id, occurrenceDate: null, ...target.spot });
-                setPlacement(target.eventId, placement.id, placement);
-                if (moving) {
-                    await api.unstickDay(moving);
-                    setDaySticker(moving, null);
-                }
-            }
-            if (moving) setMovingDay(null);
+            await (ref.kind === "item" ? api.unplace(ref.id) : api.unstickDay(ref.id));
             setSyncError("");
         } catch (err) {
-            if (!handleAuth(err)) setSyncError(err.message.toUpperCase());
-        } finally {
-            setBusy(false);
+            stickerFailed(err);
         }
     };
-    const { drag: dragging, start: startDrag, ghostRef: dragGhostRef } = useStickerDrag(dropSticker);
 
-    const unstickDay = async (id) => {
-        setBusy(true);
+    // A sticker let go somewhere: from the tray it sticks there; a stuck one moves
+    // there (also from a day onto an item and back); on the bin it comes off.
+    const dropSticker = async (target, sticker, payload) => {
+        const from = payload?.from ?? null;
+        setLifted(null);
+        if (target.kind === "bin") {
+            if (from) removeStuck(from);
+            return;
+        }
+        const daySpot = target.kind === "day" ? { view: target.view, day: target.day, dx: target.dx, dy: target.dy } : null;
         try {
-            await api.unstickDay(id);
-            setDaySticker(id, null);
-            setMovingDay(null);
+            if (from?.kind === "item" && target.kind === "item" && from.eventId === target.eventId) {
+                const old = events[from.eventId]?.placements?.find((p) => p.id === from.id);
+                putStuck(from, { ...old, ...target.spot });
+                putStuck(from, (await api.movePlacement(from.id, target.spot)).placement);
+            } else if (from?.kind === "day" && daySpot) {
+                putStuck(from, { ...daySticks[from.id], ...daySpot });
+                putStuck(from, (await api.moveDaySticker(from.id, daySpot)).daySticker);
+            } else {
+                // New here: shown with a temporary id until the worker answers.
+                const tmp = `tmp-${Date.now()}`;
+                const here = daySpot ? { kind: "day", id: tmp } : { kind: "item", eventId: target.eventId, id: tmp };
+                const base = { id: tmp, stickerId: sticker.id, placedBy: me, createdAt: new Date().toISOString() };
+                putStuck(here, daySpot ? { ...base, ...daySpot } : { ...base, eventId: target.eventId, occurrenceDate: null, ...target.spot });
+                if (from) putStuck(from, null);
+                const made = daySpot
+                    ? (await api.stickDay({ ...daySpot, stickerId: sticker.id })).daySticker
+                    : (await api.place({ eventId: target.eventId, stickerId: sticker.id, occurrenceDate: null, ...target.spot })).placement;
+                putStuck(here, null);
+                putStuck({ ...here, id: made.id }, made);
+                if (from) await (from.kind === "item" ? api.unplace(from.id) : api.unstickDay(from.id));
+            }
+            setSyncError("");
         } catch (err) {
-            if (!handleAuth(err)) setSyncError(err.message.toUpperCase());
-        } finally {
-            setBusy(false);
+            stickerFailed(err);
         }
     };
+    const { active: dragging, start: startDrag, ghostRef: dragGhostRef, previewRef: dragPreviewRef } = useStickerDrag(dropSticker);
 
-    // Taps on a day sticker: three pick it up; fewer act like a tap on the day.
-    const dayTaps = useRef({ id: null, count: 0, timer: null });
-    useEffect(() => () => clearTimeout(dayTaps.current.timer), []);
-    const tapDaySticker = (d) => {
-        const t = dayTaps.current;
+    // Pressing a stuck sticker: hold it (or drag with a mouse) to pick it up and
+    // move it in one go; three taps pick it up too; fewer act like a tap on what
+    // it sits on (`onFew`).
+    const stuckTaps = useRef({ id: null, count: 0, timer: null });
+    useEffect(() => () => clearTimeout(stuckTaps.current.timer), []);
+    const tapStuck = (ref, onFew) => {
+        const t = stuckTaps.current;
         clearTimeout(t.timer);
-        t.count = t.id === d.id ? t.count + 1 : 1;
-        t.id = d.id;
+        t.count = t.id === ref.id ? t.count + 1 : 1;
+        t.id = ref.id;
         if (t.count >= 3) {
             t.count = 0;
             setTray(false);
-            setPlacing(null);
             setSelection(null);
-            setMovingDay(d.id);
+            setLifted(ref);
             return;
         }
         t.timer = setTimeout(() => {
             t.count = 0;
-            if (d.view === "maand") selectDay(d.day);
+            onFew?.();
         }, STICKER_TAP_MS);
     };
-
-    const startMove = useCallback((eventId, p) => {
-        setTray(false);
-        setMovingDay(null);
-        setPlacing({ eventId, placementId: p.id, stickerId: p.stickerId, x: p.x, y: p.y, from: { x: p.x, y: p.y } });
-    }, []);
-
-    const finishMove = async () => {
-        const { eventId, placementId, x, y, from } = placing;
-        if (x === from.x && y === from.y) {
-            setPlacing(null);
+    const pressStuck = (e, ref, onFew) => {
+        const sticker = library.byId[ref.stickerId];
+        if (lifted?.id === ref.id) {
+            startDrag(e, sticker, { now: true, payload: { from: ref } });
             return;
         }
-        setBusy(true);
-        try {
-            const { placement } = await api.movePlacement(placementId, { x, y });
-            setPlacement(eventId, placementId, placement);
-            setPlacing(null);
-            setSyncError("");
-        } catch (err) {
-            if (!handleAuth(err)) setSyncError(err.message.toUpperCase());
-        } finally {
-            setBusy(false);
-        }
-    };
-
-    const unstick = async (eventId, placementId) => {
-        setBusy(true);
-        try {
-            await api.unplace(placementId);
-            setPlacement(eventId, placementId, null);
-            setPlacing(null);
-        } catch (err) {
-            fail(err);
-        } finally {
-            setBusy(false);
-        }
+        startDrag(e, sticker, { hold: e.pointerType === "mouse" ? 0 : STICKER_HOLD_MS, payload: { from: ref }, onTap: () => tapStuck(ref, onFew) });
     };
 
     const toggleSelect = useCallback(
@@ -950,14 +946,12 @@ function AgendaApp({ token, initialProfile, onLogout }) {
         if (!profile) return undefined;
         const onKey = (e) => {
             if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey || sheet || picker || studio || isTyping(e.target)) return;
-            if (e.key === "Escape" && (placing || selection || tray || movingDay)) {
-                setPlacing(null);
+            if (e.key === "Escape" && (lifted || selection || tray)) {
+                setLifted(null);
                 setSelection(null);
                 setTray(false);
-                setMovingDay(null);
                 return;
             }
-            if (placing) return;
             const monthShown = isDesktop || view === "maand";
             const actions = {
                 n: () => openForm(formDay),
@@ -1008,17 +1002,19 @@ function AgendaApp({ token, initialProfile, onLogout }) {
         stickersById: library.byId,
         selection,
         onToggleSelect: toggleSelect,
-        placing,
-        onPlaceMove: (pos) => setPlacing((prev) => (prev ? { ...prev, ...pos } : prev)),
-        onStartMove: startMove,
+        stickerHiddenId: dragging?.payload?.from?.id ?? null,
+        stickerLiftedId: lifted?.id ?? null,
+        onStickerPress: pressStuck,
     };
     const dayStickers = {
         items: Object.values(daySticks),
         stickersById: library.byId,
-        movingId: movingDay,
-        onTap: tapDaySticker,
-        onGrab: (e, d) => startDrag(e, library.byId[d.stickerId], { now: true, payload: { dayStickerId: d.id } }),
+        hiddenId: dragging?.payload?.from?.id ?? null,
+        liftedId: lifted?.id ?? null,
+        onPress: (e, d) => pressStuck(e, { kind: "day", id: d.id, stickerId: d.stickerId }, () => d.view === "maand" && selectDay(d.day)),
     };
+    // While a stuck sticker is picked up, the bottom bar is a bin to drop it on.
+    const binOpen = Boolean(lifted || dragging?.payload?.from);
     const sheetEvent = sheet?.id ? events[sheet.id] : null;
 
     const status = syncError ? (
@@ -1056,34 +1052,21 @@ function AgendaApp({ token, initialProfile, onLogout }) {
 
     // While sticking a sticker on or choosing items, the bar at the bottom (also on
     // desktop) holds just that.
-    const modeBar = movingDay ? (
+    const modeBar = binOpen ? (
         <>
-            <span className="text-neutral-400 uppercase px-[1ch] min-w-0 truncate">SLEEP HEM NAAR EEN NIEUWE PLEK</span>
-            <button type="button" disabled={busy} onClick={() => unstickDay(movingDay)} className={`${BTN_RED} ml-auto`}>
-                [ER AF]
-            </button>
-            <button type="button" onClick={() => setMovingDay(null)} className={BTN_PLAIN}>
-                [TERUG]
-            </button>
-        </>
-    ) : placing ? (
-        <>
-            <span className="text-neutral-400 uppercase px-[1ch] whitespace-nowrap">SLEEP DE STICKER</span>
-            <button type="button" disabled={busy} onClick={finishMove} className={`${BTN_PRIMARY} ml-auto`}>
-                {busy ? "[ BEZIG... ]" : "[KLAAR]"}
-            </button>
-            <button type="button" disabled={busy} onClick={() => unstick(placing.eventId, placing.placementId)} className={BTN_RED}>
-                [ER AF]
-            </button>
-            <button type="button" onClick={() => setPlacing(null)} className={BTN_PLAIN}>
-                [TERUG]
-            </button>
+            <span className="text-[#ff4d4d] uppercase px-[1ch] min-w-0 truncate">
+                <span className="cell">✕</span> {dragging ? "LAAT HIER LOS OM WEG TE HALEN" : "SLEEP HEM WAAR JE WILT, OF HIERHEEN"}
+            </span>
+            {!dragging && (
+                <button type="button" onClick={() => setLifted(null)} className={`${BTN_PLAIN} ml-auto`}>
+                    [TERUG]
+                </button>
+            )}
         </>
     ) : tray ? (
         <AgendaStickerTray
             stickers={library.choices}
-            busy={busy}
-            draggingId={dragging?.sticker?.id}
+            draggingId={dragging && !dragging.payload ? dragging.sticker.id : null}
             onStart={startDrag}
             onDraw={() => openStudio("editor")}
             onImport={() => openStudio("import")}
@@ -1177,7 +1160,8 @@ function AgendaApp({ token, initialProfile, onLogout }) {
             onLogout={onLogout}
             status={status}
             bar={modeBar ?? (isDesktop ? null : bar)}
-            barRows={tray && !placing && !movingDay ? TRAY_ROWS : 4}
+            barRows={tray && !binOpen ? TRAY_ROWS : 4}
+            bin={binOpen}
             actions={isDesktop ? actions : null}
             dropProps={dropProps}
             dropping={dropping}
@@ -1281,7 +1265,7 @@ function AgendaApp({ token, initialProfile, onLogout }) {
                     onDelete={remove}
                     stickersById={library.byId}
                     onAddSticker={openTray}
-                    onRemoveSticker={unstick}
+                    onRemoveSticker={(eventId, id) => removeStuck({ kind: "item", eventId, id })}
                 />
             )}
             {sheet?.type === "busy" && (
@@ -1353,14 +1337,14 @@ function AgendaApp({ token, initialProfile, onLogout }) {
             {/* In <body>: the bottom bar's backdrop blur would make `fixed` count from the bar. */}
             {dragging &&
                 createPortal(
-                    <span
-                        ref={dragGhostRef}
-                        aria-hidden="true"
-                        className="pointer-events-none fixed z-[70] -translate-x-1/2 -translate-y-1/2"
-                        style={{ left: dragging.x, top: dragging.y }}
-                    >
-                        <StickerImage sticker={dragging.sticker} />
-                    </span>,
+                    <>
+                        <span ref={dragPreviewRef} aria-hidden="true" className="pointer-events-none fixed left-0 top-0 z-[69] opacity-40 invisible">
+                            <StickerImage sticker={dragging.sticker} />
+                        </span>
+                        <span ref={dragGhostRef} aria-hidden="true" className="pointer-events-none fixed left-0 top-0 z-[70]">
+                            <StickerImage sticker={dragging.sticker} />
+                        </span>
+                    </>,
                     document.body
                 )}
             {studio?.type === "editor" && (

@@ -201,9 +201,9 @@ export default function AgendaMonth({ events, ym, selected, today, onSelect, onM
                             items={stickersHere}
                             stickersById={dayStickers.stickersById}
                             place={placeOnGrid}
-                            movingId={dayStickers.movingId}
-                            onTap={dayStickers.onTap}
-                            onGrab={dayStickers.onGrab}
+                            hiddenId={dayStickers.hiddenId}
+                            liftedId={dayStickers.liftedId}
+                            onPress={dayStickers.onPress}
                         />
                     )}
                 </div>

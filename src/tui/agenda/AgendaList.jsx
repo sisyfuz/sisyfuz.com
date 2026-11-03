@@ -102,9 +102,9 @@ export default function AgendaList({ events, from, to, today, onEarlier, onLater
                                     items={dayStickers.items.filter((d) => d.view === "lijst" && d.day === day)}
                                     stickersById={dayStickers.stickersById}
                                     place={placeOnDay}
-                                    movingId={dayStickers.movingId}
-                                    onTap={dayStickers.onTap}
-                                    onGrab={dayStickers.onGrab}
+                                    hiddenId={dayStickers.hiddenId}
+                                    liftedId={dayStickers.liftedId}
+                                    onPress={dayStickers.onPress}
                                 />
                             )}
                         </section>

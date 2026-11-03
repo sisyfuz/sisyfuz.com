@@ -1070,6 +1070,7 @@ function AgendaApp({ token, initialProfile, onLogout }) {
             onStart={startDrag}
             onDraw={() => openStudio("editor")}
             onImport={() => openStudio("import")}
+            onManage={() => setPicker({})}
             onClose={() => setTray(false)}
         />
     ) : selection ? (
@@ -1094,14 +1095,14 @@ function AgendaApp({ token, initialProfile, onLogout }) {
 
     const toolbar = !modeBar && (
         <div className="flex flex-wrap gap-x-[1ch] -ml-[1ch] mb-[1lh]">
-            <button type="button" onClick={() => openTray()} className={BTN_PLAIN} title="Sleep stickers op je afspraken">
-                [STICKERS]
+            <button type="button" onClick={() => openTray()} className={BTN_PLAIN} title="Sleep stickers op een dag of afspraak">
+                <span>[<span className="cell">★</span> STICKERS]</span>
+            </button>
+            <button type="button" onClick={() => setPicker({})} className={BTN_PLAIN} title="Teken of laad plaatjes in: je stickers en logo's">
+                <span>[<span className="cell">✎</span> PLAATJES MAKEN]</span>
             </button>
             <button type="button" onClick={() => setSelection(new Set())} className={BTN_PLAIN} title="Kies items om ze een kleur of logo te geven">
                 [KIES]
-            </button>
-            <button type="button" onClick={() => setPicker({ mode: "manage" })} className={BTN_PLAIN}>
-                [PLAATJES]
             </button>
         </div>
     );
@@ -1331,6 +1332,7 @@ function AgendaApp({ token, initialProfile, onLogout }) {
                     onImport={() => openStudio("import")}
                     onEdit={editSticker}
                     onArchive={archiveSticker}
+                    onStick={() => openTray()}
                     onClose={() => setPicker(null)}
                 />
             )}

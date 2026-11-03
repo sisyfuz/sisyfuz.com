@@ -34,7 +34,7 @@ export default function AgendaDayItems({ items, day, today, itemProps }) {
                 </div>
             )}
             {appointments.map((event) => (
-                <AgendaItem key={event.id} event={event} day={day} {...itemProps} />
+                <AgendaItem key={event.key ?? event.id} event={event} day={day} {...itemProps} />
             ))}
         </>
     );

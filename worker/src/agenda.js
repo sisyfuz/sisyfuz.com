@@ -40,7 +40,10 @@
  *   GET    /agenda/events?from=&to=      -> { events, rev } overlapping [from, to], plus yearly items
  *   POST   /agenda/events                create -> { event }
  *   PATCH  /agenda/events/:id            update (needs current `version`) -> { event }
- *   DELETE /agenda/events/:id            -> { success }
+ *                                        with `scope` "deze" or "volgende" and `occurrenceDate`
+ *                                        for one occurrence of a series -> { event, series }
+ *   DELETE /agenda/events/:id            -> { success, deleted }
+ *                                        ?scope=deze|volgende&date= for one occurrence -> { event }
  *   POST   /agenda/events/:id/response   { response: "akkoord" | "niet" | null } -> { event }
  *   POST   /agenda/import                { events: [...] } -> { added, updated, unchanged }
  *   POST   /agenda/seen                  { ids: [...], level: "seen" | "read" } -> { success }
@@ -54,6 +57,13 @@
  * returned for every range; the client places them in each year. Imported items carry the calendar file's
  * UID, so importing the same file again updates them instead of adding copies.
  *
+ * An appointment or busy block can repeat: then it is one series with a `rule`
+ * (see src/utils/agendaRepeat.js, shared with the client) and the client works
+ * out the occurrences. A series is returned for every range between its start
+ * and `rule_end` (null = endless). One occurrence can be skipped or moved to an
+ * item of its own (agenda_exceptions); "this and following" ends the series the
+ * day before and starts a new one. Seen, read and akkoord are per series.
+ *
  * Per person and item there are three steps: seen (it was on their screen),
  * read (they opened it, hovered on it or pressed and held it) and a response.
  * Reading implies seeing, responding implies both. Whoever creates or changes
@@ -62,6 +72,7 @@
  */
 
 import { ALLOWED_ORIGINS, clientIp, isKeyRateLimited, isRateLimited, json, secretsMatch, sha256 } from "./http.js";
+import { checkRule, countBefore, firstOccurrence, seriesEnd } from "../../src/utils/agendaRepeat.js";
 import { DAY_STICKER_MIGRATION, STICKER_LOOK_MIGRATION, STICKER_MIGRATION, checkLogo, handleStickers, isStickerPath, parseStyle, toPlacement } from "./agendaStickers.js";
 
 // Ids are fixed and generic; real names come from AGENDA_NAME_<ID> secrets.
@@ -122,6 +133,8 @@ const MAX_RANGE_DAYS = 400;
 const MAX_EVENT_DAYS = 366;
 const MAX_SEEN_IDS = 200;
 const SEEN_LEVELS = ["seen", "read"];
+// Which occurrences of a series an edit or delete is for.
+const SCOPES = ["deze", "volgende", "alle"];
 
 const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS agenda_events (
@@ -184,7 +197,27 @@ const SCHEMA = [
 // SCHEMA is how the first version of the database looked. The live database already
 // exists, so later changes are one-time migrations; the number of the last one that
 // ran is kept in agenda_meta under 'schema'.
-const MIGRATIONS = [STICKER_MIGRATION, DAY_STICKER_MIGRATION, STICKER_LOOK_MIGRATION];
+const REPEAT_MIGRATION = {
+  version: 5,
+  alter: [
+    "ALTER TABLE agenda_events ADD COLUMN rule TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE agenda_events ADD COLUMN rule_end TEXT",
+  ],
+  create: [
+    // Series by their last day; only rows that repeat are in it.
+    `CREATE INDEX IF NOT EXISTS agenda_events_series ON agenda_events (rule_end) WHERE rule != ''`,
+    // Dates of a series that do not happen ('skip') or became an item of their own ('moved').
+    `CREATE TABLE IF NOT EXISTS agenda_exceptions (
+      event_id TEXT NOT NULL,
+      date TEXT NOT NULL,
+      kind TEXT NOT NULL,
+      moved_to_id TEXT,
+      PRIMARY KEY (event_id, date)
+    )`,
+  ],
+};
+
+const MIGRATIONS = [STICKER_MIGRATION, DAY_STICKER_MIGRATION, STICKER_LOOK_MIGRATION, REPEAT_MIGRATION];
 
 const schemaReady = new WeakSet();
 
@@ -742,6 +775,10 @@ function daysBetween(a, b) {
   return Math.round((Date.parse(`${b}T00:00:00Z`) - Date.parse(`${a}T00:00:00Z`)) / 86_400_000);
 }
 
+function addDaysIso(date, n) {
+  return new Date(Date.parse(`${date}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
+}
+
 // Strips control characters (keeps newlines in notes) and trims.
 function cleanText(value, max, { multiline = false } = {}) {
   if (value === undefined || value === null) return "";
@@ -805,6 +842,13 @@ export function validateEvent(input) {
     repeat = input.repeat === undefined ? "jaarlijks" : input.repeat;
     if (!REPEATS.includes(repeat)) return { error: "Ongeldige herhaling." };
   }
+  // Appointments and busy blocks can repeat; special days have `repeat`, periods neither.
+  let rule = null;
+  if (kind === "afspraak" || kind === "onbeschikbaar") {
+    const checkedRule = checkRule(input.rule, input.startDate, endDate);
+    if (checkedRule.error) return { error: checkedRule.error };
+    rule = checkedRule.value;
+  }
 
   return {
     value: {
@@ -820,15 +864,31 @@ export function validateEvent(input) {
       forWho: input.forWho,
       repeat,
       countYears: special && input.countYears !== false ? 1 : 0,
+      rule,
     },
   };
+}
+
+// How a rule is stored: JSON plus the series' last day (null = endless).
+function ruleColumns(e) {
+  if (!e.rule) return { rule: "", ruleEnd: null };
+  return { rule: JSON.stringify(e.rule), ruleEnd: seriesEnd(e) };
+}
+
+function parseRule(text) {
+  if (!text) return null;
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
 }
 
 // -------------------------------------------------------------
 // Events
 // -------------------------------------------------------------
 
-function toEvent(row, statusRows, placementRows = []) {
+function toEvent(row, statusRows, placementRows = [], exceptionRows = []) {
   const status = {};
   for (const id of PERSON_IDS) status[id] = { seenAt: null, readAt: null, response: null, respondedAt: null };
   for (const s of statusRows) {
@@ -850,6 +910,10 @@ function toEvent(row, statusRows, placementRows = []) {
     reason: row.reason,
     repeat: row.repeat,
     countYears: row.count_years === 1,
+    rule: parseRule(row.rule),
+    exceptions: exceptionRows
+      .filter((x) => x.event_id === row.id)
+      .map((x) => ({ date: x.date, kind: x.kind, movedToId: x.moved_to_id })),
     imported: row.source_uid !== null,
     createdBy: row.created_by,
     createdAt: row.created_at,
@@ -867,13 +931,16 @@ function toEvent(row, statusRows, placementRows = []) {
 /** The given items, in the order asked; ids that do not exist are left out. */
 async function loadEvents(db, ids) {
   const marks = ids.map(() => "?").join(",");
-  const [eventRes, statusRes, placementRes] = await db.batch([
+  const [eventRes, statusRes, placementRes, exceptionRes] = await db.batch([
     db.prepare(`SELECT * FROM agenda_events WHERE id IN (${marks})`).bind(...ids),
     db.prepare(`SELECT * FROM agenda_status WHERE event_id IN (${marks})`).bind(...ids),
     db.prepare(`SELECT * FROM agenda_placements WHERE event_id IN (${marks}) ORDER BY created_at, rowid`).bind(...ids),
+    db.prepare(`SELECT * FROM agenda_exceptions WHERE event_id IN (${marks}) ORDER BY date`).bind(...ids),
   ]);
   const byId = new Map(eventRes.results.map((row) => [row.id, row]));
-  return ids.filter((id) => byId.has(id)).map((id) => toEvent(byId.get(id), statusRes.results, placementRes.results));
+  return ids
+    .filter((id) => byId.has(id))
+    .map((id) => toEvent(byId.get(id), statusRes.results, placementRes.results, exceptionRes.results));
 }
 
 async function loadEvent(db, id) {
@@ -917,20 +984,35 @@ async function listEvents(url, env, origin) {
   const span = daysBetween(from, to);
   if (span < 0 || span > MAX_RANGE_DAYS) return reply({ error: "Ongeldige periode." }, 400, origin);
 
-  // Two index-friendly halves (by end_date, by repeat) instead of one OR that
-  // would read every row ever stored.
+  // Index-friendly parts (by end_date, by repeat, by rule_end) instead of one OR
+  // that would read every row ever stored. A series is in range from its start
+  // until its last occurrence ends.
   const db = env.AGENDA_DB;
-  const inRange = "SELECT id FROM agenda_events WHERE end_date >= ?1 AND start_date <= ?2 UNION SELECT id FROM agenda_events WHERE repeat = 'jaarlijks'";
-  const [eventsRes, statusRes, placementRes, revRes] = await db.batch([
+  const inRange = `SELECT id FROM agenda_events WHERE end_date >= ?1 AND start_date <= ?2
+    UNION SELECT id FROM agenda_events WHERE repeat = 'jaarlijks'
+    UNION SELECT id FROM agenda_events WHERE rule != '' AND (rule_end IS NULL OR rule_end >= ?1) AND start_date <= ?2`;
+  const [eventsRes, statusRes, placementRes, exceptionRes, revRes] = await db.batch([
     db
       .prepare(`SELECT * FROM agenda_events WHERE id IN (${inRange}) ORDER BY start_date, start_time, created_at`)
       .bind(from, to),
     db.prepare(`SELECT * FROM agenda_status WHERE event_id IN (${inRange})`).bind(from, to),
     db.prepare(`SELECT * FROM agenda_placements WHERE event_id IN (${inRange}) ORDER BY created_at, rowid`).bind(from, to),
+    db.prepare(`SELECT * FROM agenda_exceptions WHERE event_id IN (${inRange}) ORDER BY date`).bind(from, to),
     db.prepare("SELECT value FROM agenda_meta WHERE key = 'rev'"),
   ]);
-  const events = eventsRes.results.map((row) => toEvent(row, statusRes.results, placementRes.results));
+  const events = eventsRes.results.map((row) => toEvent(row, statusRes.results, placementRes.results, exceptionRes.results));
   return reply({ events, rev: revRes.results[0]?.value ?? 0 }, 200, origin);
+}
+
+function insertEvent(db, id, e, style, person, now) {
+  const { rule, ruleEnd } = ruleColumns(e);
+  return db
+    .prepare(
+      `INSERT INTO agenda_events (id, title, start_date, end_date, start_time, end_time, location, note, for_who,
+         kind, reason, repeat, count_years, rule, rule_end, color, logo_id, logo_size, created_by, created_at, updated_by, updated_at, version)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`
+    )
+    .bind(id, e.title, e.startDate, e.endDate, e.startTime, e.endTime, e.location, e.note, e.forWho, e.kind, e.reason, e.repeat, e.countYears, rule, ruleEnd, style.color, style.logoId, style.logoSize, person, now, person, now);
 }
 
 async function createEvent(request, env, origin, person) {
@@ -949,37 +1031,64 @@ async function createEvent(request, env, origin, person) {
   if (logoError) return reply({ error: logoError }, 400, origin);
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
-  await db.batch([
-    db
-      .prepare(
-        `INSERT INTO agenda_events (id, title, start_date, end_date, start_time, end_time, location, note, for_who,
-           kind, reason, repeat, count_years, color, logo_id, logo_size, created_by, created_at, updated_by, updated_at, version)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`
-      )
-      .bind(id, e.title, e.startDate, e.endDate, e.startTime, e.endTime, e.location, e.note, e.forWho, e.kind, e.reason, e.repeat, e.countYears, style.color, style.logoId, style.logoSize, person, now, person, now),
-    ...statusAfterChange(db, id, person, now),
-    bumpRev(db),
-  ]);
+  await db.batch([insertEvent(db, id, e, style, person, now), ...statusAfterChange(db, id, person, now), bumpRev(db)]);
   return reply({ event: await loadEvent(db, id) }, 201, origin);
 }
+
+/** The stored series behind an occurrence, or an error reply. */
+async function loadSeries(db, id, version, date, origin) {
+  if (!isValidDate(date)) return { failed: reply({ error: "Ongeldige datum." }, 400, origin) };
+  const row = await db.prepare("SELECT * FROM agenda_events WHERE id = ?").bind(id).first();
+  if (!row) return { failed: reply({ error: "Dit item bestaat niet meer." }, 404, origin) };
+  if (version !== undefined && row.version !== version) {
+    return { failed: reply({ error: "Dit item is net door iemand anders aangepast.", event: await loadEvent(db, id) }, 409, origin) };
+  }
+  const rule = parseRule(row.rule);
+  if (!rule) return { failed: reply({ error: "Dit item herhaalt niet." }, 400, origin) };
+  return { row, series: { startDate: row.start_date, endDate: row.end_date, rule } };
+}
+
+// The series stops the day before `date` (it may have had a count; until does the same).
+function endSeriesBefore(db, row, series, date) {
+  const { count, ...rest } = series.rule; // eslint-disable-line no-unused-vars
+  const rule = { ...rest, until: addDaysIso(date, -1) };
+  return db
+    .prepare("UPDATE agenda_events SET rule = ?, rule_end = ?, version = version + 1 WHERE id = ?")
+    .bind(JSON.stringify(rule), seriesEnd({ ...series, rule }), row.id);
+}
+
+const styleOf = (row) => ({ color: row.color, logoId: row.logo_id, logoSize: row.logo_size });
 
 async function updateEvent(request, env, origin, person, id) {
   const { body, error } = await readBody(request);
   if (error) return reply({ error }, 400, origin);
   if (!Number.isInteger(body.version)) return reply({ error: "Versie ontbreekt." }, 400, origin);
-  const checked = validateEvent(body);
+  const scope = body.scope === undefined ? "alle" : body.scope;
+  if (!SCOPES.includes(scope)) return reply({ error: "Ongeldige keuze." }, 400, origin);
+  const checked = validateEvent(scope === "deze" ? { ...body, rule: null } : body);
   if (checked.error) return reply({ error: checked.error }, 400, origin);
   const e = checked.value;
-
   const db = env.AGENDA_DB;
   const now = new Date().toISOString();
+
+  if (scope !== "alle") {
+    const date = body.occurrenceDate;
+    const { row, series, failed } = await loadSeries(db, id, body.version, date, origin);
+    if (failed) return failed;
+    // From the first occurrence on, "this and following" is the whole series.
+    if (scope === "deze" || firstOccurrence(series) < date) return splitSeries(db, row, series, e, scope, date, person, now, origin);
+  }
+
+  const old = await db.prepare("SELECT start_date, rule FROM agenda_events WHERE id = ?").bind(id).first();
+  const { rule, ruleEnd } = ruleColumns(e);
   const result = await db
     .prepare(
       `UPDATE agenda_events SET title = ?, start_date = ?, end_date = ?, start_time = ?, end_time = ?, location = ?,
-         note = ?, for_who = ?, kind = ?, reason = ?, repeat = ?, count_years = ?, updated_by = ?, updated_at = ?, version = version + 1
+         note = ?, for_who = ?, kind = ?, reason = ?, repeat = ?, count_years = ?, rule = ?, rule_end = ?,
+         updated_by = ?, updated_at = ?, version = version + 1
        WHERE id = ? AND version = ?`
     )
-    .bind(e.title, e.startDate, e.endDate, e.startTime, e.endTime, e.location, e.note, e.forWho, e.kind, e.reason, e.repeat, e.countYears, person, now, id, body.version)
+    .bind(e.title, e.startDate, e.endDate, e.startTime, e.endTime, e.location, e.note, e.forWho, e.kind, e.reason, e.repeat, e.countYears, rule, ruleEnd, person, now, id, body.version)
     .run();
 
   if (!result.meta || result.meta.changes === 0) {
@@ -987,20 +1096,130 @@ async function updateEvent(request, env, origin, person, id) {
     if (!current) return reply({ error: "Dit item bestaat niet meer." }, 404, origin);
     return reply({ error: "Dit item is net door iemand anders aangepast.", event: current }, 409, origin);
   }
-  await db.batch([...statusAfterChange(db, id, person, now), bumpRev(db)]);
+  await db.batch([...statusAfterChange(db, id, person, now), ...followSeries(db, id, old, e), bumpRev(db)]);
   return reply({ event: await loadEvent(db, id) }, 200, origin);
 }
 
-async function deleteEvent(env, origin, id) {
+// After a whole item changed: stickers and exceptions stay on the occurrences
+// they belong to. A series that moved takes them along; one that stops
+// repeating keeps only those of its own date; an item that starts repeating
+// puts its stickers on its first date.
+function followSeries(db, id, old, e) {
+  const wasSeries = Boolean(old?.rule);
+  if (!old || (!wasSeries && !e.rule)) return [];
+  if (wasSeries && !e.rule) {
+    return [
+      db.prepare("UPDATE agenda_placements SET occurrence_date = NULL WHERE event_id = ? AND occurrence_date = ?").bind(id, e.startDate),
+      db.prepare("DELETE FROM agenda_placements WHERE event_id = ? AND occurrence_date IS NOT NULL").bind(id),
+      // Items that moved occurrences became stay as they are.
+      db.prepare("DELETE FROM agenda_exceptions WHERE event_id = ?").bind(id),
+    ];
+  }
+  if (!wasSeries) return [db.prepare("UPDATE agenda_placements SET occurrence_date = ? WHERE event_id = ? AND occurrence_date IS NULL").bind(e.startDate, id)];
+  const shift = daysBetween(old.start_date, e.startDate);
+  if (shift === 0) return [];
+  const by = `${shift > 0 ? "+" : ""}${shift} days`;
+  return [
+    db.prepare("UPDATE agenda_placements SET occurrence_date = date(occurrence_date, ?) WHERE event_id = ? AND occurrence_date IS NOT NULL").bind(by, id),
+    // In two steps, so no date runs into another one that has not moved yet.
+    db.prepare("UPDATE agenda_exceptions SET date = '~' || date WHERE event_id = ?").bind(id),
+    db.prepare("UPDATE agenda_exceptions SET date = date(substr(date, 2), ?) WHERE event_id = ?").bind(by, id),
+  ];
+}
+
+// "Only this one": the date becomes an item of its own and the series skips it.
+// "This and following": the series ends the day before and a new one starts.
+// The new item keeps the series' colour, logo and the stickers of its dates;
+// it is new, so it needs akkoord again. The old series' akkoord stays.
+async function splitSeries(db, row, series, e, scope, date, person, now, origin) {
+  const newId = crypto.randomUUID();
+  const statements = [];
+  if (scope === "deze") {
+    const taken = await db.prepare("SELECT 1 FROM agenda_exceptions WHERE event_id = ? AND date = ?").bind(row.id, date).first();
+    if (taken) return reply({ error: "Deze keer bestaat niet meer.", event: await loadEvent(db, row.id) }, 409, origin);
+    statements.push(
+      db.prepare("INSERT INTO agenda_exceptions (event_id, date, kind, moved_to_id) VALUES (?, ?, 'moved', ?)").bind(row.id, date, newId),
+      db.prepare("UPDATE agenda_placements SET event_id = ?, occurrence_date = NULL WHERE event_id = ? AND occurrence_date = ?").bind(newId, row.id, date)
+    );
+  } else {
+    // A count goes on where the old series stopped, unless it was changed.
+    let rule = e.rule;
+    if (rule?.count && rule.count === series.rule.count) rule = { ...rule, count: Math.max(1, rule.count - countBefore(series, date)) };
+    e = { ...e, rule };
+    statements.push(endSeriesBefore(db, row, series, date));
+    if (rule) {
+      // Moved along with the new start date, like a whole series that moves.
+      const shift = daysBetween(date, e.startDate);
+      const by = `${shift >= 0 ? "+" : ""}${shift} days`;
+      statements.push(
+        db
+          .prepare("UPDATE agenda_placements SET event_id = ?, occurrence_date = date(occurrence_date, ?) WHERE event_id = ? AND occurrence_date >= ?")
+          .bind(newId, by, row.id, date),
+        db.prepare("UPDATE agenda_exceptions SET event_id = ?, date = date(date, ?) WHERE event_id = ? AND date >= ?").bind(newId, by, row.id, date)
+      );
+    } else {
+      // No longer repeating from here: only this date stays, as a plain item.
+      statements.push(
+        db.prepare("UPDATE agenda_placements SET event_id = ?, occurrence_date = NULL WHERE event_id = ? AND occurrence_date = ?").bind(newId, row.id, date),
+        db.prepare("DELETE FROM agenda_placements WHERE event_id = ? AND occurrence_date >= ?").bind(row.id, date),
+        db.prepare("DELETE FROM agenda_exceptions WHERE event_id = ? AND date >= ?").bind(row.id, date)
+      );
+    }
+  }
+  await db.batch([insertEvent(db, newId, e, styleOf(row), person, now), ...statements, ...statusAfterChange(db, newId, person, now), bumpRev(db)]);
+  const [event, updated] = await loadEvents(db, [newId, row.id]);
+  return reply({ event, series: updated }, 200, origin);
+}
+
+// Deleting an item also deletes what hangs off it, including the items its
+// moved occurrences became (`moved`: a subquery for their ids).
+function deleteItems(db, ids, moved = null) {
+  const where = moved ? `IN (${moved.sql})` : "= ?";
+  const args = moved ? moved.args : ids;
+  return [
+    db.prepare(`DELETE FROM agenda_events WHERE id ${where}`).bind(...args),
+    db.prepare(`DELETE FROM agenda_status WHERE event_id ${where}`).bind(...args),
+    db.prepare(`DELETE FROM agenda_placements WHERE event_id ${where}`).bind(...args),
+    db.prepare(`DELETE FROM agenda_exceptions WHERE event_id ${where}`).bind(...args),
+  ];
+}
+
+async function deleteEvent(url, env, origin, id) {
   const db = env.AGENDA_DB;
-  const [result] = await db.batch([
-    db.prepare("DELETE FROM agenda_events WHERE id = ?").bind(id),
-    db.prepare("DELETE FROM agenda_status WHERE event_id = ?").bind(id),
-    db.prepare("DELETE FROM agenda_placements WHERE event_id = ?").bind(id),
-    bumpRev(db),
-  ]);
+  const scope = url.searchParams.get("scope") || "alle";
+  if (!SCOPES.includes(scope)) return reply({ error: "Ongeldige keuze." }, 400, origin);
+  const date = url.searchParams.get("date");
+
+  if (scope !== "alle") {
+    const { row, series, failed } = await loadSeries(db, id, undefined, date, origin);
+    if (failed) return failed;
+    if (scope === "deze") {
+      await db.batch([
+        db.prepare("INSERT INTO agenda_exceptions (event_id, date, kind, moved_to_id) VALUES (?, ?, 'skip', NULL) ON CONFLICT DO NOTHING").bind(id, date),
+        db.prepare("DELETE FROM agenda_placements WHERE event_id = ? AND occurrence_date = ?").bind(id, date),
+        bumpRev(db),
+      ]);
+      return reply({ event: await loadEvent(db, id) }, 200, origin);
+    }
+    if (firstOccurrence(series) < date) {
+      const later = { sql: "SELECT moved_to_id FROM agenda_exceptions WHERE event_id = ? AND date >= ? AND moved_to_id IS NOT NULL", args: [id, date] };
+      const { results } = await db.prepare(later.sql).bind(...later.args).all();
+      await db.batch([
+        endSeriesBefore(db, row, series, date),
+        ...deleteItems(db, [], later),
+        db.prepare("DELETE FROM agenda_exceptions WHERE event_id = ? AND date >= ?").bind(id, date),
+        db.prepare("DELETE FROM agenda_placements WHERE event_id = ? AND occurrence_date >= ?").bind(id, date),
+        bumpRev(db),
+      ]);
+      return reply({ event: await loadEvent(db, id), deleted: results.map((r) => r.moved_to_id) }, 200, origin);
+    }
+  }
+
+  const moved = { sql: "SELECT moved_to_id FROM agenda_exceptions WHERE event_id = ? AND moved_to_id IS NOT NULL", args: [id] };
+  const { results } = await db.prepare(moved.sql).bind(...moved.args).all();
+  const [, , , , result] = await db.batch([...deleteItems(db, [], moved), ...deleteItems(db, [id]), bumpRev(db)]);
   if (!result.meta || result.meta.changes === 0) return reply({ error: "Dit item bestaat niet meer." }, 404, origin);
-  return reply({ success: true }, 200, origin);
+  return reply({ success: true, deleted: [id, ...results.map((r) => r.moved_to_id)] }, 200, origin);
 }
 
 // Imports a batch from a calendar file. Each item needs the file's UID: a new
@@ -1167,7 +1386,7 @@ export async function handleAgenda(request, env, origin, url) {
     const [, id, isResponse] = match;
     if (isResponse) return method === "POST" ? respond(request, env, origin, person, id) : methodNotAllowed(origin, "POST");
     if (method === "PATCH") return updateEvent(request, env, origin, person, id);
-    if (method === "DELETE") return deleteEvent(env, origin, id);
+    if (method === "DELETE") return deleteEvent(url, env, origin, id);
     return methodNotAllowed(origin, "PATCH, DELETE");
   }
 

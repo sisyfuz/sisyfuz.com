@@ -10,6 +10,7 @@ import { AgendaError, agendaClient, clearSession, loadSession } from "../utils/a
 import { addDays, daysBetween, monthGrid, monthOf, todayIso, addMonths } from "../utils/agendaDates";
 import { itemState } from "../utils/agendaStatus";
 import { expandYearly, isAppointment } from "../utils/agendaSpecial";
+import { editBody, expandRepeats, firstOccurrence, occurrenceOf, seriesEnd } from "../utils/agendaRepeat";
 import { guessKind, guessReason, parseIcs } from "../utils/ics";
 import AgendaLogin from "./agenda/AgendaLogin";
 import AgendaList from "./agenda/AgendaList";
@@ -106,8 +107,17 @@ function isTyping(target) {
     return target instanceof window.HTMLElement && (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName));
 }
 
+// A series counts from its start until its last occurrence ends (null = never).
 function overlaps(event, from, to) {
-    return event.startDate <= to && event.endDate >= from;
+    const end = seriesEnd(event);
+    return event.startDate <= to && (end === null || end >= from);
+}
+
+// The occurrence of `event` to show for `date`: that date when it is one, else
+// the series' first. Null for an item that does not repeat.
+function shownDate(event, date) {
+    if (!event.rule) return null;
+    return date && expandRepeats([event], date, date).some((o) => o.occurrenceDate === date) ? date : firstOccurrence(event);
 }
 
 function gridRange(ym) {
@@ -541,10 +551,11 @@ function AgendaApp({ token, initialProfile, onLogout }) {
         setSheetError("");
     }, []);
 
+    // `date` is the occurrence that was tapped, for an item that repeats.
     const openDetail = useCallback(
-        (id) => {
+        (id, date = null) => {
             setSheetError("");
-            setSheet({ type: "detail", id });
+            setSheet({ type: "detail", id, date });
             const e = events[id];
             if (e && me && e.updatedBy !== me && !e.status?.[me]?.readAt) queueSeen(id, { level: "read", now: true });
         },
@@ -559,8 +570,8 @@ function AgendaApp({ token, initialProfile, onLogout }) {
     // A merged busy line opens its blocks; a single block opens directly.
     const openBusy = useCallback(
         (group, day) => {
-            if (group.items.length === 1) openDetail(group.items[0].id);
-            else setSheet({ type: "busy", day, group: { ...group, ids: group.items.map((e) => e.id) } });
+            if (group.items.length === 1) openDetail(group.items[0].id, group.items[0].occurrenceDate ?? null);
+            else setSheet({ type: "busy", day, group: { ...group, ids: group.items.map((e) => [e.id, e.occurrenceDate ?? null]) } });
         },
         [openDetail]
     );
@@ -646,7 +657,7 @@ function AgendaApp({ token, initialProfile, onLogout }) {
         if (handleAuth(err)) return;
         if (err.status === 409 && err.data?.event) {
             upsert(err.data.event);
-            setSheet({ type: "detail", id: err.data.event.id });
+            setSheet({ type: "detail", id: err.data.event.id, date: sheet?.date ?? null });
             setSheetError("IEMAND ANDERS HEEFT DIT NET AANGEPAST. BEKIJK HET EN PROBEER OPNIEUW.");
             return;
         }
@@ -663,7 +674,9 @@ function AgendaApp({ token, initialProfile, onLogout }) {
         setSheetError(err.message.toUpperCase());
     };
 
-    const save = async ({ contentChanged, ...payload }) => {
+    // `scope` says which occurrences of a series an edit is for ("deze",
+    // "volgende" or "alle"); the form asks when a series' content changed.
+    const save = async ({ contentChanged, scope = null, ...payload }) => {
         setBusy(true);
         setSheetError("");
         try {
@@ -671,7 +684,11 @@ function AgendaApp({ token, initialProfile, onLogout }) {
             if (!event) ({ event } = await api.create(payload));
             else {
                 // Only colour or logo changed: that is cosmetic, no new akkoord needed.
-                if (contentChanged) ({ event } = await api.update(sheet.id, payload));
+                if (contentChanged && event.rule && scope) {
+                    const data = await api.update(sheet.id, editBody(event, shownDate(event, sheet.date), payload, scope));
+                    if (data.series) upsert(data.series);
+                    event = data.event;
+                } else if (contentChanged) ({ event } = await api.update(sheet.id, payload));
                 const changes = styleChanges(event, payload);
                 if (Object.keys(changes).length) [event] = (await api.style({ ids: [event.id], ...changes })).events;
             }
@@ -690,7 +707,7 @@ function AgendaApp({ token, initialProfile, onLogout }) {
                 setListRange({ from, to });
                 ensureRange(from, to);
             }
-            setSheet({ type: "detail", id: event.id });
+            setSheet({ type: "detail", id: event.id, date: shownDate(event, payload.startDate) });
         } catch (err) {
             fail(err);
         } finally {
@@ -717,13 +734,16 @@ function AgendaApp({ token, initialProfile, onLogout }) {
         }
     };
 
-    const remove = async (id) => {
+    // For one occurrence of a series, `scope` "deze" or "volgende" with its `date`;
+    // the worker answers with what is left of the series and what went with it.
+    const remove = async (id, scope = null, date = null) => {
         setBusy(true);
         try {
-            await api.remove(id);
+            const data = await api.remove(id, scope, date);
             setEvents((prev) => {
                 const next = { ...prev };
-                delete next[id];
+                for (const gone of data.deleted ?? (data.event ? [] : [id])) delete next[gone];
+                if (data.event) next[data.event.id] = data.event;
                 return next;
             });
             setSheet(null);
@@ -790,15 +810,17 @@ function AgendaApp({ token, initialProfile, onLogout }) {
             return { ...prev, [eventId]: { ...e, placements: placement ? [...rest, placement].sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1)) : rest } };
         });
 
-    // Opens the tray; from an item, that item is scrolled into view to drop on.
-    const openTray = (eventId = null) => {
+    // Opens the tray; from an item, that item (that occurrence) is scrolled into view to drop on.
+    const openTray = (eventId = null, date = null) => {
         setSheet(null);
         setPicker(null);
         setSelection(null);
         setTray(true);
         if (eventId) {
             window.requestAnimationFrame(() =>
-                document.querySelector(`[data-item-id="${eventId}"]`)?.scrollIntoView({ block: "center", behavior: "smooth" })
+                document
+                    .querySelector(`[data-item-id="${eventId}"]${date ? `[data-occurrence="${date}"]` : ""}`)
+                    ?.scrollIntoView({ block: "center", behavior: "smooth" })
             );
         }
     };
@@ -913,7 +935,8 @@ function AgendaApp({ token, initialProfile, onLogout }) {
         const look = { scale: from?.scale ?? 1, rot: from?.rot ?? 0 };
         const daySpot = target.kind === "day" ? { view: target.view, day: target.day, dx: target.dx, dy: target.dy } : null;
         try {
-            if (from?.kind === "item" && target.kind === "item" && from.eventId === target.eventId) {
+            const sameCard = from?.kind === "item" && target.kind === "item" && from.eventId === target.eventId && (from.occurrenceDate ?? null) === target.occurrenceDate;
+            if (sameCard) {
                 const old = events[from.eventId]?.placements?.find((p) => p.id === from.id);
                 showStuck(from, { ...old, ...target.spot });
                 setLifted(from);
@@ -927,14 +950,14 @@ function AgendaApp({ token, initialProfile, onLogout }) {
             } else {
                 // New here: shown with a temporary id until the worker answers.
                 const tmp = `tmp-${Date.now()}`;
-                const here = daySpot ? { kind: "day", id: tmp } : { kind: "item", eventId: target.eventId, id: tmp };
+                const here = daySpot ? { kind: "day", id: tmp } : { kind: "item", eventId: target.eventId, occurrenceDate: target.occurrenceDate, id: tmp };
                 const base = { id: tmp, stickerId: sticker.id, placedBy: me, createdAt: new Date().toISOString(), ...look };
-                showStuck(here, daySpot ? { ...base, ...daySpot } : { ...base, eventId: target.eventId, occurrenceDate: null, ...target.spot });
+                showStuck(here, daySpot ? { ...base, ...daySpot } : { ...base, eventId: target.eventId, occurrenceDate: target.occurrenceDate, ...target.spot });
                 setLifted({ ...here, stickerId: sticker.id, ...look });
                 if (from) showStuck(from, null);
                 const made = daySpot
                     ? (await api.stickDay({ ...daySpot, stickerId: sticker.id, ...look })).daySticker
-                    : (await api.place({ eventId: target.eventId, stickerId: sticker.id, occurrenceDate: null, ...target.spot, ...look })).placement;
+                    : (await api.place({ eventId: target.eventId, stickerId: sticker.id, occurrenceDate: target.occurrenceDate, ...target.spot, ...look })).placement;
                 const real = { ...here, id: made.id };
                 // Size or rotation changed while it was being created: keep those.
                 const changed = pendingLook.current[tmp] ? stuckNow(here) : null;
@@ -1087,7 +1110,13 @@ function AgendaApp({ token, initialProfile, onLogout }) {
     const grid = gridRange(ym);
     const fromYear = Number((listRange.from < grid.from ? listRange.from : grid.from).slice(0, 4));
     const toYear = Number((listRange.to > grid.to ? listRange.to : grid.to).slice(0, 4));
-    const list = useMemo(() => expandYearly(Object.values(events), fromYear, toYear), [events, fromYear, toYear]);
+    // Repeating items get one occurrence per time they happen in that stretch.
+    const shownFrom = listRange.from < grid.from ? listRange.from : grid.from;
+    const shownTo = listRange.to > grid.to ? listRange.to : grid.to;
+    const list = useMemo(
+        () => expandRepeats(expandYearly(Object.values(events), fromYear, toYear), shownFrom, shownTo),
+        [events, fromYear, toYear, shownFrom, shownTo]
+    );
     const people = useMemo(() => (profile ? makePeople(profile) : null), [profile]);
 
     // ---- Render ----
@@ -1100,7 +1129,8 @@ function AgendaApp({ token, initialProfile, onLogout }) {
         );
     }
 
-    const waiting = list.filter((e) => e.endDate >= today && itemState(e, me, people.ids).needsMyAnswer).length;
+    // A series waits for one answer, however often it shows.
+    const waiting = new Set(list.filter((e) => e.endDate >= today && itemState(e, me, people.ids).needsMyAnswer).map((e) => e.id)).size;
     const itemProps = {
         people,
         newIds,
@@ -1128,7 +1158,9 @@ function AgendaApp({ token, initialProfile, onLogout }) {
     // While a stuck sticker is picked up, the bottom bar is a bin to drop it on.
     const binOpen = Boolean(dragging?.payload?.from);
     const lookControls = lifted && <AgendaStickerLook look={lifted} onChange={changeLook} onDone={() => setLifted(null)} />;
-    const sheetEvent = sheet?.id ? events[sheet.id] : null;
+    // A repeating item's sheets show the occurrence that was opened.
+    const sheetSeries = sheet?.id ? events[sheet.id] : null;
+    const sheetEvent = sheetSeries && occurrenceOf(sheetSeries, shownDate(sheetSeries, sheet.date));
 
     const status = syncError ? (
         <button type="button" onClick={refresh} className={BTN_ATTENTION} title={syncError}>
@@ -1380,7 +1412,7 @@ function AgendaApp({ token, initialProfile, onLogout }) {
             )}
             {sheet?.type === "busy" && (
                 <AgendaBusySheet
-                    group={{ ...sheet.group, items: sheet.group.ids.map((id) => events[id]).filter(Boolean) }}
+                    group={{ ...sheet.group, items: sheet.group.ids.filter(([id]) => events[id]).map(([id, date]) => occurrenceOf(events[id], date)) }}
                     day={sheet.day}
                     people={people}
                     onClose={closeSheet}
@@ -1409,7 +1441,7 @@ function AgendaApp({ token, initialProfile, onLogout }) {
             {sheet?.type === "form" && (
                 <AgendaForm
                     key={sheet.id || "new"}
-                    event={sheet.id ? events[sheet.id] : null}
+                    event={sheetEvent}
                     date={sheet.date}
                     kind={sheet.kind}
                     people={people}

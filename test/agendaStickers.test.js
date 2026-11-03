@@ -800,6 +800,50 @@ describe("Agenda stickers: revision counter", () => {
     });
 });
 
+describe("Agenda stickers: repeating items", () => {
+    const weekly = () => sampleEvent({ startDate: "2026-11-02", rule: { freq: "week", days: [0] } });
+
+    test("a sticker sits on one occurrence and goes along when that one is split off", async () => {
+        const { dorus } = await tokens();
+        const s = await addSticker(dorus);
+        const series = await addEventRaw(dorus, weekly());
+        assert.equal((await place(dorus, series.id, s.id)).res.status, 400, "a series needs the occurrence's date");
+        const on9 = (await place(dorus, series.id, s.id, { occurrenceDate: "2026-11-09" })).data.placement;
+        const on16 = (await place(dorus, series.id, s.id, { occurrenceDate: "2026-11-16" })).data.placement;
+        assert.equal(on9.occurrenceDate, "2026-11-09");
+
+        const { data } = await call(`/agenda/events/${series.id}`, {
+            method: "PATCH",
+            body: { ...weekly(), startDate: "2026-11-16", rule: null, version: series.version, scope: "deze", occurrenceDate: "2026-11-16" },
+            token: dorus,
+        });
+        assert.deepEqual(data.series.placements.map((p) => p.id), [on9.id]);
+        assert.deepEqual(data.event.placements.map((p) => [p.id, p.occurrenceDate]), [[on16.id, null]]);
+    });
+
+    test("skipping a date takes its stickers off", async () => {
+        const { dorus } = await tokens();
+        const s = await addSticker(dorus);
+        const series = await addEventRaw(dorus, weekly());
+        await place(dorus, series.id, s.id, { occurrenceDate: "2026-11-09" });
+        const { data } = await call(`/agenda/events/${series.id}?scope=deze&date=2026-11-09`, { method: "DELETE", token: dorus });
+        assert.deepEqual(data.event.placements, []);
+    });
+
+    test("an item that starts repeating keeps its stickers on its own date, and back", async () => {
+        const { dorus } = await tokens();
+        const s = await addSticker(dorus);
+        const single = await addEventRaw(dorus, sampleEvent({ startDate: "2026-11-02" }));
+        await place(dorus, single.id, s.id);
+        const patch = (event, body) => call(`/agenda/events/${event.id}`, { method: "PATCH", body: { ...body, version: event.version }, token: dorus });
+        const series = (await patch(single, weekly())).data.event;
+        assert.equal(series.placements[0].occurrenceDate, "2026-11-02");
+        await place(dorus, series.id, s.id, { occurrenceDate: "2026-11-09" });
+        const again = (await patch(series, sampleEvent({ startDate: "2026-11-02" }))).data.event;
+        assert.deepEqual(again.placements.map((p) => p.occurrenceDate), [null]);
+    });
+});
+
 describe("Agenda stickers: database migration", () => {
     // The agenda_events table as the live database has it today.
     const OLD_EVENTS = `CREATE TABLE agenda_events (
@@ -819,7 +863,7 @@ describe("Agenda stickers: database migration", () => {
     }
     const columns = () => rows("PRAGMA table_info(agenda_events)").map((c) => c.name);
     const schemaVersion = () => rows("SELECT value FROM agenda_meta WHERE key = 'schema'")[0]?.value;
-    const LATEST = 4;
+    const LATEST = 5;
 
     test("a database from before stickers gets the new columns and tables, and keeps its items", async () => {
         oldDatabase();
@@ -856,10 +900,29 @@ describe("Agenda stickers: database migration", () => {
         assert.equal(res.status, 200);
     });
 
+    test("the live database (schema 4) gets rules and exceptions; old items do not repeat", async () => {
+        oldDatabase();
+        const { dorus } = await tokens();
+        db.sqlite.exec("DROP TABLE agenda_exceptions");
+        db.sqlite.exec("DROP INDEX agenda_events_series");
+        db.sqlite.exec("ALTER TABLE agenda_events DROP COLUMN rule_end");
+        db.sqlite.exec("ALTER TABLE agenda_events DROP COLUMN rule");
+        db.sqlite.exec("UPDATE agenda_meta SET value = 4 WHERE key = 'schema'");
+        await tokens(env({ AGENDA_DB: { ...db } }));
+        assert.equal(schemaVersion(), LATEST);
+        assert.ok(columns().includes("rule") && columns().includes("rule_end"));
+        const tables = rows("SELECT name FROM sqlite_master WHERE type = 'table'").map((t) => t.name);
+        assert.ok(tables.includes("agenda_exceptions"));
+        const { data } = await call("/agenda/events?from=2026-11-01&to=2026-11-30", { token: dorus }, env({ AGENDA_DB: { ...db } }));
+        assert.equal(data.events[0].title, "Oud item");
+        assert.equal(data.events[0].rule, null);
+        assert.deepEqual(data.events[0].exceptions, []);
+    });
+
     test("a fresh database ends up the same way", async () => {
         await tokens();
         assert.equal(schemaVersion(), LATEST);
-        assert.deepEqual(columns().slice(-3), ["color", "logo_id", "logo_size"]);
+        assert.deepEqual(columns().slice(-5), ["color", "logo_id", "logo_size", "rule", "rule_end"]);
     });
 
     test("it runs once per database, not on every request", async () => {

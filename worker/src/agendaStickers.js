@@ -396,7 +396,7 @@ async function createPlacement(request, env, origin, person, tools) {
 
   const db = env.AGENDA_DB;
   const [eventRes, stickerRes] = await db.batch([
-    db.prepare("SELECT repeat FROM agenda_events WHERE id = ?").bind(eventId),
+    db.prepare("SELECT repeat, rule FROM agenda_events WHERE id = ?").bind(eventId),
     db.prepare("SELECT archived FROM agenda_stickers WHERE id = ?").bind(stickerId),
   ]);
   const event = eventRes.results[0];
@@ -404,9 +404,10 @@ async function createPlacement(request, env, origin, person, tools) {
   const sticker = stickerRes.results[0];
   if (!sticker || sticker.archived === 1) return tools.reply({ error: "Dit plaatje bestaat niet meer." }, 404, origin);
 
-  // Yearly items are stuck per year; any other item has just one set of stickers.
+  // Yearly and other repeating items are stuck per occurrence; any other item
+  // has just one set of stickers.
   let occurrenceDate = null;
-  if (event.repeat === "jaarlijks") {
+  if (event.repeat === "jaarlijks" || event.rule) {
     if (!isValidDate(body.occurrenceDate)) return tools.reply({ error: "Ongeldige datum." }, 400, origin);
     occurrenceDate = body.occurrenceDate;
   }

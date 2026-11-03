@@ -137,6 +137,9 @@ export default function TuiPrivacy({ onNavigate }) {
                                 <li><code className="text-white">sisyfuz_chat_user</code>: Onthoudt je zelfgekozen schuilnaam in de livechat.</li>
                                 <li><code className="text-white">sisyfuz_pressed</code>: Voorkomt per ongeluk dubbel klikken op de tellerknop.</li>
                             </ul>
+                            <p className="text-neutral-400">
+                                Een afgeschermd, privé deel van de site (alleen voor wie een wachtwoord heeft) bewaart na het inloggen je inlogsessie in <span className="text-white font-mono">localStorage</span> en de zelfgemaakte plaatjes in <span className="text-white font-mono">IndexedDB</span>, zodat die niet steeds opnieuw geladen hoeven te worden. Beide worden gewist als je uitlogt.
+                            </p>
                             <p className="text-neutral-400 italic">
                                 Op grond van artikel 11.7a lid 3 van de Nederlandse Telecommunicatiewet (Cookie-wetgeving) is voor zuiver functionele opslag die geen of geringe gevolgen heeft voor de persoonlijke levenssfeer GEEN cookiemelding of toestemmingsbanner vereist.
                             </p>
@@ -300,6 +303,9 @@ export default function TuiPrivacy({ onNavigate }) {
                                 <li><code className="text-white">sisyfuz_chat_user</code>: Remembers your chosen chat pseudonym.</li>
                                 <li><code className="text-white">sisyfuz_pressed</code>: Prevents accidental duplicate counter submissions.</li>
                             </ul>
+                            <p className="text-neutral-400">
+                                A closed, private part of the site (only for those with a password) keeps your login session in <span className="text-white font-mono">localStorage</span> after you sign in, and its self-made pictures in <span className="text-white font-mono">IndexedDB</span> so they don't have to load again each time. Both are wiped when you log out.
+                            </p>
                             <p className="text-neutral-400 italic">
                                 Under Dutch Telecommunications Act (Art. 11.7a) and EU ePrivacy rules, purely functional storage with negligible privacy impact is explicitly exempt from requiring a cookie consent banner.
                             </p>

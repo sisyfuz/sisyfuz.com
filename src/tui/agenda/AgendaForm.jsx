@@ -1,10 +1,11 @@
 // src/tui/agenda/AgendaForm.jsx
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { nextWholeHour } from "../../utils/agendaDates";
 import { BUSY_REASONS } from "../../utils/agendaBusy";
 import { SPECIAL_TYPES } from "../../utils/agendaSpecial";
 import AgendaChoice from "./AgendaChoice";
 import AgendaSheet from "./AgendaSheet";
+import AgendaStylePicker from "./AgendaStylePicker";
 import { BTN, BTN_PRIMARY, BTN_PLAIN, FIELD, LABEL, TEXTAREA } from "./ui";
 
 const KINDS = [
@@ -44,6 +45,7 @@ function initialValues(event, date, kind, me) {
             note: event.note,
             repeat: event.repeat === "jaarlijks",
             countYears: event.countYears,
+            style: { color: event.color || "", logoId: event.logoId || null, logoSize: event.logoSize || "" },
         };
     }
     return {
@@ -61,6 +63,7 @@ function initialValues(event, date, kind, me) {
         note: "",
         repeat: true,
         countYears: true,
+        style: { color: "", logoId: null, logoSize: "" },
     };
 }
 
@@ -106,8 +109,12 @@ function Toggle({ checked, onChange, children }) {
     );
 }
 
-export default function AgendaForm({ event, date, kind = "afspraak", people, busy, error, onClose, onSave }) {
+export default function AgendaForm({ event, date, kind = "afspraak", people, stickers, busy, error, onClose, onSave, onStudio }) {
     const [v, setV] = useState(() => initialValues(event, date, kind, people.me));
+    // What the item looked like when the form opened, minus colour and logo: only a
+    // change there asks for akkoord again.
+    const contentOf = ({ style, ...content }) => JSON.stringify(content); // eslint-disable-line no-unused-vars
+    const startContent = useRef(contentOf(v));
     const [localError, setLocalError] = useState("");
     const set = (patch) => setV((prev) => ({ ...prev, ...patch }));
 
@@ -137,12 +144,17 @@ export default function AgendaForm({ event, date, kind = "afspraak", people, bus
             note: v.note.trim(),
             repeat: special && v.repeat ? "jaarlijks" : "",
             countYears: special && v.countYears,
-            ...(event ? { version: event.version } : {}),
+            color: v.style.color,
+            logoId: v.style.logoId,
+            logoSize: v.style.logoId ? v.style.logoSize || "klein" : "",
+            ...(event ? { version: event.version, contentChanged: contentOf(v) !== startContent.current } : {}),
         });
     };
 
     const forOptions = [...people.ids, "samen"].map((id) => ({ id, label: people.nameOf(id) }));
     const shownError = localError || error;
+    // A picture made from here becomes the logo right away.
+    const newLogo = (sticker) => setV((prev) => ({ ...prev, style: { ...prev.style, logoId: sticker.id, logoSize: prev.style.logoSize || "klein" } }));
     const reasonIsPreset = BUSY_REASONS.includes(v.reason.trim().toLowerCase());
     const title = titleField(v);
     const dateLabel = period || multi ? "VAN" : special && v.repeat ? (v.reason === "verjaardag" ? "GEBOORTEDATUM" : "DATUM (EERSTE KEER)") : "DATUM";
@@ -319,8 +331,16 @@ export default function AgendaForm({ event, date, kind = "afspraak", people, bus
                     />
                 </div>
 
+                <AgendaStylePicker
+                    value={v.style}
+                    onChange={(style) => set({ style })}
+                    stickers={stickers}
+                    onDraw={() => onStudio("editor", newLogo)}
+                    onImport={() => onStudio("import", newLogo)}
+                />
+
                 {event && v.kind === "afspraak" && (
-                    <p className="text-neutral-500">Na opslaan moet {people.nameOf(people.otherOf(people.me))} het opnieuw zien en akkoord geven.</p>
+                    <p className="text-neutral-500">Na opslaan moet {people.nameOf(people.otherOf(people.me))} het opnieuw zien en akkoord geven (niet als je alleen kleur of logo verandert).</p>
                 )}
 
                 {shownError && <p role="alert" className="text-[#ff4d4d] uppercase">{shownError}</p>}

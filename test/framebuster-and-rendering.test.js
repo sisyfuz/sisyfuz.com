@@ -163,7 +163,8 @@ describe("Framebuster, Iframe & Mobile Stability Suite", () => {
             "Promise", "decodeURIComponent", "encodeURIComponent", "Image", "HTMLCanvasElement",
             "Event", "CustomEvent", "AudioContext", "webkitAudioContext", "screen", "history",
             "atob", "btoa", "Intl", "RegExp", "Infinity", "NaN", "undefined", "isNaN", "isFinite",
-            "RTCPeerConnection", "MediaStream", "AbortController", "RTCSessionDescription", "RTCIceCandidate"
+            "RTCPeerConnection", "MediaStream", "AbortController", "RTCSessionDescription", "RTCIceCandidate",
+            "Uint8ClampedArray", "Uint32Array", "ImageData", "createImageBitmap", "FileReader", "Blob", "File", "indexedDB", "DOMException"
         ]);
 
         function getFiles(dir) {

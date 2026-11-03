@@ -1,6 +1,7 @@
 // src/utils/agendaApi.js
 // Client for the private agenda routes on the sisyfuz-counter worker.
-// The session token lives in localStorage; nothing else is stored on the device.
+// The session token lives in localStorage. The only other thing kept on the device
+// is the sticker library (IndexedDB, see useStickers.js), wiped on logout.
 
 const API_BASE = import.meta.env?.VITE_AGENDA_API || "https://sisyfuz-counter.sisyfuz.workers.dev";
 const TOKEN_KEY = "sisyfuz:agenda-session";
@@ -103,5 +104,17 @@ export function agendaClient(token) {
         importEvents: (events) => request("/agenda/import", { method: "POST", body: { events }, token }),
         /** level "seen": it was on screen; "read": opened, hovered on or held. */
         seen: (ids, level = "seen") => request("/agenda/seen", { method: "POST", body: { ids, level }, token }),
+        /** The shared image library; with `since` (an ISO updatedAt) only what changed after it. */
+        stickers: (since) => request(`/agenda/stickers${since ? `?since=${encodeURIComponent(since)}` : ""}`, { token }),
+        /** 1 to 10 images: [{ name, png, pngSmall }] (base64 PNG, 64x64 and 16x16). */
+        createStickers: (stickers) => request("/agenda/stickers", { method: "POST", body: { stickers }, token }),
+        updateSticker: (id, patch) => request(`/agenda/stickers/${id}`, { method: "PATCH", body: patch, token }),
+        /** Hides an image from the library; items that already use it keep drawing it. */
+        archiveSticker: (id) => request(`/agenda/stickers/${id}`, { method: "DELETE", token }),
+        /** Sticks an image on an item: { eventId, stickerId, occurrenceDate, x, y }. */
+        place: (placement) => request("/agenda/placements", { method: "POST", body: placement, token }),
+        unplace: (id) => request(`/agenda/placements/${id}`, { method: "DELETE", token }),
+        /** Colour and logo for several items: { ids, color?, logoId?, logoSize? }. Never counts as an edit. */
+        style: (body) => request("/agenda/events/style", { method: "POST", body, token }),
     };
 }

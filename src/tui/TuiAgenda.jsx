@@ -17,6 +17,13 @@ import AgendaDetail from "./agenda/AgendaDetail";
 import AgendaForm from "./agenda/AgendaForm";
 import AgendaBusySheet from "./agenda/AgendaBusySheet";
 import AgendaImport from "./agenda/AgendaImport";
+import AgendaLibrary from "./agenda/AgendaLibrary";
+import AgendaStyleSheet from "./agenda/AgendaStyleSheet";
+import PixelEditor from "./agenda/PixelEditor";
+import PixelImport from "./agenda/PixelImport";
+import useStickers, { clearStickerCache } from "./agenda/useStickers";
+import { base64PngToPixels, SMALL_SIZE, STICKER_SIZE, stickerPayload } from "../utils/agendaPixelFormat";
+import { styleChanges } from "../utils/agendaStyle";
 import { BTN_ACTIVE, BTN_ATTENTION, BTN_PRIMARY, BTN_PLAIN, SAMEN_COLOR } from "./agenda/ui";
 
 const REFRESH_MS = 60_000;
@@ -30,6 +37,8 @@ const LIST_STRETCH_DAYS = 366;
 const SEEN_FLUSH_MS = 800;
 const IMPORT_MAX_BYTES = 5 * 1024 * 1024;
 const IMPORT_RANGE_DAYS = 365;
+// The worker takes at most this many new pictures per request.
+const STICKER_BATCH = 10;
 
 const DROP_BOX = [
     "+------------------------------+",
@@ -193,6 +202,7 @@ export default function TuiAgenda() {
 
     const logout = useCallback((message = "") => {
         clearSession();
+        clearStickerCache();
         setSession(null);
         setProfile(null);
         setNotice(message);
@@ -241,6 +251,18 @@ function AgendaApp({ token, initialProfile, onLogout }) {
     const [loading, setLoading] = useState(0);
     const [syncError, setSyncError] = useState("");
     const [newIds, setNewIds] = useState(() => new Set());
+    // Bumped whenever the worker's rev moves on, so the sticker library refreshes too.
+    const [revSeen, setRevSeen] = useState(0);
+    const library = useStickers(api, revSeen);
+    // On top of any sheet: the library, and the editor or import above that.
+    const [picker, setPicker] = useState(null);
+    const [studio, setStudio] = useState(null);
+    const [studioBusy, setStudioBusy] = useState(false);
+    const [studioError, setStudioError] = useState("");
+    // Sticking a sticker on: { eventId, stickerId, x, y } while it follows the finger.
+    const [placing, setPlacing] = useState(null);
+    // Choosing items to give a colour or logo: a Set of ids, or null.
+    const [selection, setSelection] = useState(null);
 
     const isDesktop = useMediaQuery(DESKTOP_QUERY);
     const loadedRef = useRef(null);
@@ -345,6 +367,7 @@ function AgendaApp({ token, initialProfile, onLogout }) {
                 return;
             }
             if ((await fetchRange(cur.from, cur.to)) !== null) revRef.current = rev;
+            setRevSeen(rev);
         } catch (err) {
             if (!handleAuth(err)) setSyncError(err.message);
         }
@@ -507,6 +530,11 @@ function AgendaApp({ token, initialProfile, onLogout }) {
         const files = [...(fileList || [])];
         if (!files.length) return;
         setNotice("");
+        // Pictures dropped on the page go to the sticker import instead.
+        if (files.every((f) => /^image\/(png|jpeg|webp|gif)$/.test(f.type))) {
+            openStudio("import", null, { files });
+            return;
+        }
         const bad = files.find((f) => !isCalendarFile(f));
         if (bad) {
             setNotice(`${bad.name.toUpperCase()} IS GEEN AGENDABESTAND (.ICS).`);
@@ -590,11 +618,18 @@ function AgendaApp({ token, initialProfile, onLogout }) {
         setSheetError(err.message.toUpperCase());
     };
 
-    const save = async (payload) => {
+    const save = async ({ contentChanged, ...payload }) => {
         setBusy(true);
         setSheetError("");
         try {
-            const { event } = sheet.id ? await api.update(sheet.id, payload) : await api.create(payload);
+            let event = sheet.id ? events[sheet.id] : null;
+            if (!event) ({ event } = await api.create(payload));
+            else {
+                // Only colour or logo changed: that is cosmetic, no new akkoord needed.
+                if (contentChanged) ({ event } = await api.update(sheet.id, payload));
+                const changes = styleChanges(event, payload);
+                if (Object.keys(changes).length) [event] = (await api.style({ ids: [event.id], ...changes })).events;
+            }
             upsert(event);
             // Stretch the list to show a new item just outside it, but not for yearly
             // days (they show up every year anyway) or items years away (a birthday
@@ -654,6 +689,122 @@ function AgendaApp({ token, initialProfile, onLogout }) {
         }
     };
 
+    // ---- Stickers, logos and colours ----
+    const openStudio = (type, onSaved = null, extra = {}) => {
+        setStudioError("");
+        setStudio({ type, onSaved, ...extra });
+    };
+
+    const editSticker = async (sticker) => {
+        try {
+            const [pixels, smallPixels] = await Promise.all([
+                base64PngToPixels(sticker.png, STICKER_SIZE),
+                base64PngToPixels(sticker.pngSmall, SMALL_SIZE),
+            ]);
+            openStudio("editor", null, { sticker, initial: { name: sticker.name, pixels, smallPixels } });
+        } catch {
+            setSheetError("DAT PLAATJE KON NIET WORDEN GEOPEND.");
+        }
+    };
+
+    // New pictures go up in batches; `onSaved` (from the form or the style sheet)
+    // gets the first one, so it can become the logo right away.
+    const saveStudio = async (items) => {
+        setStudioBusy(true);
+        setStudioError("");
+        try {
+            const saved = [];
+            if (studio.sticker) saved.push(await library.update(studio.sticker.id, stickerPayload(items[0])));
+            else {
+                const payloads = items.map(stickerPayload);
+                for (let i = 0; i < payloads.length; i += STICKER_BATCH) saved.push(...(await library.save(payloads.slice(i, i + STICKER_BATCH))));
+            }
+            studio.onSaved?.(saved[0]);
+            setStudio(null);
+        } catch (err) {
+            if (!handleAuth(err)) setStudioError(err.message.toUpperCase());
+        } finally {
+            setStudioBusy(false);
+        }
+    };
+
+    const archiveSticker = async (id) => {
+        try {
+            await library.archive(id);
+        } catch (err) {
+            if (!handleAuth(err)) setSheetError(err.message.toUpperCase());
+        }
+    };
+
+    // Picked a sticker for an item: close the panels and let it follow the finger
+    // on the card itself, which is scrolled into view.
+    const startPlacing = (eventId, sticker) => {
+        setPicker(null);
+        setSheet(null);
+        setPlacing({ eventId, stickerId: sticker.id, x: 0.5, y: 0 });
+        window.requestAnimationFrame(() =>
+            document.querySelector(`[data-item-id="${eventId}"]`)?.scrollIntoView({ block: "center", behavior: "smooth" })
+        );
+    };
+
+    const stick = async () => {
+        setBusy(true);
+        try {
+            const { placement } = await api.place({ eventId: placing.eventId, stickerId: placing.stickerId, occurrenceDate: null, x: placing.x, y: placing.y });
+            setEvents((prev) => {
+                const e = prev[placing.eventId];
+                return e ? { ...prev, [e.id]: { ...e, placements: [...(e.placements ?? []), placement] } } : prev;
+            });
+            setPlacing(null);
+            setSyncError("");
+        } catch (err) {
+            if (!handleAuth(err)) setSyncError(err.message.toUpperCase());
+        } finally {
+            setBusy(false);
+        }
+    };
+
+    const unstick = async (eventId, placementId) => {
+        setBusy(true);
+        try {
+            await api.unplace(placementId);
+            setEvents((prev) => {
+                const e = prev[eventId];
+                return e ? { ...prev, [eventId]: { ...e, placements: (e.placements ?? []).filter((p) => p.id !== placementId) } } : prev;
+            });
+        } catch (err) {
+            fail(err);
+        } finally {
+            setBusy(false);
+        }
+    };
+
+    const toggleSelect = useCallback(
+        (id) =>
+            setSelection((prev) => {
+                const next = new Set(prev);
+                if (next.has(id)) next.delete(id);
+                else next.add(id);
+                return next;
+            }),
+        []
+    );
+
+    const applyStyle = async (body) => {
+        setBusy(true);
+        setSheetError("");
+        try {
+            const { events: changed } = await api.style({ ids: [...selection], ...body });
+            changed.forEach(upsert);
+            setSheet(null);
+            setSelection(null);
+        } catch (err) {
+            if (!handleAuth(err)) setSheetError(err.message.toUpperCase());
+        } finally {
+            setBusy(false);
+        }
+    };
+
     // On desktop the list sits next to the month: picking a day there scrolls the
     // list to it, so the list is stretched first when the day lies outside it.
     const selectDay = (day) => {
@@ -689,7 +840,13 @@ function AgendaApp({ token, initialProfile, onLogout }) {
     useEffect(() => {
         if (!profile) return undefined;
         const onKey = (e) => {
-            if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey || sheet || isTyping(e.target)) return;
+            if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey || sheet || picker || studio || isTyping(e.target)) return;
+            if (e.key === "Escape" && (placing || selection)) {
+                setPlacing(null);
+                setSelection(null);
+                return;
+            }
+            if (placing) return;
             const monthShown = isDesktop || view === "maand";
             const actions = {
                 n: () => openForm(formDay),
@@ -728,7 +885,21 @@ function AgendaApp({ token, initialProfile, onLogout }) {
     }
 
     const waiting = list.filter((e) => e.endDate >= today && itemState(e, me, people.ids).needsMyAnswer).length;
-    const itemProps = { people, newIds, trackSeen, onRead: markRead, onOpen: openDetail, onOpenBusy: openBusy, onRespond: respond, busy };
+    const itemProps = {
+        people,
+        newIds,
+        trackSeen,
+        onRead: markRead,
+        onOpen: openDetail,
+        onOpenBusy: openBusy,
+        onRespond: respond,
+        busy,
+        stickersById: library.byId,
+        selection,
+        onToggleSelect: toggleSelect,
+        placing,
+        onPlaceMove: (pos) => setPlacing((prev) => (prev ? { ...prev, ...pos } : prev)),
+    };
     const sheetEvent = sheet?.id ? events[sheet.id] : null;
 
     const status = syncError ? (
@@ -762,6 +933,49 @@ function AgendaApp({ token, initialProfile, onLogout }) {
                 [+ NIEUW]
             </button>
         </>
+    );
+
+    // While sticking a sticker on or choosing items, the bar at the bottom (also on
+    // desktop) holds just that.
+    const modeBar = placing ? (
+        <>
+            <span className="text-neutral-400 uppercase px-[1ch] whitespace-nowrap">SLEEP OF TIK OP DE PLEK</span>
+            <button type="button" disabled={busy} onClick={stick} className={`${BTN_PRIMARY} ml-auto`}>
+                {busy ? "[ BEZIG... ]" : "[ PLAK ]"}
+            </button>
+            <button type="button" onClick={() => setPlacing(null)} className={BTN_PLAIN}>
+                [ANNULEREN]
+            </button>
+        </>
+    ) : selection ? (
+        <>
+            <span className="text-neutral-400 uppercase px-[1ch] whitespace-nowrap">{selection.size} GEKOZEN</span>
+            <button
+                type="button"
+                disabled={!selection.size}
+                onClick={() => {
+                    setSheetError("");
+                    setSheet({ type: "style" });
+                }}
+                className={`${BTN_PRIMARY} ml-auto`}
+            >
+                [KLEUR / LOGO]
+            </button>
+            <button type="button" onClick={() => setSelection(null)} className={BTN_PLAIN}>
+                [KLAAR]
+            </button>
+        </>
+    ) : null;
+
+    const toolbar = !modeBar && (
+        <div className="flex flex-wrap gap-x-[1ch] -ml-[1ch] mb-[1lh]">
+            <button type="button" onClick={() => setSelection(new Set())} className={BTN_PLAIN} title="Kies items om ze een kleur of logo te geven">
+                [KIES]
+            </button>
+            <button type="button" onClick={() => setPicker({ mode: "manage" })} className={BTN_PLAIN}>
+                [PLAATJES]
+            </button>
+        </div>
     );
 
     // Desktop: the same actions in the header (no view switch: both are shown).
@@ -817,7 +1031,7 @@ function AgendaApp({ token, initialProfile, onLogout }) {
             people={people}
             onLogout={onLogout}
             status={status}
-            bar={isDesktop ? null : bar}
+            bar={modeBar ?? (isDesktop ? null : bar)}
             actions={isDesktop ? actions : null}
             dropProps={dropProps}
             dropping={dropping}
@@ -842,6 +1056,7 @@ function AgendaApp({ token, initialProfile, onLogout }) {
                     </aside>
                     <div className="min-w-0">
                         {notices}
+                        {toolbar}
                     <AgendaList
                             events={list}
                             from={listRange.from}
@@ -866,6 +1081,7 @@ function AgendaApp({ token, initialProfile, onLogout }) {
             ) : (
                 <>
                     {notices}
+                    {view === "lijst" && toolbar}
                     {view === "lijst" ? (
                     <AgendaList
                         events={list}
@@ -913,6 +1129,9 @@ function AgendaApp({ token, initialProfile, onLogout }) {
                     onEdit={(e) => openForm(e.startDate, e.id)}
                     onRespond={respond}
                     onDelete={remove}
+                    stickersById={library.byId}
+                    onAddSticker={(eventId) => setPicker({ mode: "pick", eventId })}
+                    onRemoveSticker={unstick}
                 />
             )}
             {sheet?.type === "busy" && (
@@ -950,10 +1169,57 @@ function AgendaApp({ token, initialProfile, onLogout }) {
                     date={sheet.date}
                     kind={sheet.kind}
                     people={people}
+                    stickers={library.choices}
                     busy={busy}
                     error={sheetError}
                     onClose={closeSheet}
                     onSave={save}
+                    onStudio={openStudio}
+                />
+            )}
+            {sheet?.type === "style" && selection && (
+                <AgendaStyleSheet
+                    events={[...selection].map((id) => events[id]).filter(Boolean)}
+                    stickers={library.choices}
+                    busy={busy}
+                    error={sheetError}
+                    onApply={applyStyle}
+                    onStudio={openStudio}
+                    onClose={closeSheet}
+                />
+            )}
+            {picker && (
+                <AgendaLibrary
+                    mode={picker.mode}
+                    stickers={library.choices}
+                    busy={busy}
+                    error={sheetError}
+                    onPick={(sticker) => startPlacing(picker.eventId, sticker)}
+                    onDraw={() => openStudio("editor")}
+                    onImport={() => openStudio("import")}
+                    onEdit={editSticker}
+                    onArchive={archiveSticker}
+                    onClose={() => setPicker(null)}
+                />
+            )}
+            {studio?.type === "editor" && (
+                <PixelEditor
+                    key={`editor-${studio.sticker?.id || "new"}`}
+                    initial={studio.initial}
+                    busy={studioBusy}
+                    error={studioError}
+                    onSave={(item) => saveStudio([item])}
+                    onClose={() => setStudio(null)}
+                />
+            )}
+            {studio?.type === "import" && (
+                <PixelImport
+                    files={studio.files}
+                    busy={studioBusy}
+                    error={studioError}
+                    onSave={saveStudio}
+                    onEdit={(item) => openStudio("editor", studio.onSaved, { initial: { name: item.name, pixels: item.pixels } })}
+                    onClose={() => setStudio(null)}
                 />
             )}
         </Shell>

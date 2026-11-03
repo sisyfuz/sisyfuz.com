@@ -62,7 +62,7 @@
  */
 
 import { ALLOWED_ORIGINS, clientIp, isKeyRateLimited, isRateLimited, json, secretsMatch, sha256 } from "./http.js";
-import { DAY_STICKER_MIGRATION, STICKER_MIGRATION, checkLogo, handleStickers, isStickerPath, parseStyle, toPlacement } from "./agendaStickers.js";
+import { DAY_STICKER_MIGRATION, STICKER_LOOK_MIGRATION, STICKER_MIGRATION, checkLogo, handleStickers, isStickerPath, parseStyle, toPlacement } from "./agendaStickers.js";
 
 // Ids are fixed and generic; real names come from AGENDA_NAME_<ID> secrets.
 export const PEOPLE = [
@@ -184,7 +184,7 @@ const SCHEMA = [
 // SCHEMA is how the first version of the database looked. The live database already
 // exists, so later changes are one-time migrations; the number of the last one that
 // ran is kept in agenda_meta under 'schema'.
-const MIGRATIONS = [STICKER_MIGRATION, DAY_STICKER_MIGRATION];
+const MIGRATIONS = [STICKER_MIGRATION, DAY_STICKER_MIGRATION, STICKER_LOOK_MIGRATION];
 
 const schemaReady = new WeakSet();
 

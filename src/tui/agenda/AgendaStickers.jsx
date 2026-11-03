@@ -27,7 +27,7 @@ export default function AgendaStickers({ placements = [], stickersById, hiddenId
                     className={`absolute pointer-events-auto select-none ${p.id === liftedId ? "animate-pulse touch-none cursor-grab" : "cursor-pointer"}`}
                     style={{ ...place(p.x, p.y), WebkitTouchCallout: "none" }}
                 >
-                    <StickerImage sticker={stickersById[p.stickerId]} />
+                    <StickerImage sticker={stickersById[p.stickerId]} scale={p.scale ?? 1} rot={p.rot ?? 0} />
                 </span>
             ))}
         </span>

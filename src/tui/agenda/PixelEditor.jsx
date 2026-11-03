@@ -1,6 +1,7 @@
 // src/tui/agenda/PixelEditor.jsx
 import { useEffect, useRef, useState } from "react";
 import { clonePixels, createPixels, isBlank, MAX_NAME_LENGTH, shrinkPixels, SMALL_SIZE, STICKER_SIZE } from "../../utils/agendaPixelFormat";
+import { transformPixels } from "../../utils/agendaTransform";
 import {
     brushPoints,
     BRUSH_SIZES,
@@ -189,7 +190,9 @@ export default function PixelEditor({ initial, busy, error, onSave, onClose }) {
     };
 
     const onPointerDown = (e) => {
-        if (stroke.current || e.button > 0) return;
+        if (e.button > 0) return;
+        // A stroke whose end never arrived: finish it rather than block this one.
+        if (stroke.current) endStroke({ pointerId: stroke.current.id, pointerType: e.pointerType }, true);
         const point = pixelOf(e);
         if (!inBounds(target, point[0], point[1])) return;
         e.preventDefault();
@@ -248,6 +251,24 @@ export default function PixelEditor({ initial, busy, error, onSave, onClose }) {
         redraw();
     };
 
+    // The end of a stroke is also caught on the window: some browsers send the
+    // pointerup elsewhere when it happens outside the canvas, which used to leave
+    // the stroke unsaved ("TEKEN EERST IETS" while the line was right there).
+    const endRef = useRef(endStroke);
+    useEffect(() => {
+        endRef.current = endStroke;
+    });
+    useEffect(() => {
+        const up = (e) => endRef.current(e, false);
+        const cancel = (e) => endRef.current(e, true);
+        window.addEventListener("pointerup", up);
+        window.addEventListener("pointercancel", cancel);
+        return () => {
+            window.removeEventListener("pointerup", up);
+            window.removeEventListener("pointercancel", cancel);
+        };
+    }, []);
+
     const onPointerLeave = () => {
         hover.current = null;
         if (!stroke.current) redraw();
@@ -263,11 +284,25 @@ export default function PixelEditor({ initial, busy, error, onSave, onClose }) {
     const remake = () => setHistory((h) => commitHistory(h, { ...h.present, small: shrinkPixels(h.present.big, SMALL_SIZE), smallOwn: false }));
 
     const save = () => {
-        if (isBlank(doc.big)) {
+        // A stroke still going (its end got lost) counts too.
+        const s = stroke.current;
+        let { big, small: smallPic } = doc;
+        if (s?.work) {
+            stroke.current = null;
+            commit(s.work);
+            if (small) smallPic = s.work;
+            else {
+                big = s.work;
+                if (!doc.smallOwn) smallPic = shrinkPixels(big, SMALL_SIZE);
+            }
+        }
+        // Drawn only on KLEIN: the big one is that, 4x, with the same sharp pixels.
+        if (isBlank(big) && !isBlank(smallPic)) big = transformPixels(smallPic, { scale: STICKER_SIZE / SMALL_SIZE });
+        if (isBlank(big)) {
             setLocalError("TEKEN EERST IETS.");
             return;
         }
-        onSave({ name: name.trim().slice(0, MAX_NAME_LENGTH), pixels: doc.big, smallPixels: doc.small });
+        onSave({ name: name.trim().slice(0, MAX_NAME_LENGTH), pixels: big, smallPixels: smallPic });
     };
 
     const shownError = localError || error;

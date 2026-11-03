@@ -234,3 +234,31 @@ export function toLibraryPixels(image, crop, { pixelArt = false, threshold = 128
     snapAlpha(shrunk, threshold);
     return colours ? reduceColours(shrunk, colours) : shrunk;
 }
+
+// An SVG has no pixels of its own: it is drawn at this size (longest side) before
+// cropping, so the 64x64 result is as sharp as a big photo would give.
+export const SVG_RENDER_MAX = 1024;
+
+// "120", "120px" or "120.5" are sizes; "100%", "10em" and missing ones are not.
+function svgLength(value) {
+    const m = /^\s*([0-9]*\.?[0-9]+)\s*(px)?\s*$/i.exec(value ?? "");
+    const n = m ? Number(m[1]) : NaN;
+    return n > 0 ? n : null;
+}
+
+/**
+ * The pixel size to draw an SVG at, from its root `width`, `height` and `viewBox`
+ * attributes: their shape, with the longest side `max`. Without any usable size it
+ * is square.
+ */
+export function svgRenderSize({ width, height, viewBox } = {}, max = SVG_RENDER_MAX) {
+    let w = svgLength(width);
+    let h = svgLength(height);
+    const box = (viewBox ?? "").trim().split(/[\s,]+/).map(Number);
+    const [bw, bh] = box.length === 4 && box[2] > 0 && box[3] > 0 ? [box[2], box[3]] : [null, null];
+    if (w && !h) h = bh ? (w * bh) / bw : w;
+    if (h && !w) w = bw ? (h * bw) / bh : h;
+    if (!w && !h) [w, h] = bw ? [bw, bh] : [1, 1];
+    const scale = max / Math.max(w, h);
+    return [Math.max(1, Math.round(w * scale)), Math.max(1, Math.round(h * scale))];
+}

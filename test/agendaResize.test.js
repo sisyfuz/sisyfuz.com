@@ -10,6 +10,7 @@ import {
     isPixelArt,
     minCropSize,
     panCrop,
+    svgRenderSize,
     reduceColours,
     resampleArea,
     resampleNearest,
@@ -190,5 +191,15 @@ describe("colour reduction", () => {
             worst = Math.max(worst, Math.abs(p.data[i] - gradient.data[i]), Math.abs(p.data[i + 1] - gradient.data[i + 1]));
         }
         assert.ok(worst <= 48, `worst channel error ${worst}`);
+    });
+
+    test("an SVG is drawn big, in its own shape", () => {
+        assert.deepEqual(svgRenderSize({ width: "24", height: "24" }), [1024, 1024]);
+        assert.deepEqual(svgRenderSize({ width: "200px", height: "100px" }), [1024, 512]);
+        assert.deepEqual(svgRenderSize({ viewBox: "0 0 50 100" }), [512, 1024]);
+        assert.deepEqual(svgRenderSize({ width: "100%", height: "100%", viewBox: "0,0,300,150" }), [1024, 512], "percentages fall back to the viewBox");
+        assert.deepEqual(svgRenderSize({ width: "60", viewBox: "0 0 30 10" }), [1024, 341], "a missing height follows the viewBox");
+        assert.deepEqual(svgRenderSize({}), [1024, 1024], "no size at all is square");
+        assert.deepEqual(svgRenderSize({ width: "8", height: "4" }, 64), [64, 32]);
     });
 });

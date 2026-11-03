@@ -576,7 +576,7 @@ function AgendaApp({ token, initialProfile, onLogout }) {
         if (!files.length) return;
         setNotice("");
         // Pictures dropped on the page go to the sticker import instead.
-        if (files.every((f) => /^image\/(png|jpeg|webp|gif)$/.test(f.type))) {
+        if (files.every((f) => /^image\/(png|jpeg|webp|gif|svg\+xml)$/.test(f.type) || /\.svg$/i.test(f.name))) {
             openStudio("import", null, { files });
             return;
         }

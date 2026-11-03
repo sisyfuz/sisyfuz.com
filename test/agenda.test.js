@@ -894,3 +894,163 @@ describe("Agenda: revision counter and request limits", () => {
         assert.deepEqual(await res.json(), { error: "Te groot" });
     });
 });
+
+describe("Agenda: herhalen", () => {
+    // Every Monday from 2 November 2026, 19:00-20:00.
+    const weekly = (extra = {}) => sample({ title: "Zwemmen", startDate: "2026-11-02", startTime: "19:00", endTime: "20:00", rule: { freq: "week", days: [0] }, ...extra });
+    const rows = (sql, ...params) => db.sqlite.prepare(sql).all(...params);
+    const list = async (token, from, to) => (await call(`/agenda/events?from=${from}&to=${to}`, { token })).data.events;
+    const create = async (token, body) => {
+        const { res, data } = await call("/agenda/events", { method: "POST", body, token });
+        assert.equal(res.status, 201, JSON.stringify(data));
+        return data.event;
+    };
+    const patch = (token, event, body) => call(`/agenda/events/${event.id}`, { method: "PATCH", body: { ...body, version: event.version }, token });
+
+    test("a series is stored once with its rule and its last day", async () => {
+        const { dorus } = await tokens();
+        const event = await create(dorus, weekly({ rule: { freq: "week", days: [2, 0], count: 3 } }));
+        assert.deepEqual(event.rule, { freq: "week", interval: 1, days: [0, 2], count: 3 });
+        assert.deepEqual(event.exceptions, []);
+        // Mon 2, Wed 4, Mon 9 November.
+        assert.equal(rows("SELECT rule_end FROM agenda_events")[0].rule_end, "2026-11-09");
+        const endless = await create(dorus, weekly());
+        assert.equal(rows("SELECT rule_end FROM agenda_events WHERE id = ?", endless.id)[0].rule_end, null);
+    });
+
+    test("rules are checked, and only appointments and busy blocks repeat", async () => {
+        const { dorus } = await tokens();
+        for (const rule of [{ freq: "uur" }, { freq: "week", days: [] }, { freq: "dag", until: "2026-10-01" }, { freq: "dag", count: 0 }, { freq: "dag", count: 2, until: "2026-12-01" }]) {
+            const { res } = await call("/agenda/events", { method: "POST", body: weekly({ rule }), token: dorus });
+            assert.equal(res.status, 400, JSON.stringify(rule));
+        }
+        const tooLong = await call("/agenda/events", { method: "POST", body: weekly({ rule: { freq: "dag" }, endDate: "2026-11-03" }), token: dorus });
+        assert.equal(tooLong.res.status, 400);
+        const busy = await create(dorus, weekly({ kind: "onbeschikbaar", reason: "school", forWho: "dorus", rule: { freq: "dag" } }));
+        assert.deepEqual(busy.rule, { freq: "dag", interval: 1 });
+        const period = await create(dorus, { kind: "periode", title: "Vakantie", startDate: "2026-11-02", endDate: "2026-11-06", forWho: "samen", rule: { freq: "jaar" } });
+        assert.equal(period.rule, null);
+    });
+
+    test("a series comes back for every range until it ends", async () => {
+        const { dorus } = await tokens();
+        const endless = await create(dorus, weekly());
+        const ended = await create(dorus, weekly({ title: "Cursus", rule: { freq: "week", days: [0], until: "2026-11-30" } }));
+        const later = await create(dorus, weekly({ title: "Later", startDate: "2027-03-01" }));
+        const ids = async (from, to) => (await list(dorus, from, to)).map((e) => e.id).sort();
+        assert.deepEqual(await ids("2027-01-01", "2027-01-31"), [endless.id].sort());
+        assert.deepEqual(await ids("2026-11-20", "2026-12-10"), [endless.id, ended.id].sort());
+        assert.deepEqual(await ids("2027-03-01", "2027-03-31"), [endless.id, later.id].sort());
+        assert.deepEqual(await ids("2026-10-01", "2026-10-31"), []);
+    });
+
+    test("only this one: the date becomes its own item and the series skips it", async () => {
+        const { dorus, partner } = await tokens();
+        const series = await create(dorus, weekly());
+        await call(`/agenda/events/${series.id}/response`, { method: "POST", body: { response: "akkoord" }, token: partner });
+        const { res, data } = await patch(partner, series, { ...weekly({ startTime: "20:00", endTime: "21:00", startDate: "2026-11-16" }), scope: "deze", occurrenceDate: "2026-11-16" });
+        assert.equal(res.status, 200, JSON.stringify(data));
+        assert.equal(data.event.rule, null);
+        assert.equal(data.event.startDate, "2026-11-16");
+        assert.equal(data.event.startTime, "20:00");
+        assert.deepEqual(data.series.exceptions, [{ date: "2026-11-16", kind: "moved", movedToId: data.event.id }]);
+        // The series keeps its akkoord and version; the new item needs akkoord from the other person.
+        assert.equal(data.series.version, series.version);
+        assert.equal(data.series.status.partner.response, "akkoord");
+        assert.equal(data.event.status.partner.response, "akkoord");
+        assert.equal(data.event.status.dorus.response, null);
+        // A stale version is refused.
+        assert.equal((await patch(dorus, { ...series, version: 99 }, { ...weekly(), scope: "deze", occurrenceDate: "2026-11-23" })).res.status, 409);
+        // The same date again is gone.
+        assert.equal((await patch(dorus, series, { ...weekly(), scope: "deze", occurrenceDate: "2026-11-16" })).res.status, 409);
+    });
+
+    test("this and following: the series ends the day before and a new one starts", async () => {
+        const { dorus, partner } = await tokens();
+        const series = await create(dorus, weekly({ rule: { freq: "week", days: [0], count: 6 } }));
+        await call(`/agenda/events/${series.id}/response`, { method: "POST", body: { response: "akkoord" }, token: partner });
+        const { res, data } = await patch(partner, series, {
+            ...weekly({ startDate: "2026-11-16", location: "Zwembad", rule: { freq: "week", days: [0], count: 6 } }),
+            scope: "volgende",
+            occurrenceDate: "2026-11-16",
+        });
+        assert.equal(res.status, 200, JSON.stringify(data));
+        assert.deepEqual(data.series.rule, { freq: "week", interval: 1, days: [0], until: "2026-11-15" });
+        assert.equal(data.series.version, series.version + 1);
+        assert.equal(data.series.status.partner.response, "akkoord", "the first part keeps its akkoord");
+        // 2 and 9 November happened, so 4 of the 6 are left.
+        assert.equal(data.event.rule.count, 4);
+        assert.equal(data.event.startDate, "2026-11-16");
+        assert.equal(data.event.location, "Zwembad");
+        assert.equal(data.event.status.dorus.response, null, "the new series needs akkoord");
+        assert.equal(rows("SELECT rule_end FROM agenda_events WHERE id = ?", series.id)[0].rule_end, "2026-11-15");
+    });
+
+    test("this and following from the first occurrence changes the whole series", async () => {
+        const { dorus } = await tokens();
+        const series = await create(dorus, weekly());
+        const { data } = await patch(dorus, series, { ...weekly({ title: "Baantjes" }), scope: "volgende", occurrenceDate: "2026-11-02" });
+        assert.equal(data.event.id, series.id);
+        assert.equal(data.event.title, "Baantjes");
+        assert.equal(rows("SELECT COUNT(*) AS n FROM agenda_events")[0].n, 1);
+    });
+
+    test("scoped edits need a series and a date", async () => {
+        const { dorus } = await tokens();
+        const single = await create(dorus, sample());
+        assert.equal((await patch(dorus, single, { ...sample(), scope: "deze", occurrenceDate: "2026-11-07" })).res.status, 400);
+        const series = await create(dorus, weekly());
+        assert.equal((await patch(dorus, series, { ...weekly(), scope: "deze" })).res.status, 400);
+        assert.equal((await patch(dorus, series, { ...weekly(), scope: "sommige", occurrenceDate: "2026-11-09" })).res.status, 400);
+    });
+
+    test("moving the whole series takes skipped dates along", async () => {
+        const { dorus } = await tokens();
+        const series = await create(dorus, weekly({ rule: { freq: "dag" } }));
+        for (const date of ["2026-11-03", "2026-11-04"]) await call(`/agenda/events/${series.id}?scope=deze&date=${date}`, { method: "DELETE", token: dorus });
+        const { data } = await patch(dorus, series, weekly({ startDate: "2026-11-03", rule: { freq: "dag" } }));
+        assert.deepEqual(data.event.exceptions.map((x) => x.date), ["2026-11-04", "2026-11-05"]);
+    });
+
+    test("deleting one, the following, or all of them", async () => {
+        const { dorus } = await tokens();
+        const series = await create(dorus, weekly());
+        const one = await call(`/agenda/events/${series.id}?scope=deze&date=2026-11-09`, { method: "DELETE", token: dorus });
+        assert.equal(one.res.status, 200);
+        assert.deepEqual(one.data.event.exceptions, [{ date: "2026-11-09", kind: "skip", movedToId: null }]);
+
+        // A moved occurrence after the cut goes with the following ones.
+        const moved = (await patch(dorus, series, { ...weekly({ startDate: "2026-11-24" }), scope: "deze", occurrenceDate: "2026-11-23" })).data.event;
+        const following = await call(`/agenda/events/${series.id}?scope=volgende&date=2026-11-16`, { method: "DELETE", token: dorus });
+        assert.equal(following.res.status, 200);
+        assert.equal(following.data.event.rule.until, "2026-11-15");
+        assert.deepEqual(following.data.deleted, [moved.id]);
+        assert.deepEqual(following.data.event.exceptions.map((x) => x.date), ["2026-11-09"]);
+
+        const kept = (await patch(dorus, following.data.event, { ...weekly({ startDate: "2026-11-02" }), rule: following.data.event.rule, scope: "deze", occurrenceDate: "2026-11-02" })).data.event;
+        const all = await call(`/agenda/events/${series.id}`, { method: "DELETE", token: dorus });
+        assert.equal(all.res.status, 200);
+        assert.deepEqual(all.data.deleted.sort(), [series.id, kept.id].sort());
+        for (const table of ["agenda_events", "agenda_status", "agenda_exceptions"]) {
+            assert.equal(rows(`SELECT COUNT(*) AS n FROM ${table}`)[0].n, 0, table);
+        }
+    });
+
+    test("deleting the following from the first occurrence deletes the series", async () => {
+        const { dorus } = await tokens();
+        const series = await create(dorus, weekly());
+        const { res, data } = await call(`/agenda/events/${series.id}?scope=volgende&date=2026-11-02`, { method: "DELETE", token: dorus });
+        assert.equal(res.status, 200);
+        assert.deepEqual(data.deleted, [series.id]);
+        assert.equal(rows("SELECT COUNT(*) AS n FROM agenda_events")[0].n, 0);
+    });
+
+    test("akkoord and seen are per series", async () => {
+        const { dorus, partner } = await tokens();
+        const series = await create(dorus, weekly());
+        await call("/agenda/seen", { method: "POST", body: { ids: [series.id] }, token: partner });
+        const { data } = await call(`/agenda/events/${series.id}/response`, { method: "POST", body: { response: "akkoord" }, token: partner });
+        assert.equal(data.event.status.partner.response, "akkoord");
+        assert.equal(rows("SELECT COUNT(*) AS n FROM agenda_status")[0].n, 2);
+    });
+});

@@ -41,7 +41,7 @@ function cellLines(items, day, people) {
     for (const e of items.filter(isAppointment)) {
         const time = !e.allDay && e.startDate === day ? `${e.startTime} ` : "";
         const ask = itemState(e, people.me, people.ids).needsMyAnswer ? "? " : "";
-        lines.push({ key: e.id, text: `${ask}${time}${e.title}`, color: e.color || people.colorOf(e.forWho) });
+        lines.push({ key: e.key ?? e.id, text: `${ask}${time}${e.title}`, color: e.color || people.colorOf(e.forWho) });
     }
     for (const g of busyGroups(items.filter(isBusy), day)) {
         lines.push({ key: g.key, text: `░ ${g.reason.toUpperCase()}`, color: people.colorOf(g.forWho) });

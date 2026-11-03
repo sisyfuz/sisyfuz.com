@@ -1,9 +1,11 @@
 // src/tui/agenda/AgendaForm.jsx
 import { useRef, useState } from "react";
-import { nextWholeHour } from "../../utils/agendaDates";
+import { WEEKDAYS_SHORT, nextWholeHour, weekdayIndex } from "../../utils/agendaDates";
 import { BUSY_REASONS } from "../../utils/agendaBusy";
 import { SPECIAL_TYPES } from "../../utils/agendaSpecial";
+import { MAX_COUNT, PATTERNS, checkRule, firstOccurrence, moveDays, patternOf, ruleFrom } from "../../utils/agendaRepeat";
 import AgendaChoice from "./AgendaChoice";
+import AgendaScopeChoice from "./AgendaScopeChoice";
 import AgendaSheet from "./AgendaSheet";
 import AgendaStylePicker from "./AgendaStylePicker";
 import { BTN, BTN_PRIMARY, BTN_PLAIN, FIELD, LABEL, TEXTAREA } from "./ui";
@@ -15,6 +17,25 @@ const KINDS = [
     { id: "periode", label: "░ PERIODE" },
 ];
 const SPECIAL_IDS = Object.keys(SPECIAL_TYPES);
+const ENDS = [
+    { id: "nooit", label: "NOOIT" },
+    { id: "datum", label: "TOT EN MET" },
+    { id: "keer", label: "AANTAL KEER" },
+];
+const DEFAULT_COUNT = "10";
+
+// The repeat part of the form's values, from a stored rule (or none).
+function repeatValues(rule, startDate) {
+    return {
+        pattern: patternOf(rule),
+        days: rule?.days ?? [weekdayIndex(startDate)],
+        end: rule?.until ? "datum" : rule?.count ? "keer" : "nooit",
+        until: rule?.until ?? "",
+        count: rule?.count ? String(rule.count) : DEFAULT_COUNT,
+    };
+}
+
+const ruleOf = (v) => ruleFrom(v.pattern, v.days, { end: v.end, until: v.until, count: Number(v.count) });
 
 // What the title field is called, per kind (and per kind of special day).
 function titleField(v) {
@@ -45,6 +66,7 @@ function initialValues(event, date, kind, me) {
             note: event.note,
             repeat: event.repeat === "jaarlijks",
             countYears: event.countYears,
+            ...repeatValues(event.rule, event.startDate),
             style: { color: event.color || "", logoId: event.logoId || null, logoSize: event.logoSize || "" },
         };
     }
@@ -63,6 +85,7 @@ function initialValues(event, date, kind, me) {
         note: "",
         repeat: true,
         countYears: true,
+        ...repeatValues(null, date),
         style: { color: "", logoId: null, logoSize: "" },
     };
 }
@@ -92,6 +115,12 @@ function check(v) {
     const timed = (v.kind === "afspraak" || v.kind === "onbeschikbaar") && !v.allDay;
     if (timed && !v.startTime) return "Kies een begintijd.";
     if (timed && !multi && v.endTime && v.endTime < v.startTime) return "De eindtijd ligt voor de begintijd.";
+    if ((v.kind === "afspraak" || v.kind === "onbeschikbaar") && v.pattern !== "niet") {
+        if (v.end === "datum" && !v.until) return "Kies tot wanneer het herhaalt.";
+        if (v.end === "keer" && !/^\d+$/.test(v.count)) return `Herhaal 1 tot ${MAX_COUNT} keer.`;
+        const rule = checkRule(ruleOf(v), v.startDate, multi ? v.endDate : v.startDate);
+        if (rule.error) return rule.error;
+    }
     return "";
 }
 
@@ -116,7 +145,12 @@ export default function AgendaForm({ event, date, kind = "afspraak", people, sti
     const contentOf = ({ style, ...content }) => JSON.stringify(content); // eslint-disable-line no-unused-vars
     const startContent = useRef(contentOf(v));
     const [localError, setLocalError] = useState("");
-    const set = (patch) => setV((prev) => ({ ...prev, ...patch }));
+    // A changed occurrence of a series asks which ones it is for before saving.
+    const [askScope, setAskScope] = useState(null);
+    const set = (patch) => {
+        setAskScope(null);
+        setV((prev) => ({ ...prev, ...patch }));
+    };
 
     const busyItem = v.kind === "onbeschikbaar";
     const special = v.kind === "bijzonder";
@@ -130,7 +164,8 @@ export default function AgendaForm({ event, date, kind = "afspraak", people, sti
         const problem = check(v);
         setLocalError(problem);
         if (problem) return;
-        onSave({
+        const rule = timedKind ? ruleOf(v) : null;
+        const payload = {
             kind: v.kind,
             reason: busyItem ? v.reason.trim().toLowerCase() : special ? v.reason : "",
             title: v.title.trim(),
@@ -147,8 +182,21 @@ export default function AgendaForm({ event, date, kind = "afspraak", people, sti
             color: v.style.color,
             logoId: v.style.logoId,
             logoSize: v.style.logoId ? v.style.logoSize || "klein" : "",
+            rule,
             ...(event ? { version: event.version, contentChanged: contentOf(v) !== startContent.current } : {}),
-        });
+        };
+        if (!event?.rule || !payload.contentChanged) {
+            onSave(payload);
+            return;
+        }
+        // "Only this one" can keep its own times and text, not its own repeat;
+        // from the first occurrence on, "this and following" is all of them.
+        const scope = {
+            only: JSON.stringify(rule) === JSON.stringify(event.rule),
+            first: event.occurrenceDate <= firstOccurrence({ ...event, startDate: event.seriesStart }),
+        };
+        if (!scope.only && scope.first) onSave({ ...payload, scope: "alle" });
+        else setAskScope({ payload, ...scope });
     };
 
     const forOptions = [...people.ids, "samen"].map((id) => ({ id, label: people.nameOf(id) }));
@@ -230,7 +278,9 @@ export default function AgendaForm({ event, date, kind = "afspraak", people, sti
                         min={special ? "1900-01-01" : undefined}
                         onChange={(e) => {
                             const startDate = e.target.value;
-                            set({ startDate, endDate: v.endDate < startDate ? startDate : v.endDate });
+                            // A weekly repeat on the old date's weekday moves to the new one.
+                            const days = startDate && v.startDate ? moveDays(v.days, v.startDate, startDate) : v.days;
+                            set({ startDate, endDate: v.endDate < startDate ? startDate : v.endDate, days });
                         }}
                         required
                         className={FIELD}
@@ -305,6 +355,63 @@ export default function AgendaForm({ event, date, kind = "afspraak", people, sti
                 )}
 
                 {timedKind && (
+                    <fieldset>
+                        <legend className={LABEL}>HERHALEN</legend>
+                        <AgendaChoice options={PATTERNS} value={v.pattern} onChange={(pattern) => set({ pattern })} />
+                        {(v.pattern === "week" || v.pattern === "2weken") && <p className={LABEL}>OP WELKE DAGEN?</p>}
+                        {(v.pattern === "week" || v.pattern === "2weken") && (
+                            <div className="flex flex-wrap gap-x-[1ch] -ml-[1ch]" role="group" aria-label="Op welke dagen">
+                                {WEEKDAYS_SHORT.map((label, d) => {
+                                    const on = v.days.includes(d);
+                                    return (
+                                        <button
+                                            key={label}
+                                            type="button"
+                                            aria-pressed={on}
+                                            onClick={() => set({ days: on ? v.days.filter((x) => x !== d) : [...v.days, d].sort((a, b) => a - b) })}
+                                            className={`${BTN} ${on ? "bg-white text-black font-bold" : "text-neutral-400 hover:bg-white hover:text-black"}`}
+                                        >
+                                            [{label}]
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        )}
+                        {v.pattern !== "niet" && (
+                            <>
+                                <p className={LABEL}>STOPT</p>
+                                <AgendaChoice options={ENDS} value={v.end} onChange={(end) => set({ end, until: end === "datum" && !v.until ? v.startDate : v.until })} />
+                                {v.end === "datum" && (
+                                    <input
+                                        type="date"
+                                        aria-label="Laatste keer op of voor"
+                                        value={v.until}
+                                        min={v.startDate}
+                                        onChange={(e) => set({ until: e.target.value })}
+                                        className={FIELD}
+                                    />
+                                )}
+                                {v.end === "keer" && (
+                                    <div className="flex items-center gap-x-[1ch]">
+                                        <div className="w-[7ch] shrink-0">
+                                            <input
+                                                type="text"
+                                                inputMode="numeric"
+                                                aria-label="Hoe vaak"
+                                                value={v.count}
+                                                onChange={(e) => set({ count: e.target.value.replace(/\D/g, "").slice(0, 3) })}
+                                                className={FIELD}
+                                            />
+                                        </div>
+                                        <span className="text-neutral-400 uppercase">KEER (MAX. {MAX_COUNT})</span>
+                                    </div>
+                                )}
+                            </>
+                        )}
+                    </fieldset>
+                )}
+
+                {timedKind && (
                     <div>
                         <label htmlFor="agenda-location" className={LABEL}>WAAR? (MAG LEEG)</label>
                         <input
@@ -345,14 +452,25 @@ export default function AgendaForm({ event, date, kind = "afspraak", people, sti
 
                 {shownError && <p role="alert" className="text-[#ff4d4d] uppercase">{shownError}</p>}
 
-                <div className="flex flex-wrap gap-x-[1ch] -ml-[1ch]">
-                    <button type="submit" disabled={busy} className={BTN_PRIMARY}>
-                        {busy ? "[ BEZIG... ]" : "[ OPSLAAN ]"}
-                    </button>
-                    <button type="button" onClick={onClose} className={BTN_PLAIN}>
-                        [ANNULEREN]
-                    </button>
-                </div>
+                {askScope ? (
+                    <AgendaScopeChoice
+                        question="WELKE WIL JE AANPASSEN?"
+                        only={askScope.only}
+                        first={askScope.first}
+                        busy={busy}
+                        onPick={(scope) => onSave({ ...askScope.payload, scope })}
+                        onCancel={() => setAskScope(null)}
+                    />
+                ) : (
+                    <div className="flex flex-wrap gap-x-[1ch] -ml-[1ch]">
+                        <button type="submit" disabled={busy} className={BTN_PRIMARY}>
+                            {busy ? "[ BEZIG... ]" : "[ OPSLAAN ]"}
+                        </button>
+                        <button type="button" onClick={onClose} className={BTN_PLAIN}>
+                            [ANNULEREN]
+                        </button>
+                    </div>
+                )}
             </form>
         </AgendaSheet>
     );

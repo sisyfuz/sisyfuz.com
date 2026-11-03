@@ -17,6 +17,8 @@ const HOLD_READ_MS = 600;
 // One item on one day. Tapping the card opens it; when the other person made
 // the last change, the answer buttons sit right on the card. While choosing items
 // a tap ticks it instead. Pressing a sticker on it goes to `onStickerPress`.
+// An occurrence of a repeating item has the series' id plus its own
+// `occurrenceDate`: seen, read and akkoord go to the series, stickers to the date.
 
 export default function AgendaItem({
     event,
@@ -60,13 +62,15 @@ export default function AgendaItem({
     const bigLogo = logoOf(event, stickersById, "groot");
     const smallLogo = logoOf(event, stickersById, "klein");
 
-    const tapCard = () => (selecting ? onToggleSelect(event.id) : onOpen(event.id));
+    const occurrence = event.occurrenceDate ?? null;
+    const tapCard = () => (selecting ? onToggleSelect(event.id) : onOpen(event.id, occurrence));
 
     return (
         <article
             ref={unseenByMe ? trackSeen : undefined}
             data-seen-id={event.id}
             data-item-id={event.id}
+            data-occurrence={occurrence ?? undefined}
             className="relative flex gap-x-[1ch]"
             style={{ WebkitTouchCallout: "none" }}
             onPointerEnter={(e) => e.pointerType !== "touch" && startDwell(HOVER_READ_MS)}
@@ -88,7 +92,15 @@ export default function AgendaItem({
                 >
                     <span className="flex flex-wrap items-baseline gap-x-[2ch]">
                         {selecting && <span className={selected ? "text-white font-bold" : "text-neutral-500"}>[{selected ? "x" : " "}]</span>}
-                        <span className="text-neutral-400 uppercase">{timeLabel(event, day)}</span>
+                        <span className="text-neutral-400 uppercase">
+                            {timeLabel(event, day)}
+                            {event.rule && (
+                                <span className="text-neutral-500" title="Herhaalt">
+                                    {" "}
+                                    <span className="cell">↻</span>
+                                </span>
+                            )}
+                        </span>
                         <span className="uppercase font-bold" style={{ color: forColor }}>
                             <span className="cell">●</span> {people.nameOf(event.forWho)}
                         </span>
@@ -124,7 +136,7 @@ export default function AgendaItem({
                 stickersById={stickersById}
                 hiddenId={stickerHiddenId}
                 liftedId={stickerLiftedId}
-                onPress={(e, p) => onStickerPress?.(e, { kind: "item", eventId: event.id, id: p.id, stickerId: p.stickerId, scale: p.scale ?? 1, rot: p.rot ?? 0 }, tapCard)}
+                onPress={(e, p) => onStickerPress?.(e, { kind: "item", eventId: event.id, occurrenceDate: occurrence, id: p.id, stickerId: p.stickerId, scale: p.scale ?? 1, rot: p.rot ?? 0 }, tapCard)}
             />
         </article>
     );

@@ -4,6 +4,8 @@ import { daysBetween, formatDayLong, formatStamp, formatWhen } from "../../utils
 import { itemState } from "../../utils/agendaStatus";
 import { isBusy } from "../../utils/agendaBusy";
 import { isAppointment, isPeriod, isSpecial, specialType } from "../../utils/agendaSpecial";
+import { firstOccurrence, repeatText } from "../../utils/agendaRepeat";
+import AgendaScopeChoice from "./AgendaScopeChoice";
 import AgendaSheet from "./AgendaSheet";
 import StickerImage from "./StickerImage";
 import { BTN_GREEN, BTN_GREEN_ON, BTN_PLAIN, BTN_RED, BTN_RED_ON } from "./ui";
@@ -38,12 +40,14 @@ export default function AgendaDetail({ event, people, busy, error, onClose, onEd
     const state = itemState(event, people.me, people.ids);
     const forColor = people.colorOf(event.forWho);
 
+    const series = Boolean(event.rule);
     // The delete button asks once more; the question goes away after a few seconds.
+    // For a repeating item it asks which ones instead, and waits for the answer.
     useEffect(() => {
-        if (!confirmDelete) return undefined;
+        if (!confirmDelete || series) return undefined;
         const timer = setTimeout(() => setConfirmDelete(false), 4000);
         return () => clearTimeout(timer);
-    }, [confirmDelete]);
+    }, [confirmDelete, series]);
 
     const myResponse = event.status?.[people.me]?.response ?? null;
     const busyItem = isBusy(event);
@@ -71,6 +75,14 @@ export default function AgendaDetail({ event, people, busy, error, onClose, onEd
                         <dt className="text-neutral-500 uppercase">WANNEER</dt>
                         <dd className="text-white">{whenText(event)}</dd>
                     </div>
+                    {series && (
+                        <div>
+                            <dt className="text-neutral-500 uppercase">HERHAALT</dt>
+                            <dd className="text-white">
+                                <span className="cell">↻</span> {repeatText(event.rule, event.seriesStart)}
+                            </dd>
+                        </div>
+                    )}
                     <div>
                         <dt className="text-neutral-500 uppercase">{isAppointment(event) ? "VOOR WIE" : specialItem ? "HOORT BIJ" : "WIE"}</dt>
                         <dd className="uppercase font-bold" style={{ color: forColor }}>
@@ -176,7 +188,7 @@ export default function AgendaDetail({ event, people, busy, error, onClose, onEd
                             </div>
                         )}
                         <div className="flex flex-wrap gap-x-[1ch] -ml-[1ch]">
-                            <button type="button" disabled={busy} onClick={() => onAddSticker(event.id)} className={BTN_PLAIN}>
+                            <button type="button" disabled={busy} onClick={() => onAddSticker(event.id, event.occurrenceDate ?? null)} className={BTN_PLAIN}>
                                 [+ STICKER]
                             </button>
                         </div>
@@ -185,19 +197,32 @@ export default function AgendaDetail({ event, people, busy, error, onClose, onEd
 
                 {error && <p role="alert" className="text-[#ff4d4d] uppercase">{error}</p>}
 
-                <div className="flex flex-wrap gap-x-[1ch] -ml-[1ch] pt-[1lh]">
-                    <button type="button" disabled={busy} onClick={() => onEdit(event)} className={BTN_PLAIN}>
-                        [BEWERKEN]
-                    </button>
-                    <button
-                        type="button"
-                        disabled={busy}
-                        onClick={() => (confirmDelete ? onDelete(event.id) : setConfirmDelete(true))}
-                        className={confirmDelete ? BTN_RED_ON : BTN_RED}
-                    >
-                        {confirmDelete ? "[ZEKER? TIK NOG EEN KEER]" : "[VERWIJDEREN]"}
-                    </button>
-                </div>
+                {series && confirmDelete ? (
+                    <div className="pt-[1lh]">
+                        <AgendaScopeChoice
+                            question="WELKE WIL JE VERWIJDEREN?"
+                            first={event.occurrenceDate <= firstOccurrence({ ...event, startDate: event.seriesStart })}
+                            danger
+                            busy={busy}
+                            onPick={(scope) => (scope === "alle" ? onDelete(event.id) : onDelete(event.id, scope, event.occurrenceDate))}
+                            onCancel={() => setConfirmDelete(false)}
+                        />
+                    </div>
+                ) : (
+                    <div className="flex flex-wrap gap-x-[1ch] -ml-[1ch] pt-[1lh]">
+                        <button type="button" disabled={busy} onClick={() => onEdit(event)} className={BTN_PLAIN}>
+                            [BEWERKEN]
+                        </button>
+                        <button
+                            type="button"
+                            disabled={busy}
+                            onClick={() => (confirmDelete ? onDelete(event.id) : setConfirmDelete(true))}
+                            className={confirmDelete ? BTN_RED_ON : BTN_RED}
+                        >
+                            {confirmDelete ? "[ZEKER? TIK NOG EEN KEER]" : "[VERWIJDEREN]"}
+                        </button>
+                    </div>
+                )}
             </div>
         </AgendaSheet>
     );

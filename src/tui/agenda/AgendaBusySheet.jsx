@@ -13,10 +13,10 @@ export default function AgendaBusySheet({ group, day, people, onClose, onOpen })
             </p>
             <ul className="mt-[1lh]">
                 {group.items.map((e) => (
-                    <li key={e.id}>
+                    <li key={e.key ?? e.id}>
                         <button
                             type="button"
-                            onClick={() => onOpen(e.id)}
+                            onClick={() => onOpen(e.id, e.occurrenceDate ?? null)}
                             className="flex gap-x-[2ch] w-full min-h-[3lh] items-center text-left cursor-pointer transition-none hover:bg-[#141414] focus-visible:outline-none focus-visible:bg-[#262626]"
                         >
                             <span className="text-neutral-400 shrink-0">{timeLabel(e, day)}</span>

@@ -30,7 +30,7 @@ const clamp = (n, [min, max]) => Math.min(max, Math.max(min, n));
 
 /**
  * What a sticker of `width` x `height` px dropped at (clientX, clientY) lands on:
- * the bin ({ kind: "bin" }), an item card ({ kind: "item", eventId, spot }) or a
+ * the bin ({ kind: "bin" }), an item card ({ kind: "item", eventId, occurrenceDate, spot }) or a
  * day in the month or the list ({ kind: "day", view, day, dx, dy }), or null.
  * Cards win over the day they are on. `el` is the thing to light up; `at` is
  * where on screen the sticker's top-left corner ends up (snapped to the grid).
@@ -46,7 +46,7 @@ export function dropTargetAt(clientX, clientY, width, height) {
             const r = card.getBoundingClientRect();
             const spot = positionAt(card, clientX, clientY, width);
             const at = { left: r.left + Math.floor(((r.width - width) * spot.x) / ch + 1e-6) * ch, top: r.top + spot.y * lh };
-            return { kind: "item", eventId: card.dataset.itemId, el: card, spot, at };
+            return { kind: "item", eventId: card.dataset.itemId, occurrenceDate: card.dataset.occurrence ?? null, el: card, spot, at };
         }
         const day = el.closest?.("[data-sticker-day]");
         if (day) {

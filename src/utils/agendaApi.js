@@ -99,7 +99,9 @@ export function agendaClient(token) {
         events: (from, to) => request(`/agenda/events?from=${from}&to=${to}`, { token }),
         create: (event) => request("/agenda/events", { method: "POST", body: event, token }),
         update: (id, event) => request(`/agenda/events/${id}`, { method: "PATCH", body: event, token }),
-        remove: (id) => request(`/agenda/events/${id}`, { method: "DELETE", token }),
+        /** `scope` "deze" | "volgende" (with the occurrence's `date`) for part of a series. */
+        remove: (id, scope = null, date = null) =>
+            request(`/agenda/events/${id}${scope ? `?scope=${scope}&date=${date}` : ""}`, { method: "DELETE", token }),
         respond: (id, response) => request(`/agenda/events/${id}/response`, { method: "POST", body: { response }, token }),
         importEvents: (events) => request("/agenda/import", { method: "POST", body: { events }, token }),
         /** level "seen": it was on screen; "read": opened, hovered on or held. */

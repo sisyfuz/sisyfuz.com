@@ -25,3 +25,6 @@ export const TEXTAREA = `${FIELD_BASE} h-[6lh] resize-none`;
 export const LABEL = "block uppercase text-neutral-500";
 
 export const SAMEN_COLOR = "#00ff66";
+
+// Rows the bottom bar takes while the sticker tray is open (rule, buttons, stickers).
+export const TRAY_ROWS = 9;

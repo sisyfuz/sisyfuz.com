@@ -10,6 +10,7 @@ import {
     minCropSize,
     panCrop,
     snapCrop,
+    svgRenderSize,
     toLibraryPixels,
     zoomCrop,
 } from "../../utils/agendaResize";
@@ -17,8 +18,9 @@ import AgendaChoice from "./AgendaChoice";
 import AgendaSheet from "./AgendaSheet";
 import { BTN_PLAIN, BTN_PRIMARY, FIELD, LABEL } from "./ui";
 
-const ACCEPT = "image/png,image/jpeg,image/webp,image/gif";
-const IMAGE_NAME = /\.(png|jpe?g|webp|gif)$/i;
+const ACCEPT = "image/png,image/jpeg,image/webp,image/gif,image/svg+xml";
+const IMAGE_NAME = /\.(png|jpe?g|webp|gif|svg)$/i;
+const isSvg = (file) => file.type === "image/svg+xml" || /\.svg$/i.test(file.name);
 // Photos are worked on at most this big: the bitmap is drawn down once, so every
 // crop preview after that stays cheap. Pixel art keeps its own size (up to a
 // limit) so it can shrink pixel for pixel.
@@ -44,13 +46,55 @@ function canvasOf(width, height) {
     return canvas;
 }
 
+// An SVG goes through an <img> (so nothing in it runs or loads), with a fixed
+// width and height set on its root first: many SVGs only have a viewBox, and
+// then each browser picks its own size. It is drawn at svgRenderSize, sharp.
+async function svgImage(file) {
+    const doc = new window.DOMParser().parseFromString(await file.text(), "image/svg+xml");
+    const svg = doc.documentElement;
+    if (svg.nodeName.toLowerCase() !== "svg" || doc.querySelector("parsererror")) throw new Error("geen svg");
+    const [width, height] = svgRenderSize({
+        width: svg.getAttribute("width"),
+        height: svg.getAttribute("height"),
+        viewBox: svg.getAttribute("viewBox"),
+    });
+    if (!svg.getAttribute("viewBox")) {
+        const w = Number.parseFloat(svg.getAttribute("width"));
+        const h = Number.parseFloat(svg.getAttribute("height"));
+        if (w > 0 && h > 0) svg.setAttribute("viewBox", `0 0 ${w} ${h}`);
+    }
+    svg.setAttribute("width", width);
+    svg.setAttribute("height", height);
+    const blob = new Blob([new window.XMLSerializer().serializeToString(doc)], { type: "image/svg+xml" });
+    const url = URL.createObjectURL(blob);
+    const img = new Image(width, height);
+    img.src = url;
+    try {
+        await img.decode();
+    } catch (err) {
+        URL.revokeObjectURL(url);
+        throw err;
+    }
+    return { img, url, width, height };
+}
+
 // Decodes once (createImageBitmap, or an <img> where that can't read the format;
-// a GIF gives its first frame) and draws it onto a working canvas, which both the
-// crop view and the shrinking read from.
+// a GIF gives its first frame; an SVG is drawn big, see svgImage) and draws it
+// onto a working canvas, which both the crop view and the shrinking read from.
 async function decode(file) {
     let bitmap;
     let url = null;
     try {
+        if (isSvg(file)) {
+            const svg = await svgImage(file);
+            bitmap = svg.img;
+            url = svg.url;
+            const canvas = canvasOf(svg.width, svg.height);
+            const ctx = canvas.getContext("2d", { willReadFrequently: true });
+            ctx.drawImage(bitmap, 0, 0, svg.width, svg.height);
+            const image = { width: svg.width, height: svg.height, data: ctx.getImageData(0, 0, svg.width, svg.height).data };
+            return { canvas, image, pixelArt: false, width: svg.width, height: svg.height };
+        }
         try {
             bitmap = await createImageBitmap(file);
         } catch {
@@ -376,13 +420,13 @@ export default function PixelImport({ files, busy, error, onSave, onEdit, onClos
             <div className="space-y-[1lh]">
                 {ignored > 0 && (
                     <p className="text-[#f7e463] uppercase">
-                        {ignored} {ignored === 1 ? "BESTAND IS" : "BESTANDEN ZIJN"} GEEN PNG, JPG, WEBP OF GIF
+                        {ignored} {ignored === 1 ? "BESTAND IS" : "BESTANDEN ZIJN"} GEEN PNG, JPG, WEBP, GIF OF SVG
                     </p>
                 )}
 
                 {queue.length === 0 && (
                     <>
-                        <p className="text-neutral-500 uppercase">KIES EEN OF MEER AFBEELDINGEN: PNG, JPG, WEBP OF GIF.</p>
+                        <p className="text-neutral-500 uppercase">KIES EEN OF MEER AFBEELDINGEN: PNG, JPG, WEBP, GIF OF SVG.</p>
                         <div className="flex flex-wrap gap-x-[1ch] -ml-[1ch]">{picker}</div>
                     </>
                 )}

@@ -19,6 +19,7 @@ import AgendaForm from "./agenda/AgendaForm";
 import AgendaBusySheet from "./agenda/AgendaBusySheet";
 import AgendaImport from "./agenda/AgendaImport";
 import AgendaLibrary from "./agenda/AgendaLibrary";
+import AgendaStickerLook from "./agenda/AgendaStickerLook";
 import AgendaStickerTray from "./agenda/AgendaStickerTray";
 import AgendaStyleSheet from "./agenda/AgendaStyleSheet";
 import PixelEditor from "./agenda/PixelEditor";
@@ -28,6 +29,7 @@ import useStickerDrag from "./agenda/useStickerDrag";
 import StickerImage from "./agenda/StickerImage";
 import { base64PngToPixels, SMALL_SIZE, STICKER_SIZE, stickerPayload } from "../utils/agendaPixelFormat";
 import { styleChanges } from "../utils/agendaStyle";
+import { stepRot, stepScale } from "../utils/agendaTransform";
 import { BTN_ACTIVE, BTN_ATTENTION, BTN_PRIMARY, BTN_PLAIN, BTN_RED, SAMEN_COLOR, TRAY_ROWS } from "./agenda/ui";
 
 const REFRESH_MS = 60_000;
@@ -47,6 +49,8 @@ const STICKER_BATCH = 10;
 // each within STICKER_TAP_MS of the last; a mouse just drags it.
 const STICKER_HOLD_MS = 300;
 const STICKER_TAP_MS = 350;
+// Size and rotation taps are saved together once they stop for this long.
+const STICKER_LOOK_SAVE_MS = 400;
 
 const DROP_BOX = [
     "+------------------------------+",
@@ -314,6 +318,24 @@ function AgendaApp({ token, initialProfile, onLogout }) {
 
     // Replaces everything known in [from, to] with what the worker returned, so
     // items the other person deleted disappear too.
+    // Sticker changes shown but not saved yet, by sticker id: { kind, eventId, obj }
+    // (obj null = taken off). A sync that arrives meanwhile must not undo them.
+    const unsaved = useRef(new Map());
+    const keepUnsaved = (kind, next) => {
+        for (const [id, u] of unsaved.current) {
+            if (u.kind !== kind) continue;
+            if (kind === "day") {
+                if (u.obj) next[id] = u.obj;
+                else delete next[id];
+            } else if (next[u.eventId]) {
+                const e = next[u.eventId];
+                const rest = (e.placements ?? []).filter((p) => p.id !== id);
+                next[u.eventId] = { ...e, placements: u.obj ? [...rest, u.obj].sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1)) : rest };
+            }
+        }
+        return next;
+    };
+
     const applyRange = useCallback(
         (from, to, list) => {
             setEvents((prev) => {
@@ -321,7 +343,7 @@ function AgendaApp({ token, initialProfile, onLogout }) {
                 // Yearly items come back with every range, so they are replaced too.
                 for (const [id, e] of Object.entries(prev)) if (!overlaps(e, from, to) && e.repeat !== "jaarlijks") next[id] = e;
                 for (const e of list) next[e.id] = e;
-                return next;
+                return keepUnsaved("item", next);
             });
             if (!me) return;
             const unseen = list.filter((e) => isAppointment(e) && e.updatedBy !== me && !e.status?.[me]?.seenAt).map((e) => e.id);
@@ -341,7 +363,7 @@ function AgendaApp({ token, initialProfile, onLogout }) {
                     const next = {};
                     for (const [id, d] of Object.entries(prev)) if (d.day < from || d.day > to) next[id] = d;
                     for (const [, p] of parts) for (const d of p.daySticks) next[d.id] = d;
-                    return next;
+                    return keepUnsaved("day", next);
                 });
                 setSyncError("");
                 return Math.min(...parts.flatMap(([a, b]) => [a.rev ?? 0, b.rev ?? 0]));
@@ -792,10 +814,20 @@ function AgendaApp({ token, initialProfile, onLogout }) {
     // Puts a stuck sticker in place (or takes it away with null). `ref` says where
     // it lives: { kind: "item", eventId, id } or { kind: "day", id }.
     const putStuck = (ref, obj) => (ref.kind === "item" ? setPlacement(ref.eventId, ref.id, obj) : setDaySticker(ref.id, obj));
+    // Shown now, saved later: kept through syncs until `saved` (or a failure) clears it.
+    const showStuck = (ref, obj) => {
+        unsaved.current.set(ref.id, { kind: ref.kind, eventId: ref.eventId, obj });
+        putStuck(ref, obj);
+    };
+    const savedStuck = (ref, obj) => {
+        unsaved.current.delete(ref.id);
+        if (obj !== undefined) putStuck(ref, obj);
+    };
 
     // Sticker changes show at once and are saved after; when saving fails, say so
     // and reload what is on screen, which puts the sticker back where it was.
     const stickerFailed = (err) => {
+        unsaved.current.clear();
         if (handleAuth(err)) return;
         // A notice, not the sync error: the reload below clears that one when it works.
         setNotice(`STICKER NIET OPGESLAGEN (${err.message.toUpperCase().replace(/\.$/, "")}). HIJ IS TERUGGEZET.`);
@@ -805,17 +837,72 @@ function AgendaApp({ token, initialProfile, onLogout }) {
 
     const removeStuck = async (ref) => {
         setLifted(null);
-        putStuck(ref, null);
+        showStuck(ref, null);
         try {
             await (ref.kind === "item" ? api.unplace(ref.id) : api.unstickDay(ref.id));
+            savedStuck(ref);
             setSyncError("");
         } catch (err) {
             stickerFailed(err);
         }
     };
 
+    // The newest events and day stickers, for saves that run a moment later.
+    const latest = useRef({ events, daySticks });
+    useEffect(() => {
+        latest.current = { events, daySticks };
+    });
+    const stuckNow = (ref) =>
+        ref.kind === "item" ? latest.current.events[ref.eventId]?.placements?.find((p) => p.id === ref.id) : latest.current.daySticks[ref.id];
+
+    // Size and rotation changes show at once and are saved together a moment
+    // later, with the sticker's current spot. One still being created waits for
+    // its real id (`pendingLook`).
+    const lookTimers = useRef({});
+    const pendingLook = useRef({});
+    useEffect(() => () => Object.values(lookTimers.current).forEach(clearTimeout), []);
+    const saveLookSoon = (ref) => {
+        clearTimeout(lookTimers.current[ref.id]);
+        lookTimers.current[ref.id] = setTimeout(async () => {
+            delete lookTimers.current[ref.id];
+            const cur = unsaved.current.get(ref.id)?.obj ?? stuckNow(ref);
+            if (!cur) return;
+            const look = { scale: cur.scale ?? 1, rot: cur.rot ?? 0 };
+            try {
+                const saved =
+                    ref.kind === "item"
+                        ? (await api.movePlacement(ref.id, { x: cur.x, y: cur.y, ...look })).placement
+                        : (await api.moveDaySticker(ref.id, { view: cur.view, day: cur.day, dx: cur.dx, dy: cur.dy, ...look })).daySticker;
+                if (!lookTimers.current[ref.id]) savedStuck(ref, saved);
+            } catch (err) {
+                stickerFailed(err);
+            }
+        }, STICKER_LOOK_SAVE_MS);
+    };
+    // `liftedNow` is `lifted` without waiting for a render, so taps that follow
+    // each other quickly each build on the one before.
+    const liftedNow = useRef(lifted);
+    useEffect(() => {
+        liftedNow.current = lifted;
+    }, [lifted]);
+    const changeLook = (what, dir) => {
+        const ref = liftedNow.current;
+        const cur = ref && (unsaved.current.get(ref.id)?.obj ?? stuckNow(ref));
+        if (!cur) return;
+        const scale = ref.scale ?? cur.scale ?? 1;
+        const rot = ref.rot ?? cur.rot ?? 0;
+        const look = what === "scale" ? { scale: stepScale(scale, dir), rot } : { scale, rot: stepRot(rot, dir) };
+        liftedNow.current = { ...ref, ...look };
+        setLifted(liftedNow.current);
+        showStuck(ref, { ...cur, ...look });
+        if (ref.id.startsWith("tmp-")) pendingLook.current[ref.id] = true;
+        else saveLookSoon(ref);
+    };
+
     // A sticker let go somewhere: from the tray it sticks there; a stuck one moves
-    // there (also from a day onto an item and back); on the bin it comes off.
+    // there (also from a day onto an item and back), keeping its size and
+    // rotation; on the bin it comes off. What you dropped stays picked up, so the
+    // size and rotation buttons are right there.
     const dropSticker = async (target, sticker, payload) => {
         const from = payload?.from ?? null;
         setLifted(null);
@@ -823,28 +910,44 @@ function AgendaApp({ token, initialProfile, onLogout }) {
             if (from) removeStuck(from);
             return;
         }
+        const look = { scale: from?.scale ?? 1, rot: from?.rot ?? 0 };
         const daySpot = target.kind === "day" ? { view: target.view, day: target.day, dx: target.dx, dy: target.dy } : null;
         try {
             if (from?.kind === "item" && target.kind === "item" && from.eventId === target.eventId) {
                 const old = events[from.eventId]?.placements?.find((p) => p.id === from.id);
-                putStuck(from, { ...old, ...target.spot });
-                putStuck(from, (await api.movePlacement(from.id, target.spot)).placement);
+                showStuck(from, { ...old, ...target.spot });
+                setLifted(from);
+                const saved = (await api.movePlacement(from.id, target.spot)).placement;
+                if (!lookTimers.current[from.id]) savedStuck(from, saved);
             } else if (from?.kind === "day" && daySpot) {
-                putStuck(from, { ...daySticks[from.id], ...daySpot });
-                putStuck(from, (await api.moveDaySticker(from.id, daySpot)).daySticker);
+                showStuck(from, { ...daySticks[from.id], ...daySpot });
+                setLifted(from);
+                const saved = (await api.moveDaySticker(from.id, daySpot)).daySticker;
+                if (!lookTimers.current[from.id]) savedStuck(from, saved);
             } else {
                 // New here: shown with a temporary id until the worker answers.
                 const tmp = `tmp-${Date.now()}`;
                 const here = daySpot ? { kind: "day", id: tmp } : { kind: "item", eventId: target.eventId, id: tmp };
-                const base = { id: tmp, stickerId: sticker.id, placedBy: me, createdAt: new Date().toISOString() };
-                putStuck(here, daySpot ? { ...base, ...daySpot } : { ...base, eventId: target.eventId, occurrenceDate: null, ...target.spot });
-                if (from) putStuck(from, null);
+                const base = { id: tmp, stickerId: sticker.id, placedBy: me, createdAt: new Date().toISOString(), ...look };
+                showStuck(here, daySpot ? { ...base, ...daySpot } : { ...base, eventId: target.eventId, occurrenceDate: null, ...target.spot });
+                setLifted({ ...here, stickerId: sticker.id, ...look });
+                if (from) showStuck(from, null);
                 const made = daySpot
-                    ? (await api.stickDay({ ...daySpot, stickerId: sticker.id })).daySticker
-                    : (await api.place({ eventId: target.eventId, stickerId: sticker.id, occurrenceDate: null, ...target.spot })).placement;
-                putStuck(here, null);
-                putStuck({ ...here, id: made.id }, made);
-                if (from) await (from.kind === "item" ? api.unplace(from.id) : api.unstickDay(from.id));
+                    ? (await api.stickDay({ ...daySpot, stickerId: sticker.id, ...look })).daySticker
+                    : (await api.place({ eventId: target.eventId, stickerId: sticker.id, occurrenceDate: null, ...target.spot, ...look })).placement;
+                const real = { ...here, id: made.id };
+                // Size or rotation changed while it was being created: keep those.
+                const changed = pendingLook.current[tmp] ? stuckNow(here) : null;
+                delete pendingLook.current[tmp];
+                savedStuck(here, null);
+                if (changed) showStuck(real, { ...made, scale: changed.scale, rot: changed.rot });
+                else putStuck(real, made);
+                setLifted((prev) => (prev?.id === tmp ? { ...prev, id: made.id } : prev));
+                if (changed) saveLookSoon(real);
+                if (from) {
+                    await (from.kind === "item" ? api.unplace(from.id) : api.unstickDay(from.id));
+                    savedStuck(from);
+                }
             }
             setSyncError("");
         } catch (err) {
@@ -946,6 +1049,14 @@ function AgendaApp({ token, initialProfile, onLogout }) {
         if (!profile) return undefined;
         const onKey = (e) => {
             if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey || sheet || picker || studio || isTyping(e.target)) return;
+            if (lifted && !dragging) {
+                const step = { "+": ["scale", 1], "=": ["scale", 1], "-": ["scale", -1], "[": ["rot", -1], "]": ["rot", 1] }[e.key];
+                if (step) {
+                    e.preventDefault();
+                    changeLook(...step);
+                    return;
+                }
+            }
             if (e.key === "Escape" && (lifted || selection || tray)) {
                 setLifted(null);
                 setSelection(null);
@@ -1011,10 +1122,12 @@ function AgendaApp({ token, initialProfile, onLogout }) {
         stickersById: library.byId,
         hiddenId: dragging?.payload?.from?.id ?? null,
         liftedId: lifted?.id ?? null,
-        onPress: (e, d) => pressStuck(e, { kind: "day", id: d.id, stickerId: d.stickerId }, () => d.view === "maand" && selectDay(d.day)),
+        onPress: (e, d) =>
+            pressStuck(e, { kind: "day", id: d.id, stickerId: d.stickerId, scale: d.scale ?? 1, rot: d.rot ?? 0 }, () => d.view === "maand" && selectDay(d.day)),
     };
     // While a stuck sticker is picked up, the bottom bar is a bin to drop it on.
-    const binOpen = Boolean(lifted || dragging?.payload?.from);
+    const binOpen = Boolean(dragging?.payload?.from);
+    const lookControls = lifted && <AgendaStickerLook look={lifted} onChange={changeLook} onDone={() => setLifted(null)} />;
     const sheetEvent = sheet?.id ? events[sheet.id] : null;
 
     const status = syncError ? (
@@ -1053,16 +1166,11 @@ function AgendaApp({ token, initialProfile, onLogout }) {
     // While sticking a sticker on or choosing items, the bar at the bottom (also on
     // desktop) holds just that.
     const modeBar = binOpen ? (
-        <>
-            <span className="text-[#ff4d4d] uppercase px-[1ch] min-w-0 truncate">
-                <span className="cell">✕</span> {dragging ? "LAAT HIER LOS OM WEG TE HALEN" : "SLEEP HEM WAAR JE WILT, OF HIERHEEN"}
-            </span>
-            {!dragging && (
-                <button type="button" onClick={() => setLifted(null)} className={`${BTN_PLAIN} ml-auto`}>
-                    [TERUG]
-                </button>
-            )}
-        </>
+        <span className="text-[#ff4d4d] uppercase px-[1ch] min-w-0 truncate">
+            <span className="cell">✕</span> LAAT HIER LOS OM WEG TE HALEN
+        </span>
+    ) : lifted && !tray ? (
+        lookControls
     ) : tray ? (
         <AgendaStickerTray
             stickers={library.choices}
@@ -1071,6 +1179,7 @@ function AgendaApp({ token, initialProfile, onLogout }) {
             onDraw={() => openStudio("editor")}
             onImport={() => openStudio("import")}
             onManage={() => setPicker({})}
+            look={lookControls}
             onClose={() => setTray(false)}
         />
     ) : selection ? (
@@ -1341,10 +1450,10 @@ function AgendaApp({ token, initialProfile, onLogout }) {
                 createPortal(
                     <>
                         <span ref={dragPreviewRef} aria-hidden="true" className="pointer-events-none fixed left-0 top-0 z-[69] opacity-40 invisible">
-                            <StickerImage sticker={dragging.sticker} />
+                            <StickerImage sticker={dragging.sticker} scale={dragging.payload?.from?.scale ?? 1} rot={dragging.payload?.from?.rot ?? 0} />
                         </span>
                         <span ref={dragGhostRef} aria-hidden="true" className="pointer-events-none fixed left-0 top-0 z-[70]">
-                            <StickerImage sticker={dragging.sticker} />
+                            <StickerImage sticker={dragging.sticker} scale={dragging.payload?.from?.scale ?? 1} rot={dragging.payload?.from?.rot ?? 0} />
                         </span>
                     </>,
                     document.body

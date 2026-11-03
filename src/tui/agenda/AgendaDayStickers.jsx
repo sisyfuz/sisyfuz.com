@@ -23,7 +23,7 @@ export default function AgendaDayStickers({ items, stickersById, place, hiddenId
                     className={`absolute pointer-events-auto select-none ${d.id === liftedId ? "animate-pulse touch-none cursor-grab" : "cursor-pointer"}`}
                     style={{ ...place(d), WebkitTouchCallout: "none" }}
                 >
-                    <StickerImage sticker={stickersById[d.stickerId]} />
+                    <StickerImage sticker={stickersById[d.stickerId]} scale={d.scale ?? 1} rot={d.rot ?? 0} />
                 </span>
             ))}
         </span>

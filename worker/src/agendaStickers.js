@@ -11,13 +11,13 @@
  *   POST   /agenda/stickers              { stickers: [{ name, png, pngSmall }] } (1..10) -> { stickers, rev }
  *   PATCH  /agenda/stickers/:id          any of { name, png, pngSmall } -> { sticker, rev }
  *   DELETE /agenda/stickers/:id          archives it -> { ok, rev }
- *   POST   /agenda/placements            { eventId, stickerId, occurrenceDate, x, y } -> { placement, rev }
- *   PATCH  /agenda/placements/:id        { x, y } (moves it) -> { placement, rev }
+ *   POST   /agenda/placements            { eventId, stickerId, occurrenceDate, x, y, scale?, rot? } -> { placement, rev }
+ *   PATCH  /agenda/placements/:id        { x, y, scale?, rot? } (moves, sizes, turns it) -> { placement, rev }
  *   DELETE /agenda/placements/:id        -> { ok, rev }
  *   POST   /agenda/events/style          { ids, color?, logoId?, logoSize? } -> { events, rev }
  *   GET    /agenda/day-stickers?from=&to= -> { daySticks, rev } stuck on days in [from, to]
- *   POST   /agenda/day-stickers          { view, day, stickerId, dx, dy } -> { daySticker, rev }
- *   PATCH  /agenda/day-stickers/:id      { view, day, dx, dy } (moves it) -> { daySticker, rev }
+ *   POST   /agenda/day-stickers          { view, day, stickerId, dx, dy, scale?, rot? } -> { daySticker, rev }
+ *   PATCH  /agenda/day-stickers/:id      { view, day, dx, dy, scale?, rot? } (moves, sizes, turns it) -> { daySticker, rev }
  *   DELETE /agenda/day-stickers/:id      -> { ok, rev }
  *
  * The routes need a few helpers from agenda.js; they come in through `tools`
@@ -42,6 +42,9 @@ const DAY_VIEWS = ["maand", "lijst"];
 const DAY_DX = [-12, 80];
 const DAY_DY = [-8, 40];
 const MAX_DAY_RANGE_DAYS = 400;
+// Every stuck sticker has a size (times its 64x64) and a rotation in whole degrees;
+// the browser redraws it at the same pixel size, so it stays crisp.
+const SCALE_RANGE = [0.5, 3];
 
 const COLOR_RE = /^#[0-9a-fA-F]{6}$/;
 const BASE64_RE = /^[A-Za-z0-9+/]+={0,2}$/;
@@ -106,9 +109,37 @@ export const DAY_STICKER_MIGRATION = {
   ],
 };
 
+export const STICKER_LOOK_MIGRATION = {
+  version: 4,
+  alter: [
+    "ALTER TABLE agenda_placements ADD COLUMN scale REAL NOT NULL DEFAULT 1",
+    "ALTER TABLE agenda_placements ADD COLUMN rot INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE agenda_day_stickers ADD COLUMN scale REAL NOT NULL DEFAULT 1",
+    "ALTER TABLE agenda_day_stickers ADD COLUMN rot INTEGER NOT NULL DEFAULT 0",
+  ],
+  create: [],
+};
+
 // -------------------------------------------------------------
 // Validation
 // -------------------------------------------------------------
+
+// Size and rotation from a request: missing fields are null (keep / default);
+// a wrong one is an error. Rotation is kept as 0..359.
+function parseLook(body) {
+  const look = { scale: null, rot: null, error: "" };
+  if (body.scale !== undefined) {
+    if (typeof body.scale !== "number" || !Number.isFinite(body.scale) || body.scale < SCALE_RANGE[0] || body.scale > SCALE_RANGE[1]) {
+      return { ...look, error: "Ongeldige grootte." };
+    }
+    look.scale = Math.round(body.scale * 100) / 100;
+  }
+  if (body.rot !== undefined) {
+    if (!Number.isInteger(body.rot) || Math.abs(body.rot) > 720) return { ...look, error: "Ongeldige draaiing." };
+    look.rot = ((body.rot % 360) + 360) % 360;
+  }
+  return look;
+}
 
 // Returns the decoded bytes of a base64 PNG of exactly size x size pixels, or null.
 // Only the signature and the IHDR chunk are looked at; the browser draws the rest.
@@ -227,6 +258,8 @@ export function toPlacement(row) {
     occurrenceDate: row.occurrence_date,
     x: row.x,
     y: row.y,
+    scale: row.scale ?? 1,
+    rot: row.rot ?? 0,
     placedBy: row.placed_by,
     createdAt: row.created_at,
   };
@@ -358,6 +391,8 @@ async function createPlacement(request, env, origin, person, tools) {
   if (typeof eventId !== "string" || !eventId || eventId.length > 64) return tools.reply({ error: "Ongeldig item." }, 400, origin);
   if (typeof stickerId !== "string" || !stickerId || stickerId.length > 64) return tools.reply({ error: "Ongeldig plaatje." }, 400, origin);
   if (!isValidSpot(body)) return tools.reply({ error: "Ongeldige plek." }, 400, origin);
+  const look = parseLook(body);
+  if (look.error) return tools.reply({ error: look.error }, 400, origin);
 
   const db = env.AGENDA_DB;
   const [eventRes, stickerRes] = await db.batch([
@@ -382,11 +417,11 @@ async function createPlacement(request, env, origin, person, tools) {
   const [result] = await db.batch([
     db
       .prepare(
-        `INSERT INTO agenda_placements (id, event_id, sticker_id, occurrence_date, x, y, placed_by, created_at)
-         SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8
+        `INSERT INTO agenda_placements (id, event_id, sticker_id, occurrence_date, x, y, placed_by, created_at, scale, rot)
+         SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?10, ?11
          WHERE (SELECT COUNT(*) FROM agenda_placements WHERE event_id = ?2 AND occurrence_date IS ?4 AND placed_by = ?7) < ?9`
       )
-      .bind(id, eventId, stickerId, occurrenceDate, body.x, body.y, person, now, MAX_PLACEMENTS_PER_PERSON),
+      .bind(id, eventId, stickerId, occurrenceDate, body.x, body.y, person, now, MAX_PLACEMENTS_PER_PERSON, look.scale ?? 1, look.rot ?? 0),
     tools.bumpRev(db),
   ]);
   if (!result.meta || result.meta.changes === 0) return tools.reply(limit, 400, origin);
@@ -399,8 +434,13 @@ async function movePlacement(request, env, origin, id, tools) {
   const { body, error } = await tools.readBody(request);
   if (error) return tools.reply({ error }, 400, origin);
   if (!isValidSpot(body)) return tools.reply({ error: "Ongeldige plek." }, 400, origin);
+  const look = parseLook(body);
+  if (look.error) return tools.reply({ error: look.error }, 400, origin);
   const db = env.AGENDA_DB;
-  const result = await db.prepare("UPDATE agenda_placements SET x = ?, y = ? WHERE id = ?").bind(body.x, body.y, id).run();
+  const result = await db
+    .prepare("UPDATE agenda_placements SET x = ?, y = ?, scale = COALESCE(?, scale), rot = COALESCE(?, rot) WHERE id = ?")
+    .bind(body.x, body.y, look.scale, look.rot, id)
+    .run();
   if (!result.meta || result.meta.changes === 0) return tools.reply({ error: "Dit plaatje zit er niet meer op." }, 404, origin);
   const [, rowRes] = await db.batch([tools.bumpRev(db), db.prepare("SELECT * FROM agenda_placements WHERE id = ?").bind(id)]);
   return tools.reply({ placement: toPlacement(rowRes.results[0]), rev: await tools.readRev(db) }, 200, origin);
@@ -463,7 +503,18 @@ async function styleEvents(request, env, origin, tools) {
 // -------------------------------------------------------------
 
 function toDaySticker(row) {
-  return { id: row.id, view: row.view, day: row.day, stickerId: row.sticker_id, dx: row.dx, dy: row.dy, placedBy: row.placed_by, createdAt: row.created_at };
+  return {
+    id: row.id,
+    view: row.view,
+    day: row.day,
+    stickerId: row.sticker_id,
+    dx: row.dx,
+    dy: row.dy,
+    scale: row.scale ?? 1,
+    rot: row.rot ?? 0,
+    placedBy: row.placed_by,
+    createdAt: row.created_at,
+  };
 }
 
 const inRange = (n, [min, max]) => Number.isInteger(n) && n >= min && n <= max;
@@ -472,7 +523,7 @@ function checkDaySpot(body) {
   if (!DAY_VIEWS.includes(body.view)) return "Ongeldige plek.";
   if (!isValidDate(body.day)) return "Ongeldige datum.";
   if (!inRange(body.dx, DAY_DX) || !inRange(body.dy, DAY_DY)) return "Ongeldige plek.";
-  return "";
+  return parseLook(body).error;
 }
 
 async function listDayStickers(url, env, origin, tools) {
@@ -503,11 +554,11 @@ async function createDaySticker(request, env, origin, person, tools) {
   const [result] = await db.batch([
     db
       .prepare(
-        `INSERT INTO agenda_day_stickers (id, view, day, sticker_id, dx, dy, placed_by, created_at)
-         SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8
+        `INSERT INTO agenda_day_stickers (id, view, day, sticker_id, dx, dy, placed_by, created_at, scale, rot)
+         SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?10, ?11
          WHERE (SELECT COUNT(*) FROM agenda_day_stickers WHERE view = ?2 AND day = ?3 AND placed_by = ?7) < ?9`
       )
-      .bind(id, body.view, body.day, body.stickerId, body.dx, body.dy, person, now, MAX_PLACEMENTS_PER_PERSON),
+      .bind(id, body.view, body.day, body.stickerId, body.dx, body.dy, person, now, MAX_PLACEMENTS_PER_PERSON, parseLook(body).scale ?? 1, parseLook(body).rot ?? 0),
     tools.bumpRev(db),
   ]);
   if (!result.meta || result.meta.changes === 0) {
@@ -526,8 +577,8 @@ async function moveDaySticker(request, env, origin, id, tools) {
   if (problem) return tools.reply({ error: problem }, 400, origin);
   const db = env.AGENDA_DB;
   const result = await db
-    .prepare("UPDATE agenda_day_stickers SET view = ?, day = ?, dx = ?, dy = ? WHERE id = ?")
-    .bind(body.view, body.day, body.dx, body.dy, id)
+    .prepare("UPDATE agenda_day_stickers SET view = ?, day = ?, dx = ?, dy = ?, scale = COALESCE(?, scale), rot = COALESCE(?, rot) WHERE id = ?")
+    .bind(body.view, body.day, body.dx, body.dy, parseLook(body).scale, parseLook(body).rot, id)
     .run();
   if (!result.meta || result.meta.changes === 0) return tools.reply({ error: "Dit plaatje zit er niet meer op." }, 404, origin);
   const [, rowRes] = await db.batch([tools.bumpRev(db), db.prepare("SELECT * FROM agenda_day_stickers WHERE id = ?").bind(id)]);

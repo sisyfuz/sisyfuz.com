@@ -124,7 +124,7 @@ export default function AgendaItem({
                 stickersById={stickersById}
                 hiddenId={stickerHiddenId}
                 liftedId={stickerLiftedId}
-                onPress={(e, p) => onStickerPress?.(e, { kind: "item", eventId: event.id, id: p.id, stickerId: p.stickerId }, tapCard)}
+                onPress={(e, p) => onStickerPress?.(e, { kind: "item", eventId: event.id, id: p.id, stickerId: p.stickerId, scale: p.scale ?? 1, rot: p.rot ?? 0 }, tapCard)}
             />
         </article>
     );

@@ -320,7 +320,7 @@ describe("Agenda stickers: placements", () => {
         assert.equal(first.res.status, 201);
         assert.deepEqual(
             { ...first.data.placement, id: undefined, createdAt: undefined },
-            { id: undefined, eventId: event.id, stickerId: s.id, occurrenceDate: null, x: 0.25, y: 3, placedBy: "dorus", createdAt: undefined }
+            { id: undefined, eventId: event.id, stickerId: s.id, occurrenceDate: null, x: 0.25, y: 3, scale: 1, rot: 0, placedBy: "dorus", createdAt: undefined }
         );
         assert.match(first.data.placement.id, /^[0-9a-f-]{36}$/);
         const second = await place(partner, event.id, s.id, { x: 1, y: 20 });
@@ -668,7 +668,7 @@ describe("Agenda stickers: on days", () => {
         assert.equal(made.res.status, 201);
         assert.deepEqual(
             { ...made.data.daySticker, id: undefined, createdAt: undefined },
-            { id: undefined, view: "maand", day: "2026-11-12", stickerId: s.id, dx: -3, dy: -1, placedBy: "dorus", createdAt: undefined }
+            { id: undefined, view: "maand", day: "2026-11-12", stickerId: s.id, dx: -3, dy: -1, scale: 1, rot: 0, placedBy: "dorus", createdAt: undefined }
         );
         await stick(partner, s.id, { view: "lijst", day: "2026-12-01", dx: 20, dy: 0 });
         const nov = await list(partner);
@@ -702,6 +702,31 @@ describe("Agenda stickers: on days", () => {
         assert.equal((await stick(dorus, s.id)).res.status, 404, "archived pictures can't be stuck on");
         assert.equal((await list(dorus, "2026-11-30", "2026-11-01")).res.status, 400);
         assert.equal((await list(dorus, "2026-01-01", "2027-12-31")).res.status, 400);
+    });
+
+    test("size and rotation: stored, kept when moving unless changed, and checked", async () => {
+        const { dorus } = await tokens();
+        const event = await addEvent(dorus);
+        const s = await addSticker(dorus);
+        const day = (await stick(dorus, s.id, { scale: 1.5, rot: -15 })).data.daySticker;
+        assert.deepEqual([day.scale, day.rot], [1.5, 345], "rotation is kept as 0..359");
+        const moved = await call(`/agenda/day-stickers/${day.id}`, { method: "PATCH", body: { view: "maand", day: "2026-11-13", dx: 0, dy: 0 }, token: dorus });
+        assert.deepEqual([moved.data.daySticker.scale, moved.data.daySticker.rot], [1.5, 345], "moving keeps the look");
+        const turned = await call(`/agenda/day-stickers/${day.id}`, { method: "PATCH", body: { view: "maand", day: "2026-11-13", dx: 0, dy: 0, scale: 3, rot: 90 }, token: dorus });
+        assert.deepEqual([turned.data.daySticker.scale, turned.data.daySticker.rot], [3, 90]);
+
+        const item = (await place(dorus, event.id, s.id, { scale: 0.5, rot: 45 })).data.placement;
+        assert.deepEqual([item.scale, item.rot], [0.5, 45]);
+        const itemMoved = await call(`/agenda/placements/${item.id}`, { method: "PATCH", body: { x: 0.1, y: 1, rot: 400 }, token: dorus });
+        assert.deepEqual([itemMoved.data.placement.scale, itemMoved.data.placement.rot], [0.5, 40]);
+        const listed = (await call("/agenda/events?from=2026-11-01&to=2026-11-30", { token: dorus })).data.events[0].placements[0];
+        assert.deepEqual([listed.scale, listed.rot], [0.5, 40]);
+
+        for (const bad of [{ scale: 0.4 }, { scale: 3.1 }, { scale: "2" }, { rot: 1.5 }, { rot: 721 }, { rot: "90" }]) {
+            assert.equal((await stick(dorus, s.id, bad)).res.status, 400, `day ${JSON.stringify(bad)}`);
+            assert.equal((await place(dorus, event.id, s.id, bad)).res.status, 400, `item ${JSON.stringify(bad)}`);
+            assert.equal((await call(`/agenda/placements/${item.id}`, { method: "PATCH", body: { x: 0, y: 0, ...bad }, token: dorus })).res.status, 400);
+        }
     });
 
     test("at most 8 per day per person per view", async () => {
@@ -794,7 +819,7 @@ describe("Agenda stickers: database migration", () => {
     }
     const columns = () => rows("PRAGMA table_info(agenda_events)").map((c) => c.name);
     const schemaVersion = () => rows("SELECT value FROM agenda_meta WHERE key = 'schema'")[0]?.value;
-    const LATEST = 3;
+    const LATEST = 4;
 
     test("a database from before stickers gets the new columns and tables, and keeps its items", async () => {
         oldDatabase();

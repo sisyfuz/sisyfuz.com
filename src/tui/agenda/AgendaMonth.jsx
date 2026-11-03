@@ -40,7 +40,7 @@ function cellLines(items, day, people) {
     for (const e of items.filter(isAppointment)) {
         const time = !e.allDay && e.startDate === day ? `${e.startTime} ` : "";
         const ask = itemState(e, people.me, people.ids).needsMyAnswer ? "? " : "";
-        lines.push({ key: e.id, text: `${ask}${time}${e.title}`, color: people.colorOf(e.forWho) });
+        lines.push({ key: e.id, text: `${ask}${time}${e.title}`, color: e.color || people.colorOf(e.forWho) });
     }
     for (const g of busyGroups(items.filter(isBusy), day)) {
         lines.push({ key: g.key, text: `░ ${g.reason.toUpperCase()}`, color: people.colorOf(g.forWho) });
@@ -124,7 +124,7 @@ export default function AgendaMonth({ events, ym, selected, today, onSelect, onM
                             {days.map((day) => {
                                 const items = byDay.get(day) ?? [];
                                 const zone = periodsOn(periods, day)[0];
-                                const zoneColor = zone ? people.colorOf(zone.forWho) : null;
+                                const zoneColor = zone ? zone.color || people.colorOf(zone.forWho) : null;
                                 const specials = [...new Map(items.filter(isSpecial).map((e) => [e.reason, specialType(e)])).values()].slice(0, 2);
                                 const inMonth = Number(day.slice(5, 7)) - 1 === ym.month;
                                 const isSelected = day === selected;
@@ -185,7 +185,7 @@ export default function AgendaMonth({ events, ym, selected, today, onSelect, onM
             {visiblePeriods.length > 0 && (
                 <ul aria-label="Periodes" className="uppercase">
                     {visiblePeriods.map((p) => {
-                        const color = people.colorOf(p.forWho);
+                        const color = p.color || people.colorOf(p.forWho);
                         return (
                             <li key={p.id}>
                                 <button
@@ -225,7 +225,7 @@ export default function AgendaMonth({ events, ym, selected, today, onSelect, onM
                     {formatDayLong(selected)}
                 </h3>
                 {selectedZones.map((p) => (
-                    <p key={p.id} className="uppercase" style={{ color: people.colorOf(p.forWho) }}>
+                    <p key={p.id} className="uppercase" style={{ color: p.color || people.colorOf(p.forWho) }}>
                         ░ {p.title} <span className="text-neutral-500">t/m {formatDayShort(p.endDate)}</span>
                     </p>
                 ))}

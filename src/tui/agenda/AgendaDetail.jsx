@@ -5,6 +5,7 @@ import { itemState } from "../../utils/agendaStatus";
 import { isBusy } from "../../utils/agendaBusy";
 import { isAppointment, isPeriod, isSpecial, specialType } from "../../utils/agendaSpecial";
 import AgendaSheet from "./AgendaSheet";
+import StickerImage from "./StickerImage";
 import { BTN_GREEN, BTN_GREEN_ON, BTN_PLAIN, BTN_RED, BTN_RED_ON } from "./ui";
 
 // "elk jaar op 14 maart · sinds 2005" for yearly special days.
@@ -32,7 +33,7 @@ function personLine(status, isLastEditor, isNew) {
     return { glyph: "○", text: "NOG NIET GEZIEN", tone: "text-neutral-500" };
 }
 
-export default function AgendaDetail({ event, people, busy, error, onClose, onEdit, onRespond, onDelete }) {
+export default function AgendaDetail({ event, people, busy, error, onClose, onEdit, onRespond, onDelete, stickersById = {}, onAddSticker, onRemoveSticker }) {
     const [confirmDelete, setConfirmDelete] = useState(false);
     const state = itemState(event, people.me, people.ids);
     const forColor = people.colorOf(event.forWho);
@@ -149,6 +150,37 @@ export default function AgendaDetail({ event, people, busy, error, onClose, onEd
                             </div>
                         )}
                     </>
+                )}
+
+                {isAppointment(event) && (
+                    <div>
+                        <p className="text-neutral-500 uppercase">STICKERS</p>
+                        {event.placements?.length > 0 && (
+                            <div className="flex flex-wrap gap-x-[1ch] -ml-[1ch]">
+                                {event.placements.map((p) => (
+                                    <span key={p.id} className="inline-flex flex-col items-start px-[1ch]">
+                                        <StickerImage sticker={stickersById[p.stickerId]} />
+                                        <span className="uppercase text-neutral-500" style={{ color: people.colorOf(p.placedBy) }}>
+                                            {people.nameOf(p.placedBy)}
+                                        </span>
+                                        <button
+                                            type="button"
+                                            disabled={busy}
+                                            onClick={() => onRemoveSticker(event.id, p.id)}
+                                            className={`${BTN_PLAIN} -ml-[1ch]`}
+                                        >
+                                            [ER AF]
+                                        </button>
+                                    </span>
+                                ))}
+                            </div>
+                        )}
+                        <div className="flex flex-wrap gap-x-[1ch] -ml-[1ch]">
+                            <button type="button" disabled={busy} onClick={() => onAddSticker(event.id)} className={BTN_PLAIN}>
+                                [+ STICKER]
+                            </button>
+                        </div>
+                    </div>
                 )}
 
                 {error && <p role="alert" className="text-[#ff4d4d] uppercase">{error}</p>}

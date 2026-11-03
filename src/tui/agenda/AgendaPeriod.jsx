@@ -4,7 +4,7 @@ import { tint } from "../../utils/agendaSpecial";
 
 /** Start of a zone in the list: a tinted two-line banner. */
 export function PeriodBanner({ period, people, continued, onOpen }) {
-    const color = people.colorOf(period.forWho);
+    const color = period.color || people.colorOf(period.forWho);
     const days = daysBetween(period.startDate, period.endDate) + 1;
     return (
         <button
@@ -29,7 +29,7 @@ export function PeriodBanner({ period, people, continued, onOpen }) {
 
 /** End of a zone in the list. */
 export function PeriodEnd({ period, people }) {
-    const color = people.colorOf(period.forWho);
+    const color = period.color || people.colorOf(period.forWho);
     return (
         <p className="uppercase whitespace-nowrap overflow-hidden" style={{ color }}>
             <span aria-hidden="true" className="opacity-60">└──</span> EINDE {period.title}

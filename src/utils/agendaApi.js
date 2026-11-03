@@ -1,6 +1,7 @@
 // src/utils/agendaApi.js
 // Client for the private agenda routes on the sisyfuz-counter worker.
-// The session token lives in localStorage; nothing else is stored on the device.
+// The session token lives in localStorage. The only other thing kept on the device
+// is the sticker library (IndexedDB, see useStickers.js), wiped on logout.
 
 const API_BASE = import.meta.env?.VITE_AGENDA_API || "https://sisyfuz-counter.sisyfuz.workers.dev";
 const TOKEN_KEY = "sisyfuz:agenda-session";

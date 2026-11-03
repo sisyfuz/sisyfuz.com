@@ -20,10 +20,16 @@ export default function AgendaDayItems({ items, day, today, itemProps }) {
             {(specials.length > 0 || busy.length > 0) && (
                 <div>
                     {specials.map((occ) => (
-                        <AgendaSpecialRow key={occ.id} occurrence={occ} isToday={day === today} onOpen={itemProps.onOpen} />
+                        <AgendaSpecialRow key={occ.id} occurrence={occ} isToday={day === today} onOpen={itemProps.onOpen} stickersById={itemProps.stickersById} />
                     ))}
                     {busyGroups(busy, day).map((group) => (
-                        <AgendaBusyRow key={group.key} group={group} people={itemProps.people} onOpen={(g) => itemProps.onOpenBusy(g, day)} />
+                        <AgendaBusyRow
+                            key={group.key}
+                            group={group}
+                            people={itemProps.people}
+                            stickersById={itemProps.stickersById}
+                            onOpen={(g) => itemProps.onOpenBusy(g, day)}
+                        />
                     ))}
                 </div>
             )}

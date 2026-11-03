@@ -44,6 +44,8 @@
  *   POST   /agenda/events/:id/response   { response: "akkoord" | "niet" | null } -> { event }
  *   POST   /agenda/import                { events: [...] } -> { added, updated, unchanged }
  *   POST   /agenda/seen                  { ids: [...], level: "seen" | "read" } -> { success }
+ *   *      /agenda/stickers, /agenda/placements, /agenda/events/style
+ *                                        pixel stickers, logos and colours (see agendaStickers.js)
  *
  * An item is an "afspraak" (appointment), "onbeschikbaar" (busy, with a reason
  * such as school or therapie), "bijzonder" (a special day: verjaardag, jubileum
@@ -60,6 +62,7 @@
  */
 
 import { ALLOWED_ORIGINS, clientIp, isKeyRateLimited, isRateLimited, json, secretsMatch, sha256 } from "./http.js";
+import { STICKER_MIGRATION, checkLogo, handleStickers, isStickerPath, parseStyle, toPlacement } from "./agendaStickers.js";
 
 // Ids are fixed and generic; real names come from AGENDA_NAME_<ID> secrets.
 export const PEOPLE = [
@@ -178,11 +181,40 @@ const SCHEMA = [
   )`,
 ];
 
+// SCHEMA is how the first version of the database looked. The live database already
+// exists, so later changes are one-time migrations; the number of the last one that
+// ran is kept in agenda_meta under 'schema'.
+const MIGRATIONS = [STICKER_MIGRATION];
+
 const schemaReady = new WeakSet();
+
+async function migrate(db) {
+  const row = await db.prepare("SELECT value FROM agenda_meta WHERE key = 'schema'").first();
+  let version = row ? row.value : 1;
+  for (const migration of MIGRATIONS) {
+    if (migration.version <= version) continue;
+    for (const sql of migration.alter) {
+      try {
+        await db.prepare(sql).run();
+      } catch (err) {
+        // Another isolate (or an earlier, interrupted run) added it already.
+        if (!/duplicate column/i.test(`${err?.message} ${err?.cause?.message}`)) throw err;
+      }
+    }
+    await db.batch([
+      ...migration.create.map((sql) => db.prepare(sql)),
+      db
+        .prepare("INSERT INTO agenda_meta (key, value) VALUES ('schema', ?1) ON CONFLICT(key) DO UPDATE SET value = MAX(value, ?1)")
+        .bind(migration.version),
+    ]);
+    version = migration.version;
+  }
+}
 
 async function ensureSchema(db) {
   if (schemaReady.has(db)) return;
   await db.batch(SCHEMA.map((sql) => db.prepare(sql)));
+  await migrate(db);
   schemaReady.add(db);
 }
 
@@ -796,7 +828,7 @@ export function validateEvent(input) {
 // Events
 // -------------------------------------------------------------
 
-function toEvent(row, statusRows) {
+function toEvent(row, statusRows, placementRows = []) {
   const status = {};
   for (const id of PERSON_IDS) status[id] = { seenAt: null, readAt: null, response: null, respondedAt: null };
   for (const s of statusRows) {
@@ -825,16 +857,27 @@ function toEvent(row, statusRows) {
     updatedAt: row.updated_at,
     version: row.version,
     status,
+    color: row.color,
+    logoId: row.logo_id,
+    logoSize: row.logo_id === null ? "" : row.logo_size,
+    placements: placementRows.filter((p) => p.event_id === row.id).map(toPlacement),
   };
 }
 
-async function loadEvent(db, id) {
-  const [eventRes, statusRes] = await db.batch([
-    db.prepare("SELECT * FROM agenda_events WHERE id = ?").bind(id),
-    db.prepare("SELECT * FROM agenda_status WHERE event_id = ?").bind(id),
+/** The given items, in the order asked; ids that do not exist are left out. */
+async function loadEvents(db, ids) {
+  const marks = ids.map(() => "?").join(",");
+  const [eventRes, statusRes, placementRes] = await db.batch([
+    db.prepare(`SELECT * FROM agenda_events WHERE id IN (${marks})`).bind(...ids),
+    db.prepare(`SELECT * FROM agenda_status WHERE event_id IN (${marks})`).bind(...ids),
+    db.prepare(`SELECT * FROM agenda_placements WHERE event_id IN (${marks}) ORDER BY created_at, rowid`).bind(...ids),
   ]);
-  const row = eventRes.results[0];
-  return row ? toEvent(row, statusRes.results) : null;
+  const byId = new Map(eventRes.results.map((row) => [row.id, row]));
+  return ids.filter((id) => byId.has(id)).map((id) => toEvent(byId.get(id), statusRes.results, placementRes.results));
+}
+
+async function loadEvent(db, id) {
+  return (await loadEvents(db, [id]))[0] ?? null;
 }
 
 // Every change bumps one counter, so phones can ask "anything new?" for the
@@ -878,14 +921,15 @@ async function listEvents(url, env, origin) {
   // would read every row ever stored.
   const db = env.AGENDA_DB;
   const inRange = "SELECT id FROM agenda_events WHERE end_date >= ?1 AND start_date <= ?2 UNION SELECT id FROM agenda_events WHERE repeat = 'jaarlijks'";
-  const [eventsRes, statusRes, revRes] = await db.batch([
+  const [eventsRes, statusRes, placementRes, revRes] = await db.batch([
     db
       .prepare(`SELECT * FROM agenda_events WHERE id IN (${inRange}) ORDER BY start_date, start_time, created_at`)
       .bind(from, to),
     db.prepare(`SELECT * FROM agenda_status WHERE event_id IN (${inRange})`).bind(from, to),
+    db.prepare(`SELECT * FROM agenda_placements WHERE event_id IN (${inRange}) ORDER BY created_at, rowid`).bind(from, to),
     db.prepare("SELECT value FROM agenda_meta WHERE key = 'rev'"),
   ]);
-  const events = eventsRes.results.map((row) => toEvent(row, statusRes.results));
+  const events = eventsRes.results.map((row) => toEvent(row, statusRes.results, placementRes.results));
   return reply({ events, rev: revRes.results[0]?.value ?? 0 }, 200, origin);
 }
 
@@ -895,18 +939,24 @@ async function createEvent(request, env, origin, person) {
   const checked = validateEvent(body);
   if (checked.error) return reply({ error: checked.error }, 400, origin);
   const e = checked.value;
+  // Colour and logo can be chosen right away; later they change only through /agenda/events/style.
+  const styled = parseStyle(body);
+  if (styled.error) return reply({ error: styled.error }, 400, origin);
+  const style = styled.value;
 
   const db = env.AGENDA_DB;
+  const logoError = await checkLogo(db, style.logoId);
+  if (logoError) return reply({ error: logoError }, 400, origin);
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
   await db.batch([
     db
       .prepare(
         `INSERT INTO agenda_events (id, title, start_date, end_date, start_time, end_time, location, note, for_who,
-           kind, reason, repeat, count_years, created_by, created_at, updated_by, updated_at, version)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`
+           kind, reason, repeat, count_years, color, logo_id, logo_size, created_by, created_at, updated_by, updated_at, version)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`
       )
-      .bind(id, e.title, e.startDate, e.endDate, e.startTime, e.endTime, e.location, e.note, e.forWho, e.kind, e.reason, e.repeat, e.countYears, person, now, person, now),
+      .bind(id, e.title, e.startDate, e.endDate, e.startTime, e.endTime, e.location, e.note, e.forWho, e.kind, e.reason, e.repeat, e.countYears, style.color, style.logoId, style.logoSize, person, now, person, now),
     ...statusAfterChange(db, id, person, now),
     bumpRev(db),
   ]);
@@ -946,6 +996,7 @@ async function deleteEvent(env, origin, id) {
   const [result] = await db.batch([
     db.prepare("DELETE FROM agenda_events WHERE id = ?").bind(id),
     db.prepare("DELETE FROM agenda_status WHERE event_id = ?").bind(id),
+    db.prepare("DELETE FROM agenda_placements WHERE event_id = ?").bind(id),
     bumpRev(db),
   ]);
   if (!result.meta || result.meta.changes === 0) return reply({ error: "Dit item bestaat niet meer." }, 404, origin);
@@ -1060,6 +1111,9 @@ function methodNotAllowed(origin, allow) {
   return reply({ error: "Method not allowed" }, 405, origin, { Allow: `${allow}, OPTIONS` });
 }
 
+// What agendaStickers.js needs from this file.
+const STICKER_TOOLS = { reply, readBody, bumpRev, readRev, loadEvents, cleanText, methodNotAllowed };
+
 /** Handles /agenda and /agenda/*. */
 export async function handleAgenda(request, env, origin, url) {
   if (!isConfigured(env)) {
@@ -1105,6 +1159,8 @@ export async function handleAgenda(request, env, origin, url) {
   if (path === "/agenda/seen") {
     return method === "POST" ? markSeen(request, env, origin, person) : methodNotAllowed(origin, "POST");
   }
+
+  if (isStickerPath(path)) return handleStickers(request, env, origin, url, person, path, STICKER_TOOLS);
 
   const match = EVENT_PATH.exec(path);
   if (match) {

@@ -3,7 +3,7 @@
 // A one-character column of glyphs (│ for an item, ░ for a zone) that grows with
 // its row, instead of a CSS border: the edge stays a character on the grid.
 // Every row of the content is a whole line, so clipping always ends on a glyph.
-const ROWS = 80;
+const ROWS = 200;
 
 export default function AgendaGutter({ color, glyph = "│" }) {
     return (

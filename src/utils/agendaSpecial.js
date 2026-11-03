@@ -52,6 +52,15 @@ export function specialLabel(occ) {
     return years ? `${title} · ${years} JAAR` : title;
 }
 
+/** Short form for a month cell: "SAM 21", "3 JAAR", "KONINGSDAG". */
+export function specialShortLabel(occ) {
+    const title = occ.title.toUpperCase();
+    const years = occ.countYears && occ.years > 0 ? occ.years : null;
+    if (occ.reason === "verjaardag") return years ? `${title} ${years}` : title;
+    if (occ.reason === "jubileum") return years ? `${years} JAAR` : title;
+    return title;
+}
+
 /** Periods covering a day, longest first so the outer zone comes first. */
 export function periodsOn(periods, day) {
     return periods

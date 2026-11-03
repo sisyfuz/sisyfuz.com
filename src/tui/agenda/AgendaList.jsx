@@ -1,5 +1,5 @@
 // src/tui/agenda/AgendaList.jsx
-import { Fragment, useMemo } from "react";
+import { Fragment, useEffect, useMemo, useRef } from "react";
 import { formatDayShort, indexByDay, monthOf, monthTitle, relativeDay } from "../../utils/agendaDates";
 import { isPeriod, periodsOn } from "../../utils/agendaSpecial";
 import AgendaDayItems from "./AgendaDayItems";
@@ -10,14 +10,26 @@ import { BTN_PLAIN } from "./ui";
 // Scrolling day-by-day list: only days with items, plus today, with a header per
 // month. Periods (zomervakantie...) are zones: a banner on their first day, a
 // colored edge along the days inside, and an end line on their last day.
-export default function AgendaList({ events, from, to, today, onEarlier, onLater, loading, itemProps }) {
+// `focusDay` (desktop: the day picked in the month) always shows, is marked and
+// is scrolled to whenever it changes.
+export default function AgendaList({ events, from, to, today, onEarlier, onLater, loading, itemProps, focusDay = null }) {
     const periods = useMemo(() => events.filter(isPeriod), [events]);
     const byDay = useMemo(() => indexByDay(events.filter((e) => !isPeriod(e)), from, to), [events, from, to]);
     const days = useMemo(() => {
-        const marks = [today];
+        const marks = focusDay ? [today, focusDay] : [today];
         for (const p of periods) marks.push(p.startDate < from ? from : p.startDate, p.endDate);
         return [...new Set([...byDay.keys(), ...marks.filter((d) => d >= from && d <= to)])].sort();
-    }, [byDay, periods, today, from, to]);
+    }, [byDay, periods, today, from, to, focusDay]);
+
+    // Scroll to a newly picked day, not on the first render (the list starts there).
+    const lastFocus = useRef(focusDay);
+    useEffect(() => {
+        if (!focusDay || focusDay === lastFocus.current) return;
+        const el = document.getElementById(`agenda-day-${focusDay}`);
+        if (!el) return; // not in the list yet; try again once it has loaded
+        lastFocus.current = focusDay;
+        el.scrollIntoView({ block: "start" });
+    }, [focusDay, days]);
     const people = itemProps.people;
 
     return (
@@ -50,12 +62,18 @@ export default function AgendaList({ events, from, to, today, onEarlier, onLater
                             <PeriodBanner key={p.id} period={p} people={people} continued={p.startDate < day} onOpen={itemProps.onOpen} />
                         ))}
                         <section
+                            id={`agenda-day-${day}`}
+                            aria-current={day === focusDay ? "date" : undefined}
+                            className="flex gap-x-[1ch] scroll-mt-[5lh]"
                             aria-label={`${rel ? `${rel}, ` : ""}${formatDayShort(day)}${zones.length ? `, ${zones.map((p) => p.title).join(", ")}` : ""}`}
-                            className="flex gap-x-[1ch]"
                         >
                             {edge && <AgendaGutter color={edge} glyph="░" />}
                             <div className="min-w-0 flex-1 space-y-[1lh]">
-                                <h3 className={`uppercase font-bold ${day < today ? "text-neutral-500" : "text-white"}`}>
+                                <h3
+                                    className={`uppercase font-bold ${day < today ? "text-neutral-500" : "text-white"} ${
+                                        day === focusDay && !isToday ? "bg-[#262626] -ml-[1ch] pl-[1ch] w-fit pr-[1ch]" : ""
+                                    }`}
+                                >
                                     {isToday ? (
                                         <span className="bg-[#e8e8e8] text-black px-[1ch] -ml-[1ch]">
                                             <span className="cell">▶</span> {rel}

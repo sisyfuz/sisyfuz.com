@@ -1,11 +1,12 @@
 // src/tui/agenda/AgendaSheet.jsx
 import { useEffect, useId, useRef } from "react";
-import { ASCII_DIVIDER } from "../../utils/ascii";
+import AgendaGutter from "./AgendaGutter";
 import { BTN_PLAIN } from "./ui";
 
-// Full-screen panel at every size, laid out on the same grid as the page (a
-// centered box would sit between columns and need a border). Locks page scroll,
-// closes on Escape and returns focus to whatever opened it.
+// Full screen on phones. From lg (the desktop layout) it docks over the list
+// column, so the month stays in view: a │ column at 86ch and content from 88ch,
+// exactly where the list starts. Laid out on the page grid either way. Locks page
+// scroll, closes on Escape and returns focus to whatever opened it.
 export default function AgendaSheet({ title, onClose, children }) {
     const titleId = useId();
     const panelRef = useRef(null);
@@ -35,14 +36,17 @@ export default function AgendaSheet({ title, onClose, children }) {
     }, [onClose]);
 
     return (
-        <div className="fixed inset-0 z-50 bg-[#050505]">
+        <div className="fixed inset-0 z-50 bg-[#050505] flex lg:left-[86ch]">
+            <div className="hidden lg:flex">
+                <AgendaGutter color="#333333" />
+            </div>
             <div
                 ref={panelRef}
                 role="dialog"
                 aria-modal="true"
                 aria-labelledby={titleId}
                 tabIndex={-1}
-                className="w-full h-full overflow-y-auto overscroll-contain outline-none px-[2ch] pt-[1lh] pb-[calc(3lh+env(safe-area-inset-bottom))]"
+                className="flex-1 min-w-0 h-full overflow-y-auto overscroll-contain outline-none px-[2ch] lg:pl-[1ch] lg:pr-[4ch] pt-[1lh] pb-[calc(3lh+env(safe-area-inset-bottom))]"
             >
                 <div className="term-snap max-w-[64ch]">
                     <div className="flex items-start justify-between gap-x-[2ch]">
@@ -54,7 +58,7 @@ export default function AgendaSheet({ title, onClose, children }) {
                         </button>
                     </div>
                     <div aria-hidden="true" className="text-neutral-700 overflow-hidden whitespace-nowrap mb-[1lh]">
-                        {ASCII_DIVIDER}
+                        {"-".repeat(240)}
                     </div>
                     {children}
                 </div>

@@ -4,7 +4,6 @@
 // from the worker after that. See worker/src/agenda.js.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { ASCII_DIVIDER } from "../utils/ascii";
 import TermScrollSnap from "../components/TermScrollSnap";
 import { AgendaError, agendaClient, clearSession, loadSession } from "../utils/agendaApi";
 import { addDays, daysBetween, monthGrid, monthOf, todayIso, addMonths } from "../utils/agendaDates";
@@ -21,6 +20,8 @@ import AgendaImport from "./agenda/AgendaImport";
 import { BTN_ACTIVE, BTN_ATTENTION, BTN_PRIMARY, BTN_PLAIN, SAMEN_COLOR } from "./agenda/ui";
 
 const REFRESH_MS = 60_000;
+// Dividers are clipped to their container, so make them long enough for desktop.
+const RULE = "-".repeat(240);
 // Focus and visibility often fire together; one check is enough.
 const REFRESH_MIN_GAP_MS = 3_000;
 const MAX_FETCH_DAYS = 366;
@@ -65,6 +66,25 @@ function usePrivatePage() {
     }, []);
 }
 
+// The desktop layout (month and list side by side) starts at Tailwind's lg.
+const DESKTOP_QUERY = "(min-width: 1024px)";
+
+function useMediaQuery(query) {
+    const [matches, setMatches] = useState(() => window.matchMedia(query).matches);
+    useEffect(() => {
+        const mq = window.matchMedia(query);
+        const onChange = () => setMatches(mq.matches);
+        mq.addEventListener("change", onChange);
+        return () => mq.removeEventListener("change", onChange);
+    }, [query]);
+    return matches;
+}
+
+/** True when a key press is meant for a field, not for a shortcut. */
+function isTyping(target) {
+    return target instanceof window.HTMLElement && (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName));
+}
+
 function overlaps(event, from, to) {
     return event.startDate <= to && event.endDate >= from;
 }
@@ -98,7 +118,7 @@ function makePeople(profile) {
     };
 }
 
-function Shell({ people, onLogout, status, children, bar, dropProps, dropping }) {
+function Shell({ people, onLogout, status, children, bar, actions, dropProps, dropping }) {
     return (
         <div className="agenda-root relative min-h-[100dvh] w-full bg-[#050505] text-[#f0f0f0] font-mono" {...dropProps}>
             <TermScrollSnap />
@@ -107,8 +127,8 @@ function Shell({ people, onLogout, status, children, bar, dropProps, dropping })
                     <pre className="text-white font-bold">{DROP_BOX}</pre>
                 </div>
             )}
-            <header className="sticky top-0 z-30 bg-[#050505]/95 backdrop-blur-md px-[2ch]">
-                <div className="term-snap max-w-[72ch]">
+            <header className="sticky top-0 z-30 bg-[#050505]/95 backdrop-blur-md px-[2ch] lg:px-[4ch]">
+                <div className="term-snap max-w-[72ch] lg:max-w-none">
                     <div className="flex items-center justify-between gap-x-[2ch] min-h-[3lh]">
                         <span className="uppercase font-bold min-w-0 truncate">
                             <Link to="/" className="hover:bg-white hover:text-black focus-visible:outline-none focus-visible:bg-white focus-visible:text-black">sisyfuz</Link>
@@ -117,6 +137,7 @@ function Shell({ people, onLogout, status, children, bar, dropProps, dropping })
                         </span>
                         {people && (
                             <span className="flex items-center gap-x-[1ch] shrink-0 uppercase">
+                                {actions && <span className="flex items-center mr-[2ch]">{actions}</span>}
                                 {status}
                                 <span className="font-bold" style={{ color: people.colorOf(people.me) }}>
                                     <span className="cell">●</span> {people.nameOf(people.me)}
@@ -127,16 +148,16 @@ function Shell({ people, onLogout, status, children, bar, dropProps, dropping })
                             </span>
                         )}
                     </div>
-                    <div aria-hidden="true" className="text-neutral-700 overflow-hidden whitespace-nowrap">{ASCII_DIVIDER}</div>
+                    <div aria-hidden="true" className="text-neutral-700 overflow-hidden whitespace-nowrap">{RULE}</div>
                 </div>
             </header>
 
             <main
                 id="main-content"
                 tabIndex={-1}
-                className={`px-[2ch] pt-[1lh] outline-none ${bar ? "pb-[calc(6lh+env(safe-area-inset-bottom))]" : "pb-[3lh]"}`}
+                className={`px-[2ch] lg:px-[4ch] pt-[1lh] outline-none ${bar ? "pb-[calc(6lh+env(safe-area-inset-bottom))]" : "pb-[3lh]"}`}
             >
-                <div className="term-snap max-w-[72ch]">{children}</div>
+                <div className="term-snap max-w-[72ch] lg:max-w-none">{children}</div>
             </main>
 
             {bar && (
@@ -145,7 +166,7 @@ function Shell({ people, onLogout, status, children, bar, dropProps, dropping })
                     className="term-dock left-0 right-0 z-40 bg-[#050505]/95 backdrop-blur-md px-[2ch]"
                 >
                     <div className="term-snap max-w-[72ch]">
-                        <div aria-hidden="true" className="text-neutral-800 overflow-hidden whitespace-nowrap">{ASCII_DIVIDER}</div>
+                        <div aria-hidden="true" className="text-neutral-800 overflow-hidden whitespace-nowrap">{RULE}</div>
                         {/* Buttons carry their own 1ch padding, so no extra gap; very narrow phones scroll. */}
                         <div className="flex items-center -mx-[1ch] overflow-x-auto no-scrollbar">{bar}</div>
                     </div>
@@ -221,6 +242,7 @@ function AgendaApp({ token, initialProfile, onLogout }) {
     const [syncError, setSyncError] = useState("");
     const [newIds, setNewIds] = useState(() => new Set());
 
+    const isDesktop = useMediaQuery(DESKTOP_QUERY);
     const loadedRef = useRef(null);
     const revRef = useRef(null);
     const lastRefreshRef = useRef(0);
@@ -632,12 +654,23 @@ function AgendaApp({ token, initialProfile, onLogout }) {
         }
     };
 
+    // On desktop the list sits next to the month: picking a day there scrolls the
+    // list to it, so the list is stretched first when the day lies outside it.
+    const selectDay = (day) => {
+        setSelected(day);
+        if (!isDesktop || (day >= listRange.from && day <= listRange.to)) return;
+        const from = day < listRange.from ? day : listRange.from;
+        const to = day > listRange.to ? day : listRange.to;
+        setListRange({ from, to });
+        ensureRange(from, to);
+    };
+
     const changeMonth = (n) => {
         const next = addMonths(ym, n);
         setYm(next);
         const t = todayIso();
         const tm = monthOf(t);
-        setSelected(tm.year === next.year && tm.month === next.month ? t : `${next.year}-${String(next.month + 1).padStart(2, "0")}-01`);
+        selectDay(tm.year === next.year && tm.month === next.month ? t : `${next.year}-${String(next.month + 1).padStart(2, "0")}-01`);
         const grid = gridRange(next);
         ensureRange(grid.from, grid.to);
     };
@@ -645,8 +678,37 @@ function AgendaApp({ token, initialProfile, onLogout }) {
     const goToday = () => {
         const t = todayIso();
         setYm(monthOf(t));
-        setSelected(t);
+        selectDay(t);
     };
+
+    // The day new items start on: the picked day where a month is shown, else today.
+    const formDay = isDesktop || view === "maand" ? selected : today;
+
+    // Keyboard shortcuts (shown under the month on desktop). Not while typing or
+    // while a panel is open; Escape is handled by the panel itself.
+    useEffect(() => {
+        if (!profile) return undefined;
+        const onKey = (e) => {
+            if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey || sheet || isTyping(e.target)) return;
+            const monthShown = isDesktop || view === "maand";
+            const actions = {
+                n: () => openForm(formDay),
+                d: () => openForm(formDay, null, "bijzonder"),
+                i: () => fileInputRef.current?.click(),
+                t: goToday,
+                l: () => setView("lijst"),
+                m: () => setView("maand"),
+                arrowleft: monthShown ? () => changeMonth(-1) : null,
+                arrowright: monthShown ? () => changeMonth(1) : null,
+            };
+            const action = actions[e.key.toLowerCase()];
+            if (!action) return;
+            e.preventDefault();
+            action();
+        };
+        window.addEventListener("keydown", onKey);
+        return () => window.removeEventListener("keydown", onKey);
+    });
 
     // Yearly special days are placed in every year the list and month can show.
     const grid = gridRange(ym);
@@ -690,33 +752,35 @@ function AgendaApp({ token, initialProfile, onLogout }) {
             </button>
             <button
                 type="button"
-                onClick={() => openForm(view === "maand" ? selected : today, null, "bijzonder")}
+                onClick={() => openForm(formDay, null, "bijzonder")}
                 className={BTN_ATTENTION}
                 aria-label="Bijzondere dag toevoegen: verjaardag, jubileum of anders"
             >
                 [★ DAG]
             </button>
-            <button type="button" onClick={() => openForm(view === "maand" ? selected : today)} className={`${BTN_PRIMARY} ml-auto`}>
+            <button type="button" onClick={() => openForm(formDay)} className={`${BTN_PRIMARY} ml-auto`}>
                 [+ NIEUW]
             </button>
-            <input
-                ref={fileInputRef}
-                type="file"
-                accept=".ics,.ical,.icalendar,.ifb,text/calendar"
-                multiple
-                className="sr-only"
-                tabIndex={-1}
-                aria-hidden="true"
-                onChange={(e) => {
-                    readFiles(e.target.files);
-                    e.target.value = "";
-                }}
-            />
         </>
     );
 
-    return (
-        <Shell people={people} onLogout={onLogout} status={status} bar={bar} dropProps={dropProps} dropping={dropping}>
+    // Desktop: the same actions in the header (no view switch: both are shown).
+    const actions = (
+        <>
+            <button type="button" onClick={() => fileInputRef.current?.click()} className={BTN_PLAIN} title="Importeer een agendabestand (.ics) · I">
+                [IMPORT]
+            </button>
+            <button type="button" onClick={() => openForm(formDay, null, "bijzonder")} className={BTN_ATTENTION} title="Bijzondere dag · D">
+                [★ DAG]
+            </button>
+            <button type="button" onClick={() => openForm(formDay)} className={BTN_PRIMARY} title="Nieuw · N">
+                [+ NIEUW]
+            </button>
+        </>
+    );
+
+    const notices = (
+        <>
             {notice && (
                 <p className="text-[#f7e463] uppercase mb-[1lh]" role="alert">
                     {notice}{" "}
@@ -729,38 +793,114 @@ function AgendaApp({ token, initialProfile, onLogout }) {
                 </p>
             )}
             {syncError && <p className="text-[#f7e463] uppercase mb-[1lh]">{syncError}</p>}
+        </>
+    );
 
-            {view === "lijst" ? (
-                <AgendaList
-                    events={list}
-                    from={listRange.from}
-                    to={listRange.to}
-                    today={today}
-                    loading={loading > 0}
-                    itemProps={itemProps}
-                    onEarlier={() => {
-                        const from = addDays(listRange.from, -30);
-                        setListRange((r) => ({ ...r, from }));
-                        ensureRange(from, listRange.to);
-                    }}
-                    onLater={() => {
-                        const to = addDays(listRange.to, 90);
-                        setListRange((r) => ({ ...r, to }));
-                        ensureRange(listRange.from, to);
-                    }}
-                />
+    const fileInput = (
+        <input
+            ref={fileInputRef}
+            type="file"
+            accept=".ics,.ical,.icalendar,.ifb,text/calendar"
+            multiple
+            className="sr-only"
+            tabIndex={-1}
+            aria-hidden="true"
+            onChange={(e) => {
+                readFiles(e.target.files);
+                e.target.value = "";
+            }}
+        />
+    );
+
+    return (
+        <Shell
+            people={people}
+            onLogout={onLogout}
+            status={status}
+            bar={isDesktop ? null : bar}
+            actions={isDesktop ? actions : null}
+            dropProps={dropProps}
+            dropping={dropping}
+        >
+            {fileInput}
+            {isDesktop ? (
+                // Month (80ch, stays in view) beside the list; panels dock over the list.
+                <div className="grid gap-x-[4ch]" style={{ gridTemplateColumns: "80ch minmax(0, 1fr)" }}>
+                    <aside className="sticky top-[4lh] self-start max-h-[calc(100dvh-4lh)] overflow-y-auto no-scrollbar pb-[1lh]">
+                        <AgendaMonth
+                            events={list}
+                            ym={ym}
+                            selected={selected}
+                            today={today}
+                            itemProps={itemProps}
+                            onSelect={selectDay}
+                            wide={isDesktop}
+                            onMonth={changeMonth}
+                            onToday={goToday}
+                            onNew={(date) => openForm(date)}
+                        />
+                    </aside>
+                    <div className="min-w-0">
+                        {notices}
+                    <AgendaList
+                            events={list}
+                            from={listRange.from}
+                            to={listRange.to}
+                            today={today}
+                            loading={loading > 0}
+                            itemProps={itemProps}
+                            focusDay={isDesktop ? selected : null}
+                            onEarlier={() => {
+                                const from = addDays(listRange.from, -30);
+                                setListRange((r) => ({ ...r, from }));
+                                ensureRange(from, listRange.to);
+                            }}
+                            onLater={() => {
+                                const to = addDays(listRange.to, 90);
+                                setListRange((r) => ({ ...r, to }));
+                                ensureRange(listRange.from, to);
+                            }}
+                        />
+                    </div>
+                </div>
             ) : (
-                <AgendaMonth
-                    events={list}
-                    ym={ym}
-                    selected={selected}
-                    today={today}
-                    itemProps={itemProps}
-                    onSelect={setSelected}
-                    onMonth={changeMonth}
-                    onToday={goToday}
-                    onNew={(date) => openForm(date)}
-                />
+                <>
+                    {notices}
+                    {view === "lijst" ? (
+                    <AgendaList
+                        events={list}
+                        from={listRange.from}
+                        to={listRange.to}
+                        today={today}
+                        loading={loading > 0}
+                        itemProps={itemProps}
+                        focusDay={isDesktop ? selected : null}
+                        onEarlier={() => {
+                            const from = addDays(listRange.from, -30);
+                            setListRange((r) => ({ ...r, from }));
+                            ensureRange(from, listRange.to);
+                        }}
+                        onLater={() => {
+                            const to = addDays(listRange.to, 90);
+                            setListRange((r) => ({ ...r, to }));
+                            ensureRange(listRange.from, to);
+                        }}
+                    />
+                    ) : (
+                    <AgendaMonth
+                        events={list}
+                        ym={ym}
+                        selected={selected}
+                        today={today}
+                        itemProps={itemProps}
+                        onSelect={selectDay}
+                        wide={isDesktop}
+                        onMonth={changeMonth}
+                        onToday={goToday}
+                        onNew={(date) => openForm(date)}
+                    />
+                    )}
+                </>
             )}
 
             {sheet?.type === "detail" && sheetEvent && (

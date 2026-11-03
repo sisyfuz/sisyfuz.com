@@ -1,5 +1,6 @@
 // src/tui/agenda/AgendaStickerTray.jsx
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { positionAt } from "../../utils/agendaStickerPlace";
 import StickerImage from "./StickerImage";
 import { BTN_PLAIN, BTN_PRIMARY } from "./ui";
@@ -123,16 +124,20 @@ export default function AgendaStickerTray({ stickers, busy, onDrop, onDraw, onIm
                     </button>
                 </div>
             )}
-            {drag && (
-                <span
-                    ref={ghostRef}
-                    aria-hidden="true"
-                    className="pointer-events-none fixed z-[70] -translate-x-1/2 -translate-y-1/2"
-                    style={{ left: drag.x, top: drag.y }}
-                >
-                    <StickerImage sticker={drag.sticker} />
-                </span>
-            )}
+            {/* In <body>, not in the bar: the bar's backdrop blur makes `fixed` count
+                from the bar instead of the screen, which put it far below the pointer. */}
+            {drag &&
+                createPortal(
+                    <span
+                        ref={ghostRef}
+                        aria-hidden="true"
+                        className="pointer-events-none fixed z-[70] -translate-x-1/2 -translate-y-1/2"
+                        style={{ left: drag.x, top: drag.y }}
+                    >
+                        <StickerImage sticker={drag.sticker} />
+                    </span>,
+                    document.body
+                )}
         </div>
     );
 }
